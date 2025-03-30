@@ -8,7 +8,7 @@ allSpikeWidthsCell = cell(length(baseDirs), numRegions);
 allNeuronIndices = cell(length(baseDirs), numRegions);
 classifications = cell(length(baseDirs), numRegions);
 
-% Extract spike widths and neuron indices from each session
+% extract spike widths and neuron indices from each session
 for iDir = 1:length(baseDirs)
     [spikeWidthsPerRegion, neuronIndsPerRegion] = extractSpikeWidths(baseDirs{iDir});
     for iRegion = 1:numRegions
@@ -22,28 +22,35 @@ for iRegion = 1:numRegions
     regionName = regions{iRegion};
     allWidths = cell2mat(allSpikeWidthsCell(:, iRegion)');
 
-    % Skip if no data
+    % skip if no data
     if isempty(allWidths)
         warning('%s has no spike width data. Skipping...', regionName);
         continue;
     end
 
-    % Fit 2-component GMM
+    % fit 2-component GMM
     gm = fitgmdist(allWidths', 2);
     means = gm.mu;
     stdDevs = sqrt(squeeze(gm.Sigma));
     proportions = gm.ComponentProportion;
 
-    % Plot GMM
+    % plot GMM
+    % first sort components by mean to assign labels
+    [sortedMeans, sortIdx] = sort(means);
+    sortedStdDevs = stdDevs(sortIdx);
+    sortedProportions = proportions(sortIdx);
+    labels = {'Interneurons', 'Pyramidal Neurons'};
+
+    % plot fig
     figure('Name', [regionName ' Spike Widths'], 'NumberTitle', 'off', 'Visible', 'on');
     h = histogram(allWidths, 'BinWidth', 1/20000, 'EdgeColor', 'black', 'FaceColor', [0.7 0.7 0.9], 'DisplayName', '', 'HandleVisibility', 'off');
     hold on;
 
     x = linspace(min(allWidths), max(allWidths), 1000);
     for k = 1:2
-        y = pdf('Normal', x, means(k), stdDevs(k)) * ...
-            proportions(k) * sum(h.Values) * h.BinWidth;
-        plot(x, y, 'LineWidth', 2, 'DisplayName', ['Component ' num2str(k)]);
+        y = pdf('Normal', x, sortedMeans(k), sortedStdDevs(k)) * ...
+            sortedProportions(k) * sum(h.Values) * h.BinWidth;
+        plot(x, y, 'LineWidth', 2, 'DisplayName', labels{k});
     end
 
     xlabel('Spike Width (seconds)', 'FontSize', 14);
