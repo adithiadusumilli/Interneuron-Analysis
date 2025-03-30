@@ -36,26 +36,24 @@ for iRegion = 1:numRegions
 
     % Plot GMM
     figure('Name', [regionName ' Spike Widths'], 'NumberTitle', 'off', 'Visible', 'on');
-    h = histogram(allWidths, 'BinWidth', 1/20000, ...
-        'EdgeColor', 'black', 'FaceColor', [0.7 0.7 0.9]);
+    h = histogram(allWidths, 'BinWidth', 1/20000, 'EdgeColor', 'black', 'FaceColor', [0.7 0.7 0.9], 'DisplayName', '', 'HandleVisibility', 'off');
     hold on;
 
     x = linspace(min(allWidths), max(allWidths), 1000);
     for k = 1:2
         y = pdf('Normal', x, means(k), stdDevs(k)) * ...
             proportions(k) * sum(h.Values) * h.BinWidth;
-        plot(x, y, 'LineWidth', 2);
+        plot(x, y, 'LineWidth', 2, 'DisplayName', ['Component ' num2str(k)]);
     end
 
     xlabel('Spike Width (seconds)', 'FontSize', 14);
     ylabel('Frequency', 'FontSize', 14);
     title([regionName ' Spike Widths with GMM'], 'FontSize', 14);
-    legend({'Data', 'Component 1', 'Component 2'});
+    legend show;
     set(gcf, 'Color', 'w');
     box off;
     hold off;
-
-    drawnow;  % Force MATLAB to render figure now
+    drawnow;
 
     % Calculate and report intersection point
     intersection = calculateIntersectionPoint(means, stdDevs);
