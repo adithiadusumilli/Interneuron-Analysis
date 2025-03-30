@@ -6,6 +6,7 @@ neuronDataStructFiles = {'Z:\David\ArenaRecordings\NeuropixelsTest\D020-062922-A
 firingRatesFiles = {'Z:\David\ArenaRecordings\NeuropixelsTest\D020-062922-ArenaRecording\ProcessedData\NeuralFiringRates10msBins30msGauss.mat'};
 
 allSpikeWidthsCell = {};
+classifications = cell(1, numel(neuronDataStructFiles));
 
 % Load neuron data and compute spike widths
 for fileIndex = 1:numel(neuronDataStructFiles)
