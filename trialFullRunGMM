@@ -22,6 +22,12 @@ for iRegion = 1:numRegions
     regionName = regions{iRegion};
     allWidths = cell2mat(allSpikeWidthsCell(:, iRegion)');
 
+    % Skip if no data
+    if isempty(allWidths)
+        warning('%s has no spike width data. Skipping...', regionName);
+        continue;
+    end
+
     % Fit 2-component GMM
     gm = fitgmdist(allWidths', 2);
     means = gm.mu;
@@ -29,7 +35,7 @@ for iRegion = 1:numRegions
     proportions = gm.ComponentProportion;
 
     % Plot GMM
-    figure;
+    figure('Name', [regionName ' Spike Widths'], 'NumberTitle', 'off', 'Visible', 'on');
     h = histogram(allWidths, 'BinWidth', 1/20000, ...
         'EdgeColor', 'black', 'FaceColor', [0.7 0.7 0.9]);
     hold on;
@@ -48,6 +54,8 @@ for iRegion = 1:numRegions
     set(gcf, 'Color', 'w');
     box off;
     hold off;
+
+    drawnow;  % Force MATLAB to render figure now
 
     % Calculate and report intersection point
     intersection = calculateIntersectionPoint(means, stdDevs);
