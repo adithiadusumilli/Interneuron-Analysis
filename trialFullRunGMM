@@ -1,0 +1,121 @@
+function runGMM(baseDirs)
+% function works to fit GMMs and classify neurons in Cortex and Striatum
+% baseDirs: cell array of session folder paths
+
+regions = {'Cortex', 'Striatum'};
+numRegions = length(regions);
+
+allSpikeWidthsCell = cell(length(baseDirs), numRegions);
+allNeuronIndices = cell(length(baseDirs), numRegions);
+classifications = cell(length(baseDirs), numRegions);
+
+% Extract spike widths and neuron indices from each session
+for iDir = 1:length(baseDirs)
+    [spikeWidthsPerRegion, neuronIndsPerRegion] = extractSpikeWidths(baseDirs{iDir});
+    for iRegion = 1:numRegions
+        allSpikeWidthsCell{iDir, iRegion} = spikeWidthsPerRegion{iRegion};
+        allNeuronIndices{iDir, iRegion} = neuronIndsPerRegion{iRegion};
+    end
+end
+
+% GMM fitting, plotting, and classification for each region
+for iRegion = 1:numRegions
+    regionName = regions{iRegion};
+    allWidths = cell2mat(allSpikeWidthsCell(:, iRegion)');
+
+    % Fit 2-component Gaussian Mixture Model
+    gm = fitgmdist(allWidths', 2);
+    means = gm.mu;
+    stdDevs = sqrt(squeeze(gm.Sigma));
+    proportions = gm.ComponentProportion;
+
+    % Plot histogram and GMM curves
+    figure;
+    h = histogram(allWidths, 'BinWidth', 1/20000, ...
+        'EdgeColor', 'black', 'FaceColor', [0.7 0.7 0.9]);
+    hold on;
+
+    x = linspace(min(allWidths), max(allWidths), 1000);
+    for k = 1:2
+        y = pdf('Normal', x, means(k), stdDevs(k)) * ...
+            proportions(k) * sum(h.Values) * h.BinWidth;
+        plot(x, y, 'LineWidth', 2);
+    end
+
+    xlabel('Spike Width (seconds)', 'FontSize', 14);
+    ylabel('Frequency', 'FontSize', 14);
+    title([regionName ' Spike Widths with GMM'], 'FontSize', 14);
+    legend({'Data', 'Component 1', 'Component 2'});
+    set(gcf, 'Color', 'w');
+    box off;
+    hold off;
+
+    % Calculate and report intersection point
+    intersection = calculateIntersectionPoint(means, stdDevs);
+    fprintf('%s Intersection Point: %.6f seconds\n', regionName, intersection);
+
+    % Classify neurons based on spike width
+    for iDir = 1:length(baseDirs)
+        spikeWidths = allSpikeWidthsCell{iDir, iRegion};
+        neuronInds = allNeuronIndices{iDir, iRegion};
+        classArray = nan(1, max(neuronInds));
+
+        for i = 1:length(spikeWidths)
+            if spikeWidths(i) < intersection
+                classArray(neuronInds(i)) = 1;  % Interneuron
+            else
+                classArray(neuronInds(i)) = 0;  % Pyramidal neuron
+            end
+        end
+
+        classifications{iDir, iRegion} = classArray;
+    end
+end
+
+% Save classifications and session metadata
+save('GMM_classifications.mat', 'classifications', 'regions', 'baseDirs');
+
+end
+
+function [spikeWidths, neuronIndices] = extractSpikeWidths(baseDir)
+% function extracts spike widths and neuron indices for cortex and striatum
+% baseDir: path to session folder
+
+load(fullfile(baseDir, 'neuronDataStruct.mat'));
+load(fullfile(baseDir, 'NeuralFiringRates10msBins30msGauss.mat'));
+
+regionsInds = {cortexInds, striatumInds};
+spikeWidths = cell(1, 2);
+neuronIndices = cell(1, 2);
+
+for iRegion = 1:2
+    inds = regionsInds{iRegion};
+    widthsSec = nan(1, numel(inds));
+
+    for i = 1:numel(inds)
+        neuron = neuronDataStruct(inds(i));
+        waveform = neuron.waveforms(:, neuron.biggestChan);
+        [~, maxIdx] = max(waveform);
+        [~, minIdx] = min(waveform);
+        widthsSec(i) = abs(maxIdx - minIdx) / 30000;
+    end
+
+    spikeWidths{iRegion} = widthsSec;
+    neuronIndices{iRegion} = inds;
+end
+
+end
+
+function intersectionPoint = calculateIntersectionPoint(means, stdDevs)
+% function (same as original) calculates intersection between two Gaussians for classification purposes
+
+    gaussPDF = @(x, mu, sigma) (1 / (sigma * sqrt(2*pi))) * ...
+        exp(-(x - mu).^2 / (2 * sigma^2));
+    
+    % Find the x where both PDFs are equal
+    intersectionEquation = @(x) gaussPDF(x, means(1), stdDevs(1)) - ...
+                                   gaussPDF(x, means(2), stdDevs(2));
+    
+    % Use the average of the means as an initial guess
+    intersectionPoint = fzero(intersectionEquation, mean(means));
+end
