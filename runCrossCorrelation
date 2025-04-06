@@ -40,14 +40,14 @@ for iRegion = 1:length(regions)
             regionInds = striatumInds;
         end
 
-        classArray = classifications{iDir, iRegion};
-        if isempty(classArray)
+        neuronType = classifications{iDir, iRegion};
+        if isempty(neuronType)
             warning('No classification data for session %d (%s). Skipping.', iDir, regionName);
             continue;
         end
 
         % retrieving only relevant classifications
-        regionClass = classArray(regionInds);
+        regionClass = neuronType(regionInds);
 
         % splitting firing rates by class
         interneuronFRs = frMatrix(regionClass == 1, :);
