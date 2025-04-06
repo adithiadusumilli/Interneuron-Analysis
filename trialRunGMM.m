@@ -43,15 +43,15 @@ for iRegion = 1:numRegions
 
     % plot fig
     figure('Name', [regionName ' Spike Widths'], 'NumberTitle', 'off', 'Visible', 'on');
-    h = histogram(allWidths, 'BinWidth', 1/20000, 'EdgeColor', 'black', 'FaceColor', [0.7 0.7 0.9], 'DisplayName', '', 'HandleVisibility', 'off');
+    h = histogram(allWidths, 'BinWidth', 1/20, 'EdgeColor', 'black', 'FaceColor', [0.7 0.7 0.9], 'DisplayName', '', 'HandleVisibility', 'off');
     hold on;
 
     x = linspace(min(allWidths), max(allWidths), 1000);
     colors = lines(3);
-    for iRegion = 1:2
-        y = pdf('Normal', x, sortedMeans(iRegion), sortedStdDevs(iRegion)) * ...
-            sortedProportions(iRegion) * sum(h.Values) * h.BinWidth;
-        plot(x, y, 'LineWidth', 2, 'DisplayName', labels{iRegion},'Color',colors(iRegion,:));
+    for region = 1:2
+        y = pdf('Normal', x, sortedMeans(region), sortedStdDevs(region)) * ...
+            sortedProportions(region) * sum(h.Values) * h.BinWidth;
+        plot(x, y, 'LineWidth', 2, 'DisplayName', labels{region},'Color',colors(region,:));
     end
 
     xlabel('Spike Width (seconds)', 'FontSize', 14);
