@@ -58,6 +58,26 @@ for iRegion = 1:length(regions)
             continue;
         end
 
+        fprintf('  → # Interneurons: %d\n', size(interneuronFRs, 1));
+        fprintf('  → # Pyramidal Neurons: %d\n', size(pyramidalFRs, 1));
+
+        % Debug: Shape of firing rate matrices
+        fprintf('  → Interneuron FRs size: [%d x %d]\n', size(interneuronFRs));
+        fprintf('  → Pyramidal FRs size:   [%d x %d]\n', size(pyramidalFRs));
+
+        % Preview average time series
+        meanInt = nanmean(interneuronFRs, 1);  % 1 x time
+        meanPyr = nanmean(pyramidalFRs, 1);    % 1 x time
+
+        figure('Name', sprintf('%s — Avg Time Series — Session %d', regionName, iDir), 'Color', 'w');
+        plot(meanInt, 'r'); hold on;
+        plot(meanPyr, 'b');
+        legend('Interneurons', 'Pyramidal Neurons');
+        title(sprintf('Population Avg — %s — Session %d', regionName, iDir));
+        xlabel('Time Bin');
+        ylabel('Firing Rate (Hz?)');
+        drawnow;
+
         % finding avgs across neuron type
         meanInt = nanmean(interneuronFRs, 1);
         meanPyr = nanmean(pyramidalFRs, 1);
