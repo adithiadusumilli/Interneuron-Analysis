@@ -48,10 +48,10 @@ for iRegion = 1:numRegions
 
     x = linspace(min(allWidths), max(allWidths), 1000);
     colors = lines(3);
-    for iRegion = 1:2
-        y = pdf('Normal', x, sortedMeans(iRegion), sortedStdDevs(iRegion)) * ...
-            sortedProportions(iRegion) * sum(h.Values) * h.BinWidth;
-        plot(x, y, 'LineWidth', 2, 'DisplayName', labels{iRegion},'Color',colors(iRegion,:));
+    for region = 1:2
+        y = pdf('Normal', x, sortedMeans(region), sortedStdDevs(region)) * ...
+            sortedProportions(region) * sum(h.Values) * h.BinWidth;
+        plot(x, y, 'LineWidth', 2, 'DisplayName', labels{region},'Color',colors(region,:));
     end
 
     xlabel('Spike Width (seconds)', 'FontSize', 14);
