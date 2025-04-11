@@ -1,13 +1,12 @@
 function runCrossCorrelation(baseDirs, classificationFile)
-% computing and plotting timing offsets between average
-% interneuron and pyramidal activity for both cortex and striatum
+% function manually computes cross-correlation between interneuron
+% and pyramidal population activity for cortex and striatum & properly handles nans
 
-% parameters
-binSize = 0.01; % considering 10 ms bins
+binSize = 0.01;       % 10 ms bins
 maxLagSecs = 1;
 maxLagBins = round(maxLagSecs / binSize);
 
-% load in classification data
+% loading in classification info
 load(classificationFile, 'classifications', 'regions');
 
 peakLags = nan(length(baseDirs), length(regions));
@@ -19,7 +18,6 @@ for iRegion = 1:length(regions)
         baseDir = baseDirs{iDir};
         fprintf('\nProcessing %s — Session %d: %s\n', regionName, iDir, baseDir);
 
-        % load data
         neuronFile = fullfile(baseDir, 'neuronDataStruct.mat');
         frFile = fullfile(baseDir, 'NeuralFiringRates10msBins30msGauss.mat');
 
@@ -31,7 +29,7 @@ for iRegion = 1:length(regions)
         load(neuronFile, 'neuronDataStruct');
         load(frFile, 'cortexFRs', 'cortexInds', 'striatumFRs', 'striatumInds');
 
-        % get appropriate data based on region
+        % retrieving region-specific data
         if iRegion == 1
             frMatrix = cortexFRs;
             regionInds = cortexInds;
@@ -40,16 +38,13 @@ for iRegion = 1:length(regions)
             regionInds = striatumInds;
         end
 
-        classArray = classifications{iDir, iRegion};
-        if isempty(classArray)
+        neuronType = classifications{iDir, iRegion};
+        if isempty(neuronType)
             warning('No classification data for session %d (%s). Skipping.', iDir, regionName);
             continue;
         end
 
-        % retrieving only relevant classifications
-        regionClass = classArray(regionInds);
-
-        % splitting firing rates by class
+        regionClass = neuronType(regionInds);
         interneuronFRs = frMatrix(regionClass == 1, :);
         pyramidalFRs   = frMatrix(regionClass == 0, :);
 
@@ -58,18 +53,50 @@ for iRegion = 1:length(regions)
             continue;
         end
 
-        % finding avgs across neuron type
+        % calculating raw mean time series
         meanInt = nanmean(interneuronFRs, 1);
         meanPyr = nanmean(pyramidalFRs, 1);
 
-        % cross-correlation computing
-        [xc, lags] = xcorr(meanInt, meanPyr, maxLagBins, 'coeff');
+        % finding all NaN indices
+        nanInt = find(isnan(meanInt));
+        nanPyr = find(isnan(meanPyr));
+        allNanIdx = unique([nanInt, nanPyr]);
 
+        % removing nan indices from both population time series
+        meanInt(allNanIdx) = [];
+        meanPyr(allNanIdx) = [];
+
+        % manual cross-correlation
+        lags = -maxLagBins:maxLagBins;
+        xc = nan(size(lags));
+
+        for li = 1:length(lags)
+            lag = lags(li);
+
+            if lag < 0
+                % Shift left (int leads)
+                intSeg = meanInt(1:end+lag);
+                pyrSeg = meanPyr(1-lag:end);
+            elseif lag > 0
+                % Shift right (pyr leads)
+                intSeg = meanInt(1+lag:end);
+                pyrSeg = meanPyr(1:end-lag);
+            else
+                intSeg = meanInt;
+                pyrSeg = meanPyr;
+            end
+
+            if length(intSeg) > 2
+                xc(li) = corr(intSeg', pyrSeg');
+            end
+        end
+
+        % finding peak
         [~, peakIdx] = max(xc);
         peakLag = lags(peakIdx) * binSize;
         peakLags(iDir, iRegion) = peakLag;
 
-        % plot
+        % Plot
         figure('Name', sprintf('%s — Session %d', regionName, iDir), 'Color', 'w');
         plot(lags * binSize, xc, 'k', 'LineWidth', 2);
         hold on;
@@ -84,7 +111,7 @@ for iRegion = 1:length(regions)
     end
 end
 
-% print summary
+% outputting final summary
 fprintf('\n========== Summary of Peak Lags (in seconds) ==========\n');
 for iRegion = 1:length(regions)
     fprintf('%s:\n', regions{iRegion});
