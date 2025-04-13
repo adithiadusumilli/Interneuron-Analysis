@@ -6,9 +6,6 @@ binSize = 0.01;       % 10 ms bins
 maxLagSecs = 1;
 maxLagBins = round(maxLagSecs / binSize);
 
-% loading in classification info
-load(classificationFile, 'classifications', 'regions');
-
 peakLags = nan(length(baseDirs), length(regions));
 
 for iRegion = 1:length(regions)
