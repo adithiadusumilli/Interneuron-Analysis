@@ -18,6 +18,15 @@ for iRegion = 1:length(regions)
         baseDir = baseDirs{iDir};
         fprintf('\nProcessing %s — Session %d: %s\n', regionName, iDir, baseDir);
 
+        classificationPath = fullfile(baseDir, classificationFile);
+
+        if ~isfile(classificationPath)
+            warning('Missing classification file in %s. Skipping.', classificationPath);
+            continue;
+        end
+
+        load(classificationPath, 'classifications', 'regions');
+
         neuronFile = fullfile(baseDir, 'neuronDataStruct.mat');
         frFile = fullfile(baseDir, 'NeuralFiringRates10msBins30msGauss.mat');
 
