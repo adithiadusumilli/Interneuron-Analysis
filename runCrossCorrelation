@@ -9,6 +9,10 @@ maxLagBins = round(maxLagSecs / binSize);
 regions = {'Cortex', 'Striatum'};
 peakLags = nan(length(baseDirs), length(regions));
 
+% set up tiled plot
+figure('Name', 'Cross-Correlation Summary', 'Color', 'w');
+tile_lay = tiledlayout(2, 3, 'TileSpacing', 'compact', 'Padding', 'compact');
+
 for iRegion = 1:length(regions)
     regionName = regions{iRegion};
 
@@ -103,8 +107,11 @@ for iRegion = 1:length(regions)
         peakLag = lags(peakIdx) * binSize;
         peakLags(iDir, iRegion) = peakLag;
 
+        % tiled layout code
+        tileNum = iDir + (iRegion - 1) * length(baseDirs);
+        nexttile(tile_lay, tileNum);
+
         % Plot
-        figure('Name', sprintf('%s — Session %d', regionName, iDir), 'Color', 'w');
         plot(lags * binSize, xc, 'k', 'LineWidth', 2);
         hold on;
         line([peakLag peakLag], get(gca, 'ylim'), 'LineStyle', '--', 'Color', 'r');
