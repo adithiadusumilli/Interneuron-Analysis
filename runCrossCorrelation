@@ -6,6 +6,7 @@ binSize = 0.01;       % 10 ms bins
 maxLagSecs = 1;
 maxLagBins = round(maxLagSecs / binSize);
 
+regions = {'Cortex', 'Striatum'};
 peakLags = nan(length(baseDirs), length(regions));
 
 for iRegion = 1:length(regions)
@@ -44,9 +45,9 @@ for iRegion = 1:length(regions)
             regionInds = striatumInds;
         end
 
-        neuronType = classifications{iDir, iRegion};
+        neuronType = classifications{1, iRegion};
         if isempty(neuronType)
-            warning('No classification data for session %d (%s). Skipping.', iDir, regionName);
+            warning('No classification data for session %d (%s). Skipping.', 1, regionName);
             continue;
         end
 
