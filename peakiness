@@ -122,7 +122,7 @@ for iRegion = 1:length(regions)
             end
         end
 
-        tocTime = toc;  % Stop timing
+        tocTime = toc;  % stop timing with toc
 
         % saving outputs
         allXC{iDir, iRegion} = xcMat;
