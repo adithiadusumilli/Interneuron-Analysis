@@ -104,11 +104,11 @@ for iRegion = 1:length(regions)
 
                 % saving results
                 xcMat(intIdx, pyrIdx, :) = xc;
-                [peakCorr, peakIdx] = max(xc);
+                [peakCorr, peakIdx] = max(abs(xc));
                 peakLag = lags(peakIdx) * binSize;
 
                 peakLagMat(intIdx, pyrIdx) = peakLag;
-                peakCorrMat(intIdx, pyrIdx) = peakCorr;
+                peakCorrMat(intIdx, pyrIdx) = xc(peakIdx);
 
                 % calculating peakiness
                 xc_median = median(xc, 'omitnan');
