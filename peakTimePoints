@@ -1,0 +1,71 @@
+function transitionTimes = peakTimePoints(emgFile, useMedian, buffer, baselineDur)
+% code to find all time points where emg transitions from inactive (baseline) to active after sustained period of low muscle activity (inactivity)
+% inputs:
+%   emgFile — path to EMG1ms.mat (must contain downsampEMG)
+%   useMedian — if true, uses median baseline + buffer as threshold (default is set to true)
+%   buffer - value added to median to define threshold (default is 10)
+%   baselineDur - min duration in ms below threshold before detecting spike (default is 200)
+% output:
+%   transitionTimes — array of time indices (in ms) when emg transitions from baseline to above threshold
+
+    if nargin < 2, useMedian = true; end
+    if nargin < 3, buffer = 10; end
+    if nargin < 4, baselineDur = 200; end
+
+    % load downsampEMG from file
+    load(emgFile, 'downsampEMG');
+    if isrow(downsampEMG)
+        downsampEMG = downsampEMG';  % ensure it's a column vector
+    end
+
+    fs = 1000;  % frequency of sampling to set resolution
+    nPoints = length(downsampEMG);  % total # samples
+
+    % calculate threshold
+    if useMedian
+        baseline = downsampEMG(1:min(10*fs, nPoints));  % first 10 sec
+        baseMedian = median(baseline);
+        threshold = baseMedian + buffer;
+        fprintf('using dynamic threshold: median = %.2f + buffer = %.2f → threshold = %.2f\n', baseMedian, buffer, threshold);
+    else
+        threshold = 50;
+        fprintf('using fixed threshold: %.2f\n', threshold);
+    end
+
+    % initialize transition storage & scanning index
+    transitionTimes = [];
+    i = 1;
+
+    % outer loop to step through emg to find baseline → activation transitions
+    while i <= nPoints - baselineDur
+
+        % check for a baseline window of at least baselineDur ms
+        if all(downsampEMG(i:i+baselineDur-1) < threshold)
+
+            % inner loop - look forward to find first crossing above threshold
+            j = i + baselineDur;
+            while j <= nPoints && downsampEMG(j) < threshold
+                j = j + 1;
+            end
+
+            % if a valid activation was found, store the time
+            if j <= nPoints
+                transitionTimes(end+1) = j;  % store this transition point
+
+                % skip forward 500 ms to avoid re-detecting same spike
+                i = j + 500;
+                continue;
+            end
+        end
+
+        % advance scan by 1 ms if no transition found
+        i = i + 1;
+    end
+
+    % print results
+    fprintf('detected %d emg transitions from baseline to activity.\n', length(transitionTimes));
+    if ~isempty(transitionTimes)
+        disp('first few transition times (ms):');
+        disp(transitionTimes(1:min(10, end)));
+    end
+end
