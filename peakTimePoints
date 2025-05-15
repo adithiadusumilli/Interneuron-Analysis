@@ -1,12 +1,16 @@
-function transitionTimes = peakTimePoints(emgFile, useMedian, buffer, baselineDur)
-% code to find all time points where emg transitions from inactive (baseline) to active after sustained period of low muscle activity (inactivity)
+function [transitionTimes, activePeriods] = peakTimePoints(emgFile, useMedian, buffer, baselineDur)
+% code to find all time points where emg transitions from inactive (baseline) to active
+% after sustained period of low muscle activity (inactivity)
+%
 % inputs:
-%   emgFile — path to EMG1ms.mat (must contain downsampEMG)
-%   useMedian — if true, uses median baseline + buffer as threshold (default is set to true)
-%   buffer - value added to median to define threshold (default is 10)
-%   baselineDur - min duration in ms below threshold before detecting spike (default is 200)
-% output:
+%   emgFile       — path to EMG1ms.mat (must contain downsampEMG)
+%   useMedian     — if true, uses median baseline + buffer as threshold (default: true)
+%   buffer        — value added to median to define threshold (default: 10)
+%   baselineDur   — min duration in ms below threshold before detecting spike (default: 200)
+%
+% outputs:
 %   transitionTimes — array of time indices (in ms) when emg transitions from baseline to above threshold
+%   activePeriods   — cell array of index ranges for all emg activation periods
 
     if nargin < 2, useMedian = true; end
     if nargin < 3, buffer = 10; end
@@ -19,11 +23,11 @@ function transitionTimes = peakTimePoints(emgFile, useMedian, buffer, baselineDu
     end
 
     fs = 1000;  % frequency of sampling to set resolution
-    nPoints = length(downsampEMG);  % total # samples
+    nPoints = length(downsampEMG);  % total number of samples
 
     % calculate threshold
     if useMedian
-        baseline = downsampEMG(1:min(10*fs, nPoints));  % first 10 sec
+        baseline = downsampEMG(1:min(10*fs, nPoints));  % first 10 seconds
         baseMedian = median(baseline);
         threshold = baseMedian + buffer;
         fprintf('using dynamic threshold: median = %.2f + buffer = %.2f → threshold = %.2f\n', baseMedian, buffer, threshold);
@@ -32,8 +36,9 @@ function transitionTimes = peakTimePoints(emgFile, useMedian, buffer, baselineDu
         fprintf('using fixed threshold: %.2f\n', threshold);
     end
 
-    % initialize transition storage & scanning index
+    % initialize outputs and scanning index
     transitionTimes = [];
+    activePeriods = {};
     i = 1;
 
     % outer loop to step through emg to find baseline → activation transitions
@@ -42,23 +47,37 @@ function transitionTimes = peakTimePoints(emgFile, useMedian, buffer, baselineDu
         % check for a baseline window of at least baselineDur ms
         if all(downsampEMG(i:i+baselineDur-1) < threshold)
 
-            % inner loop - look forward to find first crossing above threshold
+            % look forward to find the first value above threshold (start of activity)
             j = i + baselineDur;
             while j <= nPoints && downsampEMG(j) < threshold
                 j = j + 1;
             end
 
-            % if a valid activation was found, store the time
+            % if activation was found, store the first spike index
             if j <= nPoints
-                transitionTimes(end+1) = j;  % store this transition point
+                transitionTimes(end+1) = j;  % store single transition point
 
-                % skip forward 500 ms to avoid re-detecting same spike
-                i = j + 500;
+                % new code block: find full duration of this active period
+                k = j + 1;
+                % look forward until next sustained inactivity (below threshold for baselineDur)
+                while k <= nPoints - baselineDur
+                    if all(downsampEMG(k:k+baselineDur-1) < threshold)
+                        break;  % end of active period found
+                    end
+                    k = k + 1;
+                end
+
+                % store all indices during this active period
+                activeEnd = min(k-1, nPoints);
+                activePeriods{end+1} = j:activeEnd;  % save range of active values
+
+                % skip forward to after this active bout ends
+                i = activeEnd + baselineDur;
                 continue;
             end
         end
 
-        % advance scan by 1 ms if no transition found
+        % move forward by 1 ms if no transition found
         i = i + 1;
     end
 
