@@ -7,8 +7,6 @@ function neuralWindowsEMGTransitions(folderPath, preSamples, postSamples)
 %   preSamples   — # of ms to include before each transition
 %   postSamples  — # of ms to include after each transition
 
-    currentDir = pwd;     % save current working directory so we can return later
-    cd(folderPath);       % change to the data session directory for loading local files
 
     for ch = 1:8
         % print which channel is being processed
@@ -25,22 +23,25 @@ function neuralWindowsEMGTransitions(folderPath, preSamples, postSamples)
         end
 
         % load in EMG transition points 
-        load(fullEventPath, 'validTransitions');  % transition times at 20 kHz
+        load(fullEventPath, 'validTransitions');  % transition times in ms
 
         % load video sync samples to align EMG and neural time frames
-        load('VideoSyncFrames.mat', 'frameEMGsamples', 'frameNeuroPixelSamples');
+        load(fullfile(folderPath,'VideoSyncFrames.mat'), 'frameEMGSamples', 'frameNeuropixelSamples');
 
         % convert EMG transition times (20 kHz) to neural sample times (30 kHz)
-        neuralIndices = NeurEMGSync(validTransitions, frameEMGsamples, frameNeuroPixelSamples, 'emg');
+        currentDir = pwd;     % save current working directory so we can return later
+        cd(folderPath);       % change to the data session directory for loading local files
+        neuralIndices = NeurEMGSync(validTransitions*20, frameEMGSamples, frameNeuropixelSamples, 'EMG');
+        cd(currentDir);  % return to the original working directory after all processing
 
         % convert neural indices to 1 kHz (divide by 30 to account for downsampling)
         neuralIndices1kHz = round(neuralIndices / 30);
 
         % load neural firing rate data (1 ms bins)
-        load('NeuralFiringRates1msBins10msGauss.mat', 'cortexFRs', 'cortexInds', 'striatumFRs', 'striatumInds');
+        load(fullfile(folderPath,'NeuralFiringRates1msBins10msGauss.mat'), 'cortexFRs', 'cortexInds', 'striatumFRs', 'striatumInds');
 
         % load neuron classifications for pyramidal vs interneurons
-        load('AA_classifications.mat', 'classifications');
+        load(fullfile(folderPath,'AA_classifications.mat'), 'classifications');
 
         % iterate through brain regions
         for r = 1:2
@@ -61,8 +62,8 @@ function neuralWindowsEMGTransitions(folderPath, preSamples, postSamples)
             regionLabels = regionClass(inds);
 
             % separate pyramidal and interneuron indices
-            pyrInds = inds(regionLabels == 0);
-            intInds = inds(regionLabels == 1);
+            pyrInds = find(regionLabels == 0);
+            intInds = find(regionLabels == 1);
 
             % get number of events and total timepoints
             nEvents = length(neuralIndices1kHz);
@@ -101,8 +102,6 @@ function neuralWindowsEMGTransitions(folderPath, preSamples, postSamples)
             fprintf('Saved %s pyramidal and interneuron windows for channel %d to %s\n', region, ch, saveName);
         end
     end
-
-    cd(currentDir);  % return to the original working directory after all processing
 
     % print completion message
     fprintf('\nCompleted neural window extraction by cell type for all EMG channels.\n');
