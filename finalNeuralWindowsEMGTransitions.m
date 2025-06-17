@@ -98,8 +98,6 @@ function finalNeuralWindowsEMGTransitions(folderPath, preSamples, postSamples)
                 continue;
             end
 
-            validEvents(e) = true;
-
             % fill 3-D matrices
             pyrCxWin(e,:,:)  = cortexPyr(:,  rng);
             pyrStrWin(e,:,:) = striatPyr(:, rng);
@@ -108,11 +106,6 @@ function finalNeuralWindowsEMGTransitions(folderPath, preSamples, postSamples)
         end
 
         % save results for this channel into allChannels cell array
-        neuralIndices1kHz = neuralIndices1kHz(validEvents);
-        pyrCxWin = pyrCxWin(validEvents,:,:);
-        pyrStrWin = pyrStrWin(validEvents,:,:);
-        intCxWin = intCxWin(validEvents,:,:);
-        intStrWin = intStrWin(validEvents,:,:);
         allChannels{ch} = struct('neuralIndices1kHz', neuralIndices1kHz, 'pyrCx',  pyrCxWin, 'pyrStr', pyrStrWin, 'intCx',  intCxWin, 'intStr', intStrWin, 'tAxis',  tAxis );
 
         % plot mean ± sem for cortex pyramidal vs interneuron vs EMG
