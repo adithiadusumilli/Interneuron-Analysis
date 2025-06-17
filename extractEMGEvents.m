@@ -1,4 +1,4 @@
-function extractEMGEvents(emgFile, threshold, baselineDur, minSeparation)
+function extractEMGEvents(folderPath, threshold, baselineDur, minSeparation)
 % function to identify threshold-crossing activation events in multi-channel emg and extract signal windows around those points
 
 % inputs:
@@ -10,7 +10,7 @@ function extractEMGEvents(emgFile, threshold, baselineDur, minSeparation)
     if nargin < 3, baselineDur = 200; end
     if nargin < 4, minSeparation = 500; end
 
-    load(emgFile, 'downsampEMG');  % must contain 8 × n matrix
+    load(fullfile(folderPath,'EMG1ms'), 'downsampEMG');  % must contain 8 × n matrix
 
     [nChannels, nPoints] = size(downsampEMG);
     fs = 1000;  % assume 1 khz sampling rate (1 sample = 1 ms)
@@ -67,5 +67,15 @@ function extractEMGEvents(emgFile, threshold, baselineDur, minSeparation)
         saveFile = sprintf('EMG_Channel%d_Events.mat', ch);
         save(saveFile, 'validTransitions', 'windows');
         fprintf('channel %d: saved %d events to %s\n', ch, size(windows, 1), saveFile);
+
+
+        %Add Neural firing rate extraction
+        
+        
+
     end
+
+    
+
+
 end
