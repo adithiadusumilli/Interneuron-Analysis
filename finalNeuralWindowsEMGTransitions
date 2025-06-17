@@ -9,9 +9,28 @@ function finalNeuralWindowsEMGTransitions(folderPath, preSamples, postSamples)
 
     % load once (these do not change across channels)
 
-    load(fullfile(folderPath,'VideoSyncFrames.mat'), 'frameEMGSamples', 'frameNeuropixelSamples');      % sync frames
+    load(fullfile(folderPath,'VideoSyncFrames.mat'), 'frameEMGSamples', 'frameNeuropixelSamples');    % sync frames
     load(fullfile(folderPath,'NeuralFiringRates1msBins10msGauss.mat'), 'cortexFRs', 'cortexInds', 'striatumFRs', 'striatumInds'); % firing rates
-    load(fullfile(folderPath,'AA_classifications.mat'), 'classifications');  % cell-type labels
+    % load classifications for all animals
+    load(fullfile(folderPath, 'AA_classifications.mat'), 'classifications');
+
+    % define known base folders (match order used when AA_classifications.mat was created)
+    animalFolders = {
+    'X:\David\ArenaRecordings\D026-032923-ArenaRecording\ProcessedData', ...
+    'Z:\David\ArenaRecordings\NeuropixelsTest\D020-062922-ArenaRecording\ProcessedData', ...
+    'Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData'
+    };
+
+    % Determine which animal this folderPath corresponds to
+    matchRow = find(contains(animalFolders, folderPath), 1);
+
+    if isempty(matchRow)
+        error('Could not match folderPath to an entry in animalFolders. Please check the list.');
+    end
+
+    % Extract classification for this animal only
+    classifications = classifications(matchRow, :);
+
 
     % pre-extract region×type matrices (constant for all channels)
     cortexPyr = cortexFRs(classifications{1,1}(cortexInds)==0 , :);
