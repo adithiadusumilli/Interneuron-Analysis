@@ -51,6 +51,7 @@ function finalNeuralWindowsEMGTransitions(folderPath, preSamples, postSamples)
 
     % main loop over emg channels
     for ch = 1:8
+        %--------------------------
         fprintf('\nProcessing EMG Channel %d...\n', ch);
 
         emgEventFile = sprintf('EMG_Channel%d_Events.mat', ch);
@@ -107,6 +108,8 @@ function finalNeuralWindowsEMGTransitions(folderPath, preSamples, postSamples)
 
         % save results for this channel into allChannels cell array
         allChannels{ch} = struct('neuralIndices1kHz', neuralIndices1kHz, 'pyrCx',  pyrCxWin, 'pyrStr', pyrStrWin, 'intCx',  intCxWin, 'intStr', intStrWin, 'tAxis',  tAxis );
+
+        %----------------------
 
         % plot mean ± sem for cortex pyramidal vs interneuron vs EMG
         if exist('windows','var') % EMG windows stored in EMG file
