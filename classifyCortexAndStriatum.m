@@ -14,6 +14,8 @@ if nargin < 3
     outFile = 'AA_classifications.mat';
 end
 
+conslidatedDataFoler = 'X:\David\AnalysesData';
+
 numFiles        = numel(neuronDataStructFiles);
 classifications = cell(numFiles,2);      % col-1 cortex, col-2 striatum
 fileWidths      = cell(numFiles,2);      % store per-file widths for later
@@ -56,36 +58,55 @@ numComponents = 2;
 intersectionPointCortex = nan(1, numFiles);
 intersectionPointStriat = nan(1, numFiles);
 for fileIndex = 1:numFiles
-    % Cortex
+    
+    % -----Cortex-----
     cortexWidths = fileWidths{fileIndex, 1};
-    gm = fitgmdist(cortexWidths', numComponents);
+    gm = fitgmdist(cortexWidths', numComponents);  % Use per-animal widths
     means = gm.mu;
     stdDevs = sqrt(gm.Sigma);
+    weights = gm.ComponentProportion;
+    % Sort components: narrow (INT) first, wide (PYR) second
+    [means, order] = sort(means, 'ascend');
+    stdDevs = stdDevs(order);
+    weights = weights(order);
+    % Calculate per-animal intersection BEFORE plotting
     intersectionPointCortex(fileIndex) = calculateIntersectionPoint(means, stdDevs);
+    % Plot
     figure;
     h = histogram(cortexWidths, 'BinWidth', 1/20000, 'EdgeColor', 'black', 'FaceColor', 'blue'); hold on;
     x = linspace(min(cortexWidths), max(cortexWidths), 1000);
-    for i = 1:numComponents
-        y = pdf('Normal', x, means(i), stdDevs(i)) * sum(h.Values)*h.BinWidth*gm.ComponentProportion(i);
-        plot(x, y, 'LineWidth', 2);
-    end
-    title(sprintf('Cortex Spike Widths – File %d', fileIndex));
-    legend({'Widths', 'Pyramidal', 'Interneurons'}); box off;
-    % Striatum
+    yInt = pdf('Normal', x, means(1), stdDevs(1)) * numel(cortexWidths) * h.BinWidth * weights(1);
+    yPyr = pdf('Normal', x, means(2), stdDevs(2)) * numel(cortexWidths) * h.BinWidth * weights(2);
+    plot(x, yPyr, 'r', 'LineWidth', 2);   % Pyramidal = wide
+    plot(x, yInt, 'g', 'LineWidth', 2);   % Interneuron = narrow
+    xline(intersectionPointCortex(fileIndex), 'k--');  % Use correct line
+    title(sprintf('Animal %d: Cortex Spike Widths with Fitted GMMs', fileIndex));
+    legend({'Widths','Pyramidal','Interneuron'});
+    box off;
+    % -----Striatum-----
     striatWidths = fileWidths{fileIndex, 2};
-    gm = fitgmdist(striatWidths', numComponents);
+    gm = fitgmdist(striatWidths', numComponents);  % Use per-animal widths
     means = gm.mu;
     stdDevs = sqrt(gm.Sigma);
+    weights = gm.ComponentProportion;
+    % Sort components
+    [means, order] = sort(means, 'ascend');
+    stdDevs = stdDevs(order);
+    weights = weights(order);
+    % Calculate intersection point
     intersectionPointStriat(fileIndex) = calculateIntersectionPoint(means, stdDevs);
+    % Plot
     figure;
-    h = histogram(striatWidths, 'BinWidth', 1/20000, 'EdgeColor', 'black', 'FaceColor', 'green'); hold on;
+    h = histogram(striatWidths, 'BinWidth', 1/20000, 'EdgeColor', 'black', 'FaceColor', 'magenta'); hold on;
     x = linspace(min(striatWidths), max(striatWidths), 1000);
-    for i = 1:numComponents
-        y = pdf('Normal', x, means(i), stdDevs(i)) * sum(h.Values)*h.BinWidth*gm.ComponentProportion(i);
-        plot(x, y, 'LineWidth', 2);
-    end
-    title(sprintf('Striatum Spike Widths – File %d', fileIndex));
-    legend({'Widths', 'Pyramidal', 'Interneurons'}); box off;
+    yInt = pdf('Normal', x, means(1), stdDevs(1)) * numel(striatWidths) * h.BinWidth * weights(1);
+    yPyr = pdf('Normal', x, means(2), stdDevs(2)) * numel(striatWidths) * h.BinWidth * weights(2);
+    plot(x, yPyr, 'r', 'LineWidth', 2);   % Pyramidal = wide
+    plot(x, yInt, 'g', 'LineWidth', 2);   % Interneuron = narrow
+    xline(intersectionPointStriat(fileIndex), 'k--');  % Correct line
+    title(sprintf('Animal %d: Striatum Spike Widths with Fitted GMMs', fileIndex));
+    legend({'Widths','Pyramidal','Interneuron'});
+    box off;
 end
 
 % PART 4. assign labels per file
@@ -122,7 +143,7 @@ end
 
 % PART 5. save & summary
 
-save(outFile,'classifications');
+save(fullfile(conslidatedDataFoler,outFile),'classifications');
 fprintf('saved combined cortex & striatum classifications to %s\n',outFile);
 
 for f = 1:numFiles
