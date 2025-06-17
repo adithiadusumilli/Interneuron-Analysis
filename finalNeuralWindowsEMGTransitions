@@ -1,0 +1,117 @@
+function finalNeuralWindowsEMGTransitions(folderPath, preSamples, postSamples)
+% extracts neural activity windows around EMG transition points for all 8 EMG channels
+% also separates neural activity by cell type (pyramidal vs interneurons)
+
+% inputs:
+%   folderPath   — session folder with EMG transition files and neural data
+%   preSamples   — # of ms to include before each transition
+%   postSamples  — # of ms to include after each transition
+
+    % load once (these do not change across channels)
+
+    load(fullfile(folderPath,'VideoSyncFrames.mat'), 'frameEMGSamples', 'frameNeuropixelSamples');      % sync frames
+    load(fullfile(folderPath,'NeuralFiringRates1msBins10msGauss.mat'), 'cortexFRs', 'cortexInds', 'striatumFRs', 'striatumInds'); % firing rates
+    load(fullfile(folderPath,'AA_classifications.mat'), 'classifications');  % cell-type labels
+
+    % pre-extract region×type matrices (constant for all channels)
+    cortexPyr = cortexFRs(classifications{1,1}(cortexInds)==0 , :);
+    cortexInt = cortexFRs(classifications{1,1}(cortexInds)==1 , :);
+    striatPyr = striatumFRs(classifications{1,2}(striatumInds)==0 , :);
+    striatInt = striatumFRs(classifications{1,2}(striatumInds)==1 , :);
+
+    % container for all 8 channels (each cell holds a struct of results)
+    allChannels = cell(1,8);
+
+    % main loop over emg channels
+    for ch = 1:8
+        fprintf('\nProcessing EMG Channel %d...\n', ch);
+
+        emgEventFile = sprintf('EMG_Channel%d_Events.mat', ch);
+        fullEventPath = fullfile(folderPath, emgEventFile);
+        if ~isfile(fullEventPath)
+            warning('Missing EMG event file for channel %d: %s. Skipping...', ch, emgEventFile);
+            continue;
+        end
+
+        % load in EMG transition points  (transition times in ms)
+        load(fullEventPath, 'validTransitions');
+
+        % convert EMG transition times (20 kHz) to neural sample times (30 kHz)
+        currentDir = pwd;                % save current working directory
+        cd(folderPath);                  % change to session folder
+        neuralIndices = NeurEMGSync(validTransitions*20, ...
+                         frameEMGSamples, frameNeuropixelSamples, 'EMG');
+        cd(currentDir);                  % return to original directory
+
+        % convert neural indices to 1 kHz (divide by 30 to account for downsampling)
+        neuralIndices1kHz = round(neuralIndices / 30);
+
+        % allocate 3-D matrices for pyramidal windows (events × neurons × time)
+        % keep interneuron windows as cell array (unchanged)
+
+        nEvt   = length(neuralIndices1kHz);
+        tAxis  = ( -preSamples : postSamples );     % 201-sample time axis
+        nTPnts = numel(tAxis);
+
+        pyrCxWin   = nan(nEvt, size(cortexPyr,1),   nTPnts);
+        pyrStrWin  = nan(nEvt, size(striatPyr,1),   nTPnts);
+        intCxWin   = cell(size(cortexInt,1),  nEvt);
+        intStrWin  = cell(size(striatInt,1), nEvt);
+
+        % loop through all transition events
+        for e = 1:nEvt
+            t = neuralIndices1kHz(e);
+            if t - preSamples < 1 || t + postSamples > size(cortexFRs,2)
+                continue;  % skip events too close to edge
+            end
+            rng = (t - preSamples) : (t + postSamples);
+
+            % fill pyramidal 3-D matrices
+            pyrCxWin(e,:,:)  = cortexPyr(:,  rng);
+            pyrStrWin(e,:,:) = striatPyr(:, rng);
+
+            % fill interneuron cell arrays
+            for n = 1:size(cortexInt,1)
+                intCxWin{n,e}  = cortexInt(n,  rng);
+            end
+            for n = 1:size(striatInt,1)
+                intStrWin{n,e} = striatInt(n, rng);
+            end
+        end
+
+        % save results for this channel into allChannels cell array
+        allChannels{ch} = struct('neuralIndices1kHz', neuralIndices1kHz, 'pyrCx',  pyrCxWin, 'pyrStr', pyrStrWin, 'intCx',  intCxWin, 'intStr', intStrWin, 'tAxis',  tAxis );
+
+        % plot mean ± sem for cortex pyramidal vs interneuron vs EMG
+        if exist('windows','var')    % EMG windows may be stored in EMG file
+            emgWin = windows;    % emgWin: events × 201
+            mEMG  = mean(emgWin,1,'omitnan');
+            seEMG = std(emgWin,0,1,'omitnan') ./ sqrt(size(emgWin,1));
+
+            % average pyramidal across neurons then events
+            meanPyrCxEvt = squeeze(mean(pyrCxWin,2,'omitnan'));    % events×time
+            mPyr = mean(meanPyrCxEvt,1,'omitnan');
+            sePyr = std(meanPyrCxEvt,0,1,'omitnan') ./ sqrt(nEvt);
+
+            % average interneuron (convert cells → matrix)
+            intCxMat = cellfun(@(x) x, intCxWin,'uni',0);
+            intCxMat = cat(1, intCxMat{:});    % (neurons*events) × time
+            mInt = mean(intCxMat,1,'omitnan');
+            seInt = std(intCxMat,0,1,'omitnan') ./ sqrt(size(intCxMat,1));
+
+            figure('Name',sprintf('Channel %d Cortex Avg',ch));
+            shadedErrorBar(tAxis, mEMG, seEMG,  'lineprops',{'k','linewidth',1.5}); hold on;
+            shadedErrorBar(tAxis, mPyr, sePyr,  'lineprops',{'b','linewidth',1.5});
+            shadedErrorBar(tAxis, mInt, seInt,  'lineprops',{'r','linewidth',1.5});
+            legend('EMG','Pyramidal','Interneuron');
+            xlabel('Time (ms)'); ylabel('Firing / EMG');
+            title(sprintf('Cortex – Channel %d', ch));
+        end
+    end
+
+    % save one combined .mat file for all channels
+
+    save(fullfile(folderPath,'AllChannels_NeuralWindows_ByType.mat'), 'allChannels', 'preSamples', 'postSamples');
+
+    fprintf('\nCompleted neural window extraction by cell type for all EMG channels.\n');
+end
