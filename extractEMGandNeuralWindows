@@ -19,10 +19,15 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
     [nChannels, nPoints] = size(downsampEMG);
     fs = 1000;  % 1 kHz sampling rate
 
-    % 8-cell holders for EMG results
+    % 8-cell holders for EMG and neural results
     validTransitionsCell = cell(nChannels,1); % {ch} = [events]
     emgWindowsCell = cell(nChannels,1); % {ch} = events × 8 × timePts
     tAxis = (-preSamples:postSamples); % common time vector
+    validTransitionsNeurCell = cell(nChannels,1); % {ch} = synced neural indices
+    pyrCxWinCell = cell(nChannels,1); % {ch} = events × neurons × time
+    intCxWinCell = cell(nChannels,1);
+    pyrStrWinCell = cell(nChannels,1);
+    intStrWinCell = cell(nChannels,1);
 
     % load shared neural data
     load(fullfile(folderPath,'VideoSyncFrames.mat'), 'frameEMGSamples', 'frameNeuropixelSamples');    % sync frames
@@ -76,22 +81,20 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
                 validTransitions(end+1) = idx;
             end
         end
+        validTransitionsCell{ch} = validTransitions;
 
         % extract sample window (before, after, plus crossing)
-        nEvt   = numel(valid);
+        nEvt   = numel(validTransitions);
         winLen = preSamples + postSamples + 1;
         emgWin = nan(nEvt, nChannels, winLen);   % events × 8 muscles × time
 
         for e = 1:nEvt
-            idx = valid(e);
+            idx = validTransitions(e);
             if idx > preSamples && idx + postSamples <= nPoints
                 emgWin(e,:,:) = downsampEMG(:, idx-preSamples:idx+postSamples);
             end
         end
-
-        % store per-channel EMG data
-        validTransitionsCell{ch} = valid; 
-        emgWindowsCell{ch} = emgWin; 
+        emgWindowsCell{ch} = emgWin; % store per-channel EMG data
 
         % plot emg signal and mark detected threshold crossings
         figure('Name', sprintf('emg channel %d', ch));
@@ -99,11 +102,6 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
         plot(validTransitions, signal(validTransitions), 'r*');
         title(sprintf('channel %d emg with detected transitions', ch));
         xlabel('time (ms)'); ylabel('emg amplitude'); hold off;
-
-        % save EMG transition results
-        saveFile = sprintf('EMG_Channel%d_Events.mat', ch);
-        save(fullfile(folderPath, saveFile), 'validTransitions', 'windows');
-        fprintf('channel %d: saved %d events to %s\n', ch, size(windows, 1), saveFile);
 
         % ----------------------- now extracting neural windows below -----------------------
 
@@ -115,6 +113,7 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
 
          % convert neural indices to 1 kHz (divide by 30 to account for downsampling)
         neuralIndices1kHz = round(neuralIndices / 30);
+        validTransitionsNeurCell{ch} = neuralIndices1kHz;
 
         % allocate 3-D matrices for pyramidal/interneuron windows (events × neurons × time)
         nEvt   = length(neuralIndices1kHz);
@@ -148,13 +147,15 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
             intStrWin(e,:,:) = striatInt(:, rng);
         end
 
+        pyrCxWinCell{ch}  = pyrCxWin;
+        intCxWinCell{ch}  = intCxWin;
+        pyrStrWinCell{ch} = pyrStrWin;
+        intStrWinCell{ch} = intStrWin;
+
         % save results for this channel
         allChannels{ch} = struct('neuralIndices1kHz', neuralIndices1kHz,'pyrCx', pyrCxWin, 'pyrStr', pyrStrWin, 'intCx', intCxWin, 'intStr', intStrWin, 'tAxis', tAxis);
     end
 
     % save everything together
-    save(fullfile(folderPath,'EMG_AllChannels_Events.mat'), 'validTransitionsCell','emgWindowsCell','tAxis', 'preSamples','postSamples','threshold','baselineDur','minSeparation');
-
-    save(fullfile(folderPath, 'AllChannels_NeuralWindows_ByType.mat'), 'allChannels', 'preSamples', 'postSamples');
-    fprintf('\nCompleted EMG and neural extraction by cell type for all channels.\n');
+    save(fullfile(folderPath,'EMG_Neural_AllChannels.mat'), 'validTransitionsCell','validTransitionsNeurCell', 'emgWindowsCell', 'pyrCxWinCell','intCxWinCell','pyrStrWinCell','intStrWinCell', 'preSamples','postSamples','threshold','baselineDur','minSeparation','tAxis','-v7.3');
 end
