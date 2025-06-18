@@ -19,6 +19,11 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
     [nChannels, nPoints] = size(downsampEMG);
     fs = 1000;  % 1 kHz sampling rate
 
+    % 8-cell holders for EMG results
+    validTransitionsCell = cell(nChannels,1); % {ch} = [events]
+    emgWindowsCell = cell(nChannels,1); % {ch} = events × 8 × timePts
+    tAxis = (-preSamples:postSamples); % common time vector
+
     % load shared neural data
     load(fullfile(folderPath,'VideoSyncFrames.mat'), 'frameEMGSamples', 'frameNeuropixelSamples');    % sync frames
     load(fullfile(folderPath,'NeuralFiringRates1msBins10msGauss.mat'), 'cortexFRs', 'cortexInds', 'striatumFRs', 'striatumInds'); % firing rates
@@ -72,15 +77,21 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
             end
         end
 
-        % extract 201-sample window (100 before, 100 after, plus crossing)
-        windows = [];
-        for i = 1:numel(validTransitions)
-            idx = validTransitions(i);
+        % extract sample window (before, after, plus crossing)
+        nEvt   = numel(valid);
+        winLen = preSamples + postSamples + 1;
+        emgWin = nan(nEvt, nChannels, winLen);   % events × 8 muscles × time
+
+        for e = 1:nEvt
+            idx = valid(e);
             if idx > preSamples && idx + postSamples <= nPoints
-                snippet = signal(idx-preSamples:idx+postSamples);
-                windows(end+1, :) = snippet;
+                emgWin(e,:,:) = downsampEMG(:, idx-preSamples:idx+postSamples);
             end
         end
+
+        % store per-channel EMG data
+        validTransitionsCell{ch} = valid; 
+        emgWindowsCell{ch} = emgWin; 
 
         % plot emg signal and mark detected threshold crossings
         figure('Name', sprintf('emg channel %d', ch));
@@ -137,11 +148,13 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
             intStrWin(e,:,:) = striatInt(:, rng);
         end
 
-        % Save results for this channel
+        % save results for this channel
         allChannels{ch} = struct('neuralIndices1kHz', neuralIndices1kHz,'pyrCx', pyrCxWin, 'pyrStr', pyrStrWin, 'intCx', intCxWin, 'intStr', intStrWin, 'tAxis', tAxis);
     end
 
-    % Save everything together
+    % save everything together
+    save(fullfile(folderPath,'EMG_AllChannels_Events.mat'), 'validTransitionsCell','emgWindowsCell','tAxis', 'preSamples','postSamples','threshold','baselineDur','minSeparation');
+
     save(fullfile(folderPath, 'AllChannels_NeuralWindows_ByType.mat'), 'allChannels', 'preSamples', 'postSamples');
     fprintf('\nCompleted EMG and neural extraction by cell type for all channels.\n');
 end
