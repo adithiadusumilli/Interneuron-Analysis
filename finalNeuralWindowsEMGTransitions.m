@@ -8,7 +8,7 @@ function finalNeuralWindowsEMGTransitions(folderPath, preSamples, postSamples)
 %   postSamples  — # of ms to include after each transition
 
     % add shadedErrorBar path if not already available
-    shadedPath = 'C:\Github\Interneuron-Analysis';  % ← change this to your actual path
+    shadedPath = 'C:\Github\Interneuron-Analysis'; 
     if exist(fullfile(shadedPath, 'shadedErrorBar.m'), 'file')
         addpath(genpath(shadedPath));
     else
