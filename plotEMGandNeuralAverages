@@ -53,27 +53,45 @@ function plotEMGandNeuralAverages(dataFile, channelsToUse)
     [mPyrStr, sePyrStr]  = grandMS( meanEvt(pyrStrPool) );
     [mIntStr, seIntStr]  = grandMS( meanEvt(intStrPool) );
 
+    % normalize cortical traces
+    cxMax = max([mPyrCx, mIntCx], [], 'all');
+    mPyrCx = mPyrCx / cxMax; sePyrCx = sePyrCx / cxMax;
+    mIntCx = mIntCx / cxMax; seIntCx = seIntCx / cxMax;
+
+    % normalize striatal traces
+    stMax = max([mPyrStr, mIntStr], [], 'all');
+    mPyrStr = mPyrStr / stMax; sePyrStr = sePyrStr / stMax;
+    mIntStr = mIntStr / stMax; seIntStr = seIntStr / stMax;
+
     % 4. plot with tiledlayout  (2 rows × 3 columns)
     figure('Name','averaged emg + neural responses','Color','w');
-    tl = tiledlayout(2,3,'TileSpacing','tight','Padding','compact');
+    tl = tiledlayout(2, 2, 'TileSpacing', 'tight', 'Padding', 'compact');
 
-    nexttile; shadedErrorBar(S.tAxis, mEMG , seEMG , 'lineProps',{'k','linewidth',1.4});
+    % row 1, column 1: cortex EMG
+    nexttile(1);
+    shadedErrorBar(S.tAxis, mEMG , seEMG , 'lineProps',{'k','linewidth',1.4});
     title('cortex emg'); ylabel('mean ± sem'); xlabel('time (ms)');
 
-    nexttile; shadedErrorBar(S.tAxis, mPyrCx , sePyrCx , 'lineProps',{'b','linewidth',1.4});
-    title('cortex pyramidal'); xlabel('time (ms)');
+    % row 1, column 2: cortex pyramidal + interneuron (normalized)
+    nexttile(2);
+    hold on;
+    shadedErrorBar(S.tAxis, mPyrCx, sePyrCx, 'lineProps', {'b', 'linewidth', 1.4});
+    shadedErrorBar(S.tAxis, mIntCx, seIntCx, 'lineProps', {'r', 'linewidth', 1.4});
+    title('cortex normalized'); xlabel('time (ms)');
+    legend({'pyr', 'int'}); hold off;
 
-    nexttile; shadedErrorBar(S.tAxis, mIntCx , seIntCx , 'lineProps',{'r','linewidth',1.4});
-    title('cortex interneuron'); xlabel('time (ms)');
-
-    nexttile; shadedErrorBar(S.tAxis, mEMG , seEMG , 'lineProps',{'k','linewidth',1.4});
+    % row 2, column 1: striatum EMG (same EMG trace as cortex)
+    nexttile(3);
+    shadedErrorBar(S.tAxis, mEMG , seEMG , 'lineProps',{'k','linewidth',1.4});
     title('striatum emg'); ylabel('mean ± sem'); xlabel('time (ms)');
 
-    nexttile; shadedErrorBar(S.tAxis, mPyrStr , sePyrStr , 'lineProps',{'b','linewidth',1.4});
-    title('striatum pyramidal'); xlabel('time (ms)');
-
-    nexttile; shadedErrorBar(S.tAxis, mIntStr , seIntStr , 'lineProps',{'r','linewidth',1.4});
-    title('striatum interneuron'); xlabel('time (ms)');
+    % row 2, column 2: striatum pyramidal + interneuron (normalized)
+    nexttile(4);
+    hold on;
+    shadedErrorBar(S.tAxis, mPyrStr, sePyrStr, 'lineProps', {'b', 'linewidth', 1.4});
+    shadedErrorBar(S.tAxis, mIntStr, seIntStr, 'lineProps', {'r', 'linewidth', 1.4});
+    title('striatum normalized'); xlabel('time (ms)');
+    legend({'pyr', 'int'}); hold off;
 
     sgtitle(sprintf('averaged responses for emg channels [%s]', num2str(channelsToUse)));
 end
