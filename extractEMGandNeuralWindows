@@ -58,6 +58,9 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
     % container for all 8 channels (each cell holds a struct of results)
     allChannels = cell(1, nChannels);
 
+    % storage for shifted EMG transition indices (8x100 cell)
+    validTransitionsShiftedCell = cell(nChannels, 100);
+
     % main loop over emg channels
     for ch = 1:nChannels
         signal = downsampEMG(ch, :);  % get emg signal for current channel
@@ -82,6 +85,28 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
             end
         end
         validTransitionsCell{ch} = validTransitions;
+
+        % generate random shifted transitions 
+        nShifts = 100;
+        minShift = 30000;  % at least ±30 sec (in ms, since EMG is 1 kHz)
+        totalLength = nPoints;
+        shiftedTransitionsCell = cell(nChannels, nShifts);  % 8 x 100 cell array
+
+        for s = 1:nShifts
+            validShifted = [];
+            while true
+                randShift = randi([minShift, totalLength - minShift]);
+                if rand() > 0.5
+                    randShift = -randShift;
+                end
+                shifted = mod(validTransitions + randShift, totalLength);
+                if all(abs(shifted - validTransitions) >= minShift)
+                    validShifted = shifted;
+                    break;
+                end
+            end
+            shiftedTransitionsCell{ch, s} = validShifted;
+        end
 
         % extract sample window (before, after, plus crossing)
         nEvt   = numel(validTransitions);
@@ -157,5 +182,5 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
     end
 
     % save everything together
-    save(fullfile(folderPath,'EMG_Neural_AllChannels.mat'), 'validTransitionsCell','validTransitionsNeurCell', 'emgWindowsCell', 'pyrCxWinCell','intCxWinCell','pyrStrWinCell','intStrWinCell', 'preSamples','postSamples','threshold','baselineDur','minSeparation','tAxis','-v7.3');
+    save(fullfile(folderPath,'EMG_Neural_AllChannels.mat'), 'validTransitionsCell','validTransitionsNeurCell', 'validTransitionsShiftedCell', 'emgWindowsCell', 'pyrCxWinCell','intCxWinCell','pyrStrWinCell','intStrWinCell', 'preSamples','postSamples','threshold','baselineDur','minSeparation','tAxis','-v7.3');
 end
