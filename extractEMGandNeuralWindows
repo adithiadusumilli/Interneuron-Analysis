@@ -110,7 +110,7 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
         end
 
         % extract sample window (before, after, plus crossing)
-        nEvt   = numel(validTransitions);
+        nEvt = numel(validTransitions);
         winLen = preSamples + postSamples + 1;
         emgWin = nan(nEvt, nChannels, winLen);   % events × 8 muscles × time
 
@@ -121,6 +121,23 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
             end
         end
         emgWindowsCell{ch} = emgWin; % store per-channel EMG data
+
+        % extract EMG windows for shifted transitions
+        for s = 1:100
+            shiftedTransitions = validTransitionsShiftedCell{ch, s};
+            nShiftEvt = numel(shiftedTransitions);
+            winLen = preSamples + postSamples + 1;
+            emgWinShifted = nan(nShiftEvt, nChannels, winLen);
+
+            for e = 1:nShiftEvt
+                idx = shiftedTransitions(e);
+                if idx > preSamples && idx + postSamples <= nPoints
+                    emgWinShifted(e,:,:) = downsampEMG(:, idx-preSamples:idx+postSamples);
+                end
+            end
+
+            emgWindowsShiftedCell{ch, s} = emgWinShifted;
+        end
 
         % plot emg signal and mark detected threshold crossings
         figure('Name', sprintf('emg channel %d', ch));
@@ -183,5 +200,6 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
     end
 
     % save everything together
-    save(fullfile(folderPath,'EMG_Neural_AllChannels.mat'), 'validTransitionsCell','validTransitionsNeurCell', 'validTransitionsShiftedCell', 'emgWindowsCell', 'pyrCxWinCell','intCxWinCell','pyrStrWinCell','intStrWinCell', 'preSamples','postSamples','threshold','baselineDur','minSeparation','tAxis','-v7.3');
+    save(fullfile(folderPath,'EMG_Neural_AllChannels.mat'), ...
+     'validTransitionsCell','validTransitionsNeurCell','validTransitionsShiftedCell', 'emgWindowsCell','emgWindowsShiftedCell', 'pyrCxWinCell','intCxWinCell','pyrStrWinCell','intStrWinCell', 'preSamples','postSamples','threshold','baselineDur','minSeparation','tAxis','-v7.3');
 end
