@@ -106,6 +106,7 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
                 end
             end
             shiftedTransitionsCell{ch, s} = validShifted;
+            validTransitionsShiftedCell(ch,:) = shiftedTransitionsCell(ch,:);
         end
 
         % extract sample window (before, after, plus crossing)
