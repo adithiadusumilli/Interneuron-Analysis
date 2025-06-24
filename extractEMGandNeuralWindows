@@ -86,57 +86,53 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
         end
         validTransitionsCell{ch} = validTransitions;
 
-        % generate random shifted transitions 
+        % extract EMG windows for both unshifted and shifted transitions
         nShifts = 100;
-        minShift = 30000;  % at least ±30 sec (in ms, since EMG is 1 kHz)
+        minShift = 30000;  % 30 sec in ms
+        emgWindowsShiftedCell = cell(nChannels, nShifts);  % 8 × 100 cell
         totalLength = nPoints;
-        shiftedTransitionsCell = cell(nChannels, nShifts);  % 8 x 100 cell array
 
-        for s = 1:nShifts
-            validShifted = [];
-            while true
-                randShift = randi([minShift, totalLength - minShift]);
-                if rand() > 0.5
-                    randShift = -randShift;
+        for s = 1:(nShifts + 1)
+            if s == 1
+                currentTransitions = validTransitions;
+            else
+                while true
+                    randShift = randi([minShift, totalLength - minShift]);
+                    if rand() > 0.5
+                        randShift = -randShift;
+                    end
+                    shifted = validTransitions + randShift;
+
+                    % wrap around: subtract totalLength + 1 if index exceeds nPoints
+                    shifted(shifted > totalLength) = shifted(shifted > totalLength) - (totalLength + 1);
+                    shifted(shifted < 1) = shifted(shifted < 1) + totalLength;
+
+                    % check that they're sufficiently distant from original
+                    if all(abs(shifted - validTransitions) >= minShift)
+                        currentTransitions = shifted;
+                        break;
+                    end
                 end
-                shifted = mod(validTransitions + randShift, totalLength);
-                if all(abs(shifted - validTransitions) >= minShift)
-                    validShifted = shifted;
-                    break;
-                end
+                validTransitionsShiftedCell{ch, s - 1} = currentTransitions;
             end
-            shiftedTransitionsCell{ch, s} = validShifted;
-            validTransitionsShiftedCell(ch,:) = shiftedTransitionsCell(ch,:);
-        end
 
-        % extract sample window (before, after, plus crossing)
-        nEvt = numel(validTransitions);
-        winLen = preSamples + postSamples + 1;
-        emgWin = nan(nEvt, nChannels, winLen);   % events × 8 muscles × time
-
-        for e = 1:nEvt
-            idx = validTransitions(e);
-            if idx > preSamples && idx + postSamples <= nPoints
-                emgWin(e,:,:) = downsampEMG(:, idx-preSamples:idx+postSamples);
-            end
-        end
-        emgWindowsCell{ch} = emgWin; % store per-channel EMG data
-
-        % extract EMG windows for shifted transitions
-        for s = 1:100
-            shiftedTransitions = validTransitionsShiftedCell{ch, s};
-            nShiftEvt = numel(shiftedTransitions);
+            % extract sample windows for this s
+            nEvt = numel(currentTransitions);
             winLen = preSamples + postSamples + 1;
-            emgWinShifted = nan(nShiftEvt, nChannels, winLen);
+            emgWin = nan(nEvt, nChannels, winLen);   % events × 8 muscles × time
 
-            for e = 1:nShiftEvt
-                idx = shiftedTransitions(e);
+            for e = 1:nEvt
+                idx = currentTransitions(e);
                 if idx > preSamples && idx + postSamples <= nPoints
-                    emgWinShifted(e,:,:) = downsampEMG(:, idx-preSamples:idx+postSamples);
+                    emgWin(e,:,:) = downsampEMG(:, idx-preSamples:idx+postSamples);
                 end
             end
 
-            emgWindowsShiftedCell{ch, s} = emgWinShifted;
+            if s == 1
+                emgWindowsCell{ch} = emgWin;
+            else
+                emgWindowsShiftedCell{ch, s - 1} = emgWin;
+            end
         end
 
         % plot emg signal and mark detected threshold crossings
