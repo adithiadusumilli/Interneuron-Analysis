@@ -63,10 +63,10 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
 
     % storing shifted neural results
     validTransitionsNeurShiftedCell = cell(nChannels, 101); % 1 original + 100 shifts
-    pyrCxWinShiftedCell  = cell(nChannels, 101);
-    intCxWinShiftedCell  = cell(nChannels, 101);
-    pyrStrWinShiftedCell = cell(nChannels, 101);
-    intStrWinShiftedCell = cell(nChannels, 101);
+    pyrCxWinShiftedCell  = cell(nChannels, 101); % change to 2 for 1 shift (and 1 unshifted)
+    intCxWinShiftedCell  = cell(nChannels, 101); % change to 2 for 1 shift (and 1 unshifted)
+    pyrStrWinShiftedCell = cell(nChannels, 101); % change to 2 for 1 shift (and 1 unshifted)
+    intStrWinShiftedCell = cell(nChannels, 101); % change to 2 for 1 shift (and 1 unshifted)
 
     % main loop over emg channels
     for ch = 1:nChannels
@@ -94,7 +94,7 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
         validTransitionsCell{ch} = validTransitions;
 
         % extract EMG windows for both unshifted and shifted transitions
-        nShifts = 100;
+        nShifts = 100; % change to 1 for 1 shift
         minShift = 30000;  % 30 sec in ms
         emgWindowsShiftedCell = cell(nChannels, nShifts);  % 8 × 100 cell
         totalLength = nPoints;
