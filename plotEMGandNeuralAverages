@@ -15,16 +15,14 @@ function plotEMGandNeuralAverages(dataFile, channelsToUse)
     if exist(fcn,'file'), addpath(genpath(sep)); end
 
     % load the variables saved by extractEMGandNeuralWindows
-    S = load(dataFile , ...
-             'emgWindowsCell','pyrCxWinCell','intCxWinCell', ...
-             'pyrStrWinCell','intStrWinCell','tAxis');
+    S = load(dataFile , 'emgWindowsCell','pyrCxWinCell','intCxWinCell', 'pyrStrWinCell','intStrWinCell','tAxis', 'emgWindowsShiftedCell', 'pyrCxWinShiftedCell', 'intCxWinShiftedCell', 'pyrStrWinShiftedCell', 'intStrWinShiftedCell');
 
-    % 1. pool events from the requested emg channels
-    emgPool     = [];   % events × time
-    pyrCxPool   = [];   % events × neurons × time
-    intCxPool   = [];
-    pyrStrPool  = [];
-    intStrPool  = [];
+    % -------------- 1. pool events from the requested emg channels --------------
+    emgPool = [];   % events × time
+    pyrCxPool = [];   % events × neurons × time
+    intCxPool = [];
+    pyrStrPool = [];
+    intStrPool = [];
 
     for ch = channelsToUse
         % grab emg windows for this channel → keep only the triggering muscle (dim-2 = ch)
@@ -38,11 +36,38 @@ function plotEMGandNeuralAverages(dataFile, channelsToUse)
         intStrPool  = cat(1 , intStrPool , S.intStrWinCell{ch});
     end
 
-    % 2. compute mean & sem for emg  (events × time)
+    % --- control condition 1: shifted EMG (s=2), unshifted neural ---
+    emgPool_shift = [];
+    for ch = channelsToUse
+        emgChunkShift = squeeze(S.emgWindowsShiftedCell{ch, 1}(:, ch, :));
+        emgPool_shift = cat(1, emgPool_shift, emgChunkShift);
+    end
+    mEMGshift  = mean(emgPool_shift , 1 , 'omitnan');
+    seEMGshift = std (emgPool_shift , 0 , 1 , 'omitnan') ./ sqrt(size(emgPool_shift,1));
+
+    % --- control condition 2: Shifted neural (s=2), unshifted EMG ---
+    pyrCx_shiftPool = [];
+    intCx_shiftPool = [];
+    pyrStr_shiftPool = [];
+    intStr_shiftPool = [];
+
+    for ch = channelsToUse
+        pyrCx_shiftPool = cat(1, pyrCx_shiftPool , S.pyrCxWinShiftedCell{ch, 2});
+        intCx_shiftPool = cat(1, intCx_shiftPool , S.intCxWinShiftedCell{ch, 2});
+        pyrStr_shiftPool = cat(1, pyrStr_shiftPool, S.pyrStrWinShiftedCell{ch, 2});
+        intStr_shiftPool = cat(1, intStr_shiftPool, S.intStrWinShiftedCell{ch, 2});
+    end
+
+    [mPyrCx_shift , sePyrCx_shift] = grandMS(meanEvt(pyrCx_shiftPool));
+    [mIntCx_shift , seIntCx_shift] = grandMS(meanEvt(intCx_shiftPool));
+    [mPyrStr_shift, sePyrStr_shift] = grandMS(meanEvt(pyrStr_shiftPool));
+    [mIntStr_shift, seIntStr_shift] = grandMS(meanEvt(intStr_shiftPool));
+
+    % -------------- 2. compute mean & sem for emg  (events × time) --------------
     mEMG  = mean(emgPool , 1 , 'omitnan');
     seEMG = std (emgPool , 0 , 1 , 'omitnan') ./ sqrt(size(emgPool,1));
 
-    % 3. compute mean & sem for neural traces
+    % -------------- 3. compute mean & sem for neural traces --------------
     %    – first average across neurons for each event,
     %      then compute grand mean/sem across those event-means
     meanEvt = @(M) squeeze( mean(M, 2 , 'omitnan') ); % helper: avg over neurons → (events × time)
@@ -53,20 +78,25 @@ function plotEMGandNeuralAverages(dataFile, channelsToUse)
     [mPyrStr, sePyrStr]  = grandMS( meanEvt(pyrStrPool) );
     [mIntStr, seIntStr]  = grandMS( meanEvt(intStrPool) );
 
-    % normalize cortical traces
-    cxMax = max([mPyrCx, mIntCx], [], 'all');
-    mPyrCx = mPyrCx / cxMax; sePyrCx = sePyrCx / cxMax;
-    mIntCx = mIntCx / cxMax; seIntCx = seIntCx / cxMax;
+    % normalize each neuron type to its own max
+    mPyrCxMax = max(mPyrCx); mPyrCx = mPyrCx / mPyrCxMax; sePyrCx = sePyrCx / mPyrCxMax;
+    mIntCxMax = max(mIntCx); mIntCx = mIntCx / mIntCxMax; seIntCx = seIntCx / mIntCxMax;
 
-    % normalize striatal traces
-    stMax = max([mPyrStr, mIntStr], [], 'all');
-    mPyrStr = mPyrStr / stMax; sePyrStr = sePyrStr / stMax;
-    mIntStr = mIntStr / stMax; seIntStr = seIntStr / stMax;
+    mPyrStrMax = max(mPyrStr); mPyrStr = mPyrStr / mPyrStrMax; sePyrStr = sePyrStr / mPyrStrMax;
+    mIntStrMax = max(mIntStr); mIntStr = mIntStr / mIntStrMax; seIntStr = seIntStr / mIntStrMax;
 
-    % 4. plot with tiledlayout  (2 rows × 3 columns)
+    % normalization for control 2 (shifted neural)
+    mPyrCx_shiftMax = max(mPyrCx_shift); mPyrCx_shift = mPyrCx_shift / mPyrCx_shiftMax; sePyrCx_shift = sePyrCx_shift / mPyrCx_shiftMax;
+    mIntCx_shiftMax = max(mIntCx_shift); mIntCx_shift = mIntCx_shift / mIntCx_shiftMax; seIntCx_shift = seIntCx_shift / mIntCx_shiftMax;
+
+    mPyrStr_shiftMax = max(mPyrStr_shift); mPyrStr_shift = mPyrStr_shift / mPyrStr_shiftMax; sePyrStr_shift = sePyrStr_shift / mPyrStr_shiftMax;
+    mIntStr_shiftMax = max(mIntStr_shift); mIntStr_shift = mIntStr_shift / mIntStr_shiftMax; seIntStr_shift = seIntStr_shift / mIntStr_shiftMax;
+
+    % -------------- 4. plot with tiledlayout  (2 rows × 3 columns) --------------
     figure('Name','averaged emg + neural responses','Color','w');
     tl = tiledlayout(2, 2, 'TileSpacing', 'tight', 'Padding', 'compact');
 
+    % -- figure for unshifted --
     % row 1, column 1: cortex EMG
     nexttile(1);
     shadedErrorBar(S.tAxis, mEMG , seEMG , 'lineProps',{'k','linewidth',1.4});
@@ -94,4 +124,69 @@ function plotEMGandNeuralAverages(dataFile, channelsToUse)
     legend({'pyr', 'int'}); hold off;
 
     sgtitle(sprintf('averaged responses for emg channels [%s]', num2str(channelsToUse)));
+
+    % -- figure for control 1 --
+    figure('Name','control A: shifted EMG + unshifted Neural','Color','w');
+    tl = tiledlayout(2, 2, 'TileSpacing', 'tight', 'Padding', 'compact');
+
+    % row 1, col 1: shifted EMG (same for cortex and striatum)
+    nexttile(1);
+    shadedErrorBar(S.tAxis, mEMGshift, seEMGshift, 'lineProps', {'k', 'linewidth', 1.4});
+    title('cortex EMG (shifted)'); ylabel('mean ± sem'); xlabel('time (ms)');
+
+    % row 1, col 2: unshifted cortex neural
+    nexttile(2);
+    hold on;
+    shadedErrorBar(S.tAxis, mPyrCx, sePyrCx, 'lineProps', {'b', 'linewidth', 1.4});
+    shadedErrorBar(S.tAxis, mIntCx, seIntCx, 'lineProps', {'r', 'linewidth', 1.4});
+    title('cortex neural (unshifted)'); xlabel('time (ms)');
+    legend({'pyr', 'int'}); hold off;
+
+    % row 2, col 1: same shifted EMG
+    nexttile(3);
+    shadedErrorBar(S.tAxis, mEMGshift, seEMGshift, 'lineProps', {'k', 'linewidth', 1.4});
+    title('striatum EMG (shifted)'); ylabel('mean ± sem'); xlabel('time (ms)');
+
+    % row 2, col 2: unshifted striatum neural
+    nexttile(4);
+    hold on;
+    shadedErrorBar(S.tAxis, mPyrStr, sePyrStr, 'lineProps', {'b', 'linewidth', 1.4});
+    shadedErrorBar(S.tAxis, mIntStr, seIntStr, 'lineProps', {'r', 'linewidth', 1.4});
+    title('striatum neural (unshifted)'); xlabel('time (ms)');
+    legend({'pyr', 'int'}); hold off;
+
+    sgtitle('control 1: shifted EMG + unshifted Neural');
+
+    % -- figure for control 2 -- 
+    figure('Name','control 1: unshifted EMG + shifted neural','Color','w');
+    tl = tiledlayout(2, 2, 'TileSpacing', 'tight', 'Padding', 'compact');
+
+    % row 1, col 1: unshifted EMG
+    nexttile(1);
+    shadedErrorBar(S.tAxis, mEMG, seEMG, 'lineProps', {'k', 'linewidth', 1.4});
+    title('cortex EMG (unshifted)'); ylabel('mean ± sem'); xlabel('time (ms)');
+
+    % row 1, col 2: shifted cortex neural
+    nexttile(2);
+    hold on;
+    shadedErrorBar(S.tAxis, mPyrCx_shift, sePyrCx_shift, 'lineProps', {'b--', 'linewidth', 1.4});
+    shadedErrorBar(S.tAxis, mIntCx_shift, seIntCx_shift, 'lineProps', {'r--', 'linewidth', 1.4});
+    title('cortex neural (shifted)'); xlabel('time (ms)');
+    legend({'pyr', 'int'}); hold off;
+
+    % row 2, col 1: unshifted EMG
+    nexttile(3);
+    shadedErrorBar(S.tAxis, mEMG, seEMG, 'lineProps', {'k', 'linewidth', 1.4});
+    title('striatum EMG (unshifted)'); ylabel('mean ± sem'); xlabel('time (ms)');
+
+    % row 2, col 2: shifted striatum neural
+    nexttile(4);
+    hold on;
+    shadedErrorBar(S.tAxis, mPyrStr_shift, sePyrStr_shift, 'lineProps', {'b--', 'linewidth', 1.4});
+    shadedErrorBar(S.tAxis, mIntStr_shift, seIntStr_shift, 'lineProps', {'r--', 'linewidth', 1.4});
+    title('striatum neural (shifted)'); xlabel('time (ms)');
+    legend({'pyr', 'int'}); hold off;
+
+    sgtitle('control 2: unshifted EMG + shifted neural');
+
 end
