@@ -59,14 +59,14 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
     allChannels = cell(1, nChannels);
 
     % storage for shifted EMG transition indices (8x100 cell)
-    validTransitionsShiftedCell = cell(nChannels, 100);
+    validTransitionsShiftedCell = cell(nChannels, 1); % 1 for 1 shift
 
     % storing shifted neural results
-    validTransitionsNeurShiftedCell = cell(nChannels, 101); % 1 original + 100 shifts
-    pyrCxWinShiftedCell  = cell(nChannels, 101); % change to 2 for 1 shift (and 1 unshifted)
-    intCxWinShiftedCell  = cell(nChannels, 101); % change to 2 for 1 shift (and 1 unshifted)
-    pyrStrWinShiftedCell = cell(nChannels, 101); % change to 2 for 1 shift (and 1 unshifted)
-    intStrWinShiftedCell = cell(nChannels, 101); % change to 2 for 1 shift (and 1 unshifted)
+    validTransitionsNeurShiftedCell = cell(nChannels, 1); % 1 for 1 shift
+    pyrCxWinShiftedCell  = cell(nChannels, 1); % change to 1 for 1 shift 
+    intCxWinShiftedCell  = cell(nChannels, 1); % change to 1 for 1 shift 
+    pyrStrWinShiftedCell = cell(nChannels, 1); % change to 1 for 1 shift 
+    intStrWinShiftedCell = cell(nChannels, 1); % change to 1 for 1 shift 
 
     % main loop over emg channels
     for ch = 1:nChannels
@@ -94,7 +94,7 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
         validTransitionsCell{ch} = validTransitions;
 
         % extract EMG windows for both unshifted and shifted transitions
-        nShifts = 100; % change to 1 for 1 shift
+        nShifts = 1; % change to 1 for 1 shift
         minShift = 30000;  % 30 sec in ms
         emgWindowsShiftedCell = cell(nChannels, nShifts);  % 8 × 100 cell & change from nShifts to 1 for 1 shift
         totalLength = nPoints;
@@ -188,11 +188,6 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
                 intStrWin(e,:,:) = striatInt(:, rng);
             end
 
-            pyrCxWinShiftedCell{ch, s}  = pyrCxWin;
-            intCxWinShiftedCell{ch, s}  = intCxWin;
-            pyrStrWinShiftedCell{ch, s} = pyrStrWin;
-            intStrWinShiftedCell{ch, s} = intStrWin;
-
             if s == 1
                 validTransitionsNeurCell{ch} = neuralIndices1kHz;
                 pyrCxWinCell{ch}  = pyrCxWin;
@@ -200,6 +195,11 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
                 pyrStrWinCell{ch} = pyrStrWin;
                 intStrWinCell{ch} = intStrWin;
                 allChannels{ch} = struct('neuralIndices1kHz', neuralIndices1kHz, 'pyrCx', pyrCxWin, 'pyrStr', pyrStrWin, 'intCx', intCxWin, 'intStr', intStrWin, 'tAxis', tAxis);
+            else
+                pyrCxWinShiftedCell{ch, s-1}  = pyrCxWin;
+                intCxWinShiftedCell{ch, s-1}  = intCxWin;
+                pyrStrWinShiftedCell{ch, s-1} = pyrStrWin;
+                intStrWinShiftedCell{ch, s-1} = intStrWin;
             end
         end
     end
