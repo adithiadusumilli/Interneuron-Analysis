@@ -26,7 +26,7 @@ function plotEMGandNeuralAverages(dataFile, channelsToUse)
 
     for ch = channelsToUse
         % grab emg windows for this channel → keep only the triggering muscle (dim-2 = ch)
-        emgChunk = squeeze( S.emgWindowsCell{ch}(:, ch, :) );    % (events × time)
+        emgChunk = squeeze(S.emgWindowsCell{ch}(:, ch, :));    % (events × time)
         emgPool  = cat(1, emgPool, emgChunk);                    % concatenate along events
 
         % concatenate neural windows along the event dimension
@@ -70,13 +70,13 @@ function plotEMGandNeuralAverages(dataFile, channelsToUse)
     % -------------- 3. compute mean & sem for neural traces --------------
     %    – first average across neurons for each event,
     %      then compute grand mean/sem across those event-means
-    meanEvt = @(M) squeeze( mean(M, 2 , 'omitnan') ); % helper: avg over neurons → (events × time)
-    grandMS = @(E) deal( mean(E,1,'omitnan'), std (E,0,1,'omitnan')./sqrt(size(E,1)) );
+    meanEvt = @(M) squeeze(mean(M, 2 , 'omitnan')); % helper: avg over neurons → (events × time)
+    grandMS = @(E) deal(mean(E,1,'omitnan'), std (E,0,1,'omitnan')./sqrt(size(E,1)));
 
-    [mPyrCx , sePyrCx]   = grandMS( meanEvt(pyrCxPool)  );
-    [mIntCx , seIntCx]   = grandMS( meanEvt(intCxPool)  );
-    [mPyrStr, sePyrStr]  = grandMS( meanEvt(pyrStrPool) );
-    [mIntStr, seIntStr]  = grandMS( meanEvt(intStrPool) );
+    [mPyrCx , sePyrCx] = grandMS( meanEvt(pyrCxPool)  );
+    [mIntCx , seIntCx] = grandMS( meanEvt(intCxPool)  );
+    [mPyrStr, sePyrStr] = grandMS( meanEvt(pyrStrPool) );
+    [mIntStr, seIntStr] = grandMS( meanEvt(intStrPool) );
 
     % normalize each neuron type to its own max
     mPyrCxMax = max(mPyrCx); mPyrCx = mPyrCx / mPyrCxMax; sePyrCx = sePyrCx / mPyrCxMax;
