@@ -158,7 +158,7 @@ function plotEMGandNeuralAverages(dataFile, channelsToUse)
     sgtitle('control 1: shifted EMG + unshifted Neural');
 
     % -- figure for control 2 -- 
-    figure('Name','control 1: unshifted EMG + shifted neural','Color','w');
+    figure('Name','control 2: unshifted EMG + shifted neural','Color','w');
     tl = tiledlayout(2, 2, 'TileSpacing', 'tight', 'Padding', 'compact');
 
     % row 1, col 1: unshifted EMG
