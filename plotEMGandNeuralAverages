@@ -39,7 +39,7 @@ function plotEMGandNeuralAverages(dataFile, channelsToUse)
     % --- control condition 1: shifted EMG (s=2), unshifted neural ---
     emgPool_shift = [];
     for ch = channelsToUse
-        emgChunkShift = squeeze(S.emgWindowsShiftedCell{ch, 1}(:, ch, :));
+        emgChunkShift = squeeze(S.emgWindowsShiftedCell{ch}(:, ch, :));
         emgPool_shift = cat(1, emgPool_shift, emgChunkShift);
     end
     mEMGshift  = mean(emgPool_shift , 1 , 'omitnan');
@@ -52,10 +52,10 @@ function plotEMGandNeuralAverages(dataFile, channelsToUse)
     intStr_shiftPool = [];
 
     for ch = channelsToUse
-        pyrCx_shiftPool = cat(1, pyrCx_shiftPool , S.pyrCxWinShiftedCell{ch, 2});
-        intCx_shiftPool = cat(1, intCx_shiftPool , S.intCxWinShiftedCell{ch, 2});
-        pyrStr_shiftPool = cat(1, pyrStr_shiftPool, S.pyrStrWinShiftedCell{ch, 2});
-        intStr_shiftPool = cat(1, intStr_shiftPool, S.intStrWinShiftedCell{ch, 2});
+        pyrCx_shiftPool = cat(1, pyrCx_shiftPool , S.pyrCxWinShiftedCell{ch});
+        intCx_shiftPool = cat(1, intCx_shiftPool , S.intCxWinShiftedCell{ch});
+        pyrStr_shiftPool = cat(1, pyrStr_shiftPool, S.pyrStrWinShiftedCell{ch});
+        intStr_shiftPool = cat(1, intStr_shiftPool, S.intStrWinShiftedCell{ch});
     end
 
     [mPyrCx_shift , sePyrCx_shift] = grandMS(meanEvt(pyrCx_shiftPool));
