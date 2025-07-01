@@ -58,10 +58,10 @@ function plotEMGandNeuralAverages(dataFile, channelsToUse)
     
     % --- add the 99 shifted population means ---
     for ch = channelsToUse
-        pyrCx_shiftMat = [pyrCx_shiftMat; S.pyrCxWinShiftedMeanCell{ch,:}];
-        intCx_shiftMat = [intCx_shiftMat; S.intCxWinShiftedMeanCell{ch,:}];
-        pyrStr_shiftMat = [pyrStr_shiftMat; S.pyrStrWinShiftedMeanCell{ch,:}];
-        intStr_shiftMat = [intStr_shiftMat; S.intStrWinShiftedMeanCell{ch,:}];
+        pyrCx_shiftMat = [pyrCx_shiftMat; cell2mat(S.pyrCxWinShiftedMeanCell(ch, :)')]; % cell2mat used as pyrCx_shiftMat is event x time and S.pyrCxWinShiftedMeanCell{ch, :} is a 1×99 cell array
+        intCx_shiftMat = [intCx_shiftMat; cell2mat(S.intCxWinShiftedMeanCell(ch, :)')];
+        pyrStr_shiftMat = [pyrStr_shiftMat; cell2mat(S.pyrStrWinShiftedMeanCell(ch, :)')];
+        intStr_shiftMat = [intStr_shiftMat; cell2mat(S.intStrWinShiftedMeanCell(ch, :)')];
     end
 
     % --- compute 95% bounds ---
