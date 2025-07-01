@@ -59,14 +59,14 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
     allChannels = cell(1, nChannels);
 
     % storage for shifted EMG transition indices (8x100 cell)
-    validTransitionsShiftedCell = cell(nChannels, 1); % 1 for 1 shift
+    validTransitionsShiftedCell = cell(nChannels, 100); % 1 for 1 shift
 
     % storing shifted neural results
-    validTransitionsNeurShiftedCell = cell(nChannels, 1); % 1 for 1 shift
-    pyrCxWinShiftedCell  = cell(nChannels, 1); % change to 1 for 1 shift 
-    intCxWinShiftedCell  = cell(nChannels, 1); % change to 1 for 1 shift 
-    pyrStrWinShiftedCell = cell(nChannels, 1); % change to 1 for 1 shift 
-    intStrWinShiftedCell = cell(nChannels, 1); % change to 1 for 1 shift 
+    validTransitionsNeurShiftedCell = cell(nChannels, 100); % 1 for 1 shift
+    pyrCxWinShiftedCell  = cell(nChannels, nShifts-1); % change to 1 for 1 shift 
+    intCxWinShiftedCell  = cell(nChannels, nShifts-1); % change to 1 for 1 shift 
+    pyrStrWinShiftedCell = cell(nChannels, nShifts-1); % change to 1 for 1 shift 
+    intStrWinShiftedCell = cell(nChannels, nShifts-1); % change to 1 for 1 shift 
 
     % main loop over emg channels
     for ch = 1:nChannels
@@ -94,7 +94,7 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
         validTransitionsCell{ch} = validTransitions;
 
         % extract EMG windows for both unshifted and shifted transitions
-        nShifts = 1; % change to 1 for 1 shift
+        nShifts = 100; % change to 1 for 1 shift
         minShift = 30000;  % 30 sec in ms
         emgWindowsShiftedCell = cell(nChannels, nShifts);  % 8 × 100 cell & change from nShifts to 1 for 1 shift
         totalLength = nPoints;
@@ -196,14 +196,25 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
                 intStrWinCell{ch} = intStrWin;
                 allChannels{ch} = struct('neuralIndices1kHz', neuralIndices1kHz, 'pyrCx', pyrCxWin, 'pyrStr', pyrStrWin, 'intCx', intCxWin, 'intStr', intStrWin, 'tAxis', tAxis);
             else
-                pyrCxWinShiftedCell{ch, s-1}  = pyrCxWin;
-                intCxWinShiftedCell{ch, s-1}  = intCxWin;
-                pyrStrWinShiftedCell{ch, s-1} = pyrStrWin;
-                intStrWinShiftedCell{ch, s-1} = intStrWin;
+                if s == 2  % first shift: save full matrices
+                    pyrCxWinShiftedCell{ch,1}  = pyrCxWin;
+                    intCxWinShiftedCell{ch,1}  = intCxWin;
+                    pyrStrWinShiftedCell{ch,1} = pyrStrWin;
+                    intStrWinShiftedCell{ch,1} = intStrWin;
+                else
+                    % for s = 3 to 101 (shifts 2-100), store only the averaged population activity
+                    meanEvt = @(X) squeeze(mean(X, 2, 'omitnan'));  % avg over neurons → events × time
+                    avgOverEvents = @(X) mean(meanEvt(X), 1, 'omitnan');  % → 1 × time
+
+                    pyrCxWinShiftedMeanCell{ch, s-2}  = avgOverEvents(pyrCxWin);
+                    intCxWinShiftedMeanCell{ch, s-2}  = avgOverEvents(intCxWin);
+                    pyrStrWinShiftedMeanCell{ch, s-2} = avgOverEvents(pyrStrWin);
+                    intStrWinShiftedMeanCell{ch, s-2} = avgOverEvents(intStrWin);
+                end
             end
         end
     end
 
     % save everything together
-    save(fullfile(folderPath,'EMG_Neural_AllChannels.mat'), 'validTransitionsCell','validTransitionsNeurCell','validTransitionsShiftedCell','validTransitionsNeurShiftedCell', 'emgWindowsCell','emgWindowsShiftedCell', 'pyrCxWinCell','intCxWinCell','pyrStrWinCell','intStrWinCell', 'pyrCxWinShiftedCell','intCxWinShiftedCell','pyrStrWinShiftedCell','intStrWinShiftedCell', 'allChannels','preSamples','postSamples','threshold','baselineDur','minSeparation','tAxis','-v7.3');
-end
+    save(fullfile(folderPath,'EMG_Neural_AllChannels.mat'), 'validTransitionsCell','validTransitionsNeurCell','validTransitionsShiftedCell','validTransitionsNeurShiftedCell', 'emgWindowsCell','emgWindowsShiftedCell', 'pyrCxWinCell','intCxWinCell','pyrStrWinCell','intStrWinCell', 'pyrCxWinShiftedCell','intCxWinShiftedCell','pyrStrWinShiftedCell','intStrWinShiftedCell', 'pyrCxWinShiftedMeanCell','intCxWinShiftedMeanCell','pyrStrWinShiftedMeanCell','intStrWinShiftedMeanCell', 'allChannels','preSamples','postSamples','threshold','baselineDur','minSeparation','tAxis','-v7.3');
+
