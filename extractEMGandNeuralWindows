@@ -59,14 +59,19 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
     allChannels = cell(1, nChannels);
 
     % storage for shifted EMG transition indices (8x100 cell)
-    validTransitionsShiftedCell = cell(nChannels, 100); % 1 for 1 shift
+    validTransitionsShiftedCell = cell(nChannels, 100); % 100 shifts
 
     % storing shifted neural results
-    validTransitionsNeurShiftedCell = cell(nChannels, 100); % 1 for 1 shift
-    pyrCxWinShiftedCell  = cell(nChannels, nShifts-1); % change to 1 for 1 shift 
-    intCxWinShiftedCell  = cell(nChannels, nShifts-1); % change to 1 for 1 shift 
-    pyrStrWinShiftedCell = cell(nChannels, nShifts-1); % change to 1 for 1 shift 
-    intStrWinShiftedCell = cell(nChannels, nShifts-1); % change to 1 for 1 shift 
+    validTransitionsNeurShiftedCell = cell(nChannels, 100); % 100 shifts
+    pyrCxWinShiftedCell  = cell(nChannels, 1); % only stores first shift w. full data
+    intCxWinShiftedCell  = cell(nChannels, 1); % only stores first shift w. full data
+    pyrStrWinShiftedCell = cell(nChannels, 1); % only stores first shift w. full data
+    intStrWinShiftedCell = cell(nChannels, 1); % only stores first shift w. full data
+
+    pyrCxWinShiftedMeanCell  = cell(nChannels, 99); % stores average of other 99 shifts
+    intCxWinShiftedMeanCell  = cell(nChannels, 99); % stores average of other 99 shifts
+    pyrStrWinShiftedMeanCell = cell(nChannels, 99); % stores average of other 99 shifts
+    intStrWinShiftedMeanCell = cell(nChannels, 99); % stores average of other 99 shifts
 
     % main loop over emg channels
     for ch = 1:nChannels
