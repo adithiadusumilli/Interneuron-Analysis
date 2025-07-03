@@ -37,31 +37,36 @@ function plotEMGandNeuralAverages(dataFile, channelsToUse)
     end
 
     % --- control condition: Shifted neural (s=2), unshifted EMG ---
-    pyrCx_shiftPool = [];
-    intCx_shiftPool = [];
-    pyrStr_shiftPool = [];
-    intStr_shiftPool = [];
+    % --- collect all 100 shifted means per channel (1 full + 99 stored) ---
+    pyrCx_shiftMat = [];
+    intCx_shiftMat = [];
+    pyrStr_shiftMat = [];
+    intStr_shiftMat = [];
 
     for ch = channelsToUse
-        pyrCx_shiftPool = cat(1, pyrCx_shiftPool , S.pyrCxWinShiftedCell{ch});
-        intCx_shiftPool = cat(1, intCx_shiftPool , S.intCxWinShiftedCell{ch});
-        pyrStr_shiftPool = cat(1, pyrStr_shiftPool, S.pyrStrWinShiftedCell{ch});
-        intStr_shiftPool = cat(1, intStr_shiftPool, S.intStrWinShiftedCell{ch});
-    end
+        % first shift: mean across events → 1 × time
+        firstPyrCx  = squeeze(mean(S.pyrCxWinShiftedCell{ch}, 1, 'omitnan'));
+        firstIntCx  = squeeze(mean(S.intCxWinShiftedCell{ch}, 1, 'omitnan'));
+        firstPyrStr = squeeze(mean(S.pyrStrWinShiftedCell{ch}, 1, 'omitnan'));
+        firstIntStr = squeeze(mean(S.intStrWinShiftedCell{ch}, 1, 'omitnan'));
 
-    % --- compute 95% confidence bounds from shifted neural traces ---
-    % --- shifted (s=2 full) ---
-    pyrCx_shiftMat = squeeze(mean(S.pyrCxWinShiftedCell{1}, 2, 'omitnan')); % events × time
-    intCx_shiftMat = squeeze(mean(S.intCxWinShiftedCell{1}, 2, 'omitnan'));
-    pyrStr_shiftMat = squeeze(mean(S.pyrStrWinShiftedCell{1}, 2, 'omitnan'));
-    intStr_shiftMat = squeeze(mean(S.intStrWinShiftedCell{1}, 2, 'omitnan'));
-    
-    % --- add the 99 shifted population means ---
-    for ch = channelsToUse
-        pyrCx_shiftMat = [pyrCx_shiftMat; cell2mat(S.pyrCxWinShiftedMeanCell(ch, :)')]; % cell2mat used as pyrCx_shiftMat is event x time and S.pyrCxWinShiftedMeanCell{ch, :} is a 1×99 cell array
-        intCx_shiftMat = [intCx_shiftMat; cell2mat(S.intCxWinShiftedMeanCell(ch, :)')];
-        pyrStr_shiftMat = [pyrStr_shiftMat; cell2mat(S.pyrStrWinShiftedMeanCell(ch, :)')];
-        intStr_shiftMat = [intStr_shiftMat; cell2mat(S.intStrWinShiftedMeanCell(ch, :)')];
+        % remaining 99 shifts (stored as 1x99 cells of 1x1001 each)
+        pyrCxShifts  = S.pyrCxWinShiftedMeanCell(ch, :);
+        intCxShifts  = S.intCxWinShiftedMeanCell(ch, :);
+        pyrStrShifts = S.pyrStrWinShiftedMeanCell(ch, :);
+        intStrShifts = S.intStrWinShiftedMeanCell(ch, :);
+
+        % concatenate into 1x100 cell array
+        pyrCxAll = [ {firstPyrCx},  pyrCxShifts ];
+        intCxAll = [ {firstIntCx},  intCxShifts ];
+        pyrStrAll = [ {firstPyrStr}, pyrStrShifts ];
+        intStrAll = [ {firstIntStr}, intStrShifts ];
+
+        % concatenate across channels (each row = one shift)
+        pyrCx_shiftMat  = cat(1, pyrCx_shiftMat,  cell2mat(pyrCxAll(:)'));
+        intCx_shiftMat  = cat(1, intCx_shiftMat,  cell2mat(intCxAll(:)'));
+        pyrStr_shiftMat = cat(1, pyrStr_shiftMat, cell2mat(pyrStrAll(:)'));
+        intStr_shiftMat = cat(1, intStr_shiftMat, cell2mat(intStrAll(:)'));
     end
 
     % --- compute 95% bounds ---
@@ -69,7 +74,6 @@ function plotEMGandNeuralAverages(dataFile, channelsToUse)
     intCx_pct = prctile(intCx_shiftMat, [2.5 97.5], 1);
     pyrStr_pct = prctile(pyrStr_shiftMat, [2.5 97.5], 1);
     intStr_pct = prctile(intStr_shiftMat, [2.5 97.5], 1);
-
 
     % -------------- 2. compute mean & sem for emg  (events × time) --------------
     mEMG  = mean(emgPool , 1 , 'omitnan');
