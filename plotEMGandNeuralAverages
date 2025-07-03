@@ -63,10 +63,10 @@ function plotEMGandNeuralAverages(dataFile, channelsToUse)
         intStrAll = [ {firstIntStr}, intStrShifts ];
 
         % concatenate across channels (each row = one shift)
-        pyrCx_shiftMat  = cat(1, pyrCx_shiftMat,  cell2mat(pyrCxAll(:)'));
-        intCx_shiftMat  = cat(1, intCx_shiftMat,  cell2mat(intCxAll(:)'));
-        pyrStr_shiftMat = cat(1, pyrStr_shiftMat, cell2mat(pyrStrAll(:)'));
-        intStr_shiftMat = cat(1, intStr_shiftMat, cell2mat(intStrAll(:)'));
+        pyrCx_shiftMat = cat(1, pyrCx_shiftMat, vertcat(pyrCxAll{:}));
+        intCx_shiftMat  = cat(1, intCx_shiftMat , vertcat(intCxAll{:}));
+        pyrStr_shiftMat = cat(1, pyrStr_shiftMat, vertcat(pyrStrAll{:}));
+        intStr_shiftMat = cat(1, intStr_shiftMat, vertcat(intStrAll{:}));
     end
 
     % --- compute 95% bounds ---
