@@ -44,11 +44,11 @@ function plotEMGandNeuralAverages(dataFile, channelsToUse)
     intStr_shiftMat = [];
 
     for ch = channelsToUse
-        % first shift: mean across events → 1 × time
-        firstPyrCx  = squeeze(mean(S.pyrCxWinShiftedCell{ch}, 1, 'omitnan'));
-        firstIntCx  = squeeze(mean(S.intCxWinShiftedCell{ch}, 1, 'omitnan'));
-        firstPyrStr = squeeze(mean(S.pyrStrWinShiftedCell{ch}, 1, 'omitnan'));
-        firstIntStr = squeeze(mean(S.intStrWinShiftedCell{ch}, 1, 'omitnan'));
+        % first shift: mean across events & # neurons → 1 × time
+        firstPyrCx  = squeeze(mean(mean(S.pyrCxWinShiftedCell{ch}, 1, 'omitnan'), 2, 'omitnan'));  % → 1×time
+        firstIntCx  = squeeze(mean(mean(S.intCxWinShiftedCell{ch}, 1, 'omitnan'), 2, 'omitnan'));
+        firstPyrStr = squeeze(mean(mean(S.pyrStrWinShiftedCell{ch}, 1, 'omitnan'), 2, 'omitnan'));
+        firstIntStr = squeeze(mean(mean(S.intStrWinShiftedCell{ch}, 1, 'omitnan'), 2, 'omitnan'));
 
         % remaining 99 shifts (stored as 1x99 cells of 1x1001 each)
         pyrCxShifts  = S.pyrCxWinShiftedMeanCell(ch, :);
