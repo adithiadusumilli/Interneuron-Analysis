@@ -45,10 +45,10 @@ function plotEMGandNeuralAverages(dataFile, channelsToUse)
 
     for ch = channelsToUse
         % first shift: mean across events & # neurons → 1 × time
-        firstPyrCx  = squeeze(mean(mean(S.pyrCxWinShiftedCell{ch}, 2, 'omitnan'), 1, 'omitnan'));  % → 1×time
-        firstIntCx  = squeeze(mean(mean(S.intCxWinShiftedCell{ch}, 2, 'omitnan'), 1, 'omitnan'));
-        firstPyrStr = squeeze(mean(mean(S.pyrStrWinShiftedCell{ch}, 2, 'omitnan'), 1, 'omitnan'));
-        firstIntStr = squeeze(mean(mean(S.intStrWinShiftedCell{ch}, 2, 'omitnan'), 1, 'omitnan'));
+        firstPyrCx  = squeeze(mean(mean(S.pyrCxWinShiftedCell{ch}, 2, 'omitnan'), 1, 'omitnan'))';  % → 1×time
+        firstIntCx  = squeeze(mean(mean(S.intCxWinShiftedCell{ch}, 2, 'omitnan'), 1, 'omitnan'))';
+        firstPyrStr = squeeze(mean(mean(S.pyrStrWinShiftedCell{ch}, 2, 'omitnan'), 1, 'omitnan'))';
+        firstIntStr = squeeze(mean(mean(S.intStrWinShiftedCell{ch}, 2, 'omitnan'), 1, 'omitnan'))';
 
         % remaining 99 shifts (stored as 1x99 cells of 1x1001 each)
         pyrCxShifts  = S.pyrCxWinShiftedMeanCell(ch, :);
@@ -130,4 +130,55 @@ function plotEMGandNeuralAverages(dataFile, channelsToUse)
     xlabel('Time (ms)');
 
     sgtitle('unshifted Neural + 95% shifted percentile bounds');
+
+    % ------------------- plots for cortex by muscle (1x4 grid per animal) -------------------
+    figure('Name','Cortex Neural Activity by Muscle','Color','w');
+    tl = tiledlayout(1, 4, 'TileSpacing','tight', 'Padding','compact');
+
+    for ch = channelsToUse
+        % --------- unshifted ---------
+        pyr = S.pyrCxWinCell{ch};  % (events × neurons × time)
+        int = S.intCxWinCell{ch};
+
+        pyrEvt = squeeze(mean(pyr, 2, 'omitnan'));  % events × time
+        intEvt = squeeze(mean(int, 2, 'omitnan'));
+
+        mPyr = mean(pyrEvt, 1, 'omitnan');
+        sePyr = std(pyrEvt, 0, 1, 'omitnan') ./ sqrt(size(pyrEvt,1));
+
+        mInt = mean(intEvt, 1, 'omitnan');
+        seInt = std(intEvt, 0, 1, 'omitnan') ./ sqrt(size(intEvt,1));
+
+        % --------- shifted ---------
+        fPyr = squeeze(mean(mean(S.pyrCxWinShiftedCell{ch}, 2, 'omitnan'), 1, 'omitnan'))';
+        fInt = squeeze(mean(mean(S.intCxWinShiftedCell{ch}, 2, 'omitnan'), 1, 'omitnan'))';
+
+        pyrShiftCells = S.pyrCxWinShiftedMeanCell(ch, :);
+        intShiftCells = S.intCxWinShiftedMeanCell(ch, :);
+
+        pyrShifts = vertcat(fPyr, pyrShiftCells{:});
+        intShifts = vertcat(fInt, intShiftCells{:});
+
+        pyrPct = prctile(pyrShifts, [2.5 97.5], 1);
+        intPct = prctile(intShifts, [2.5 97.5], 1);
+
+        % --------- plot ---------
+        nexttile(ch); hold on;
+
+        yyaxis left
+        shadedErrorBar(S.tAxis, mPyr, sePyr, 'lineProps', {'b', 'LineWidth', 1.3});
+        plot(S.tAxis, pyrPct(1,:), 'b--');
+        plot(S.tAxis, pyrPct(2,:), 'b--');
+        ylabel('Pyramidal');
+
+        yyaxis right
+        shadedErrorBar(S.tAxis, mInt, seInt, 'lineProps', {'r', 'LineWidth', 1.3});
+        plot(S.tAxis, intPct(1,:), 'r--');
+        plot(S.tAxis, intPct(2,:), 'r--');
+        ylabel('Interneuron');
+
+        title(sprintf('Muscle %d Trigger', ch));
+        xlabel('Time (ms)');
+    end
+    sgtitle('Cortex Neural by Muscle: Unshifted ± SEM + 95% Shifted Bounds');
 end
