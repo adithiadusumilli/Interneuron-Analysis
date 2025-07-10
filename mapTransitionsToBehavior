@@ -6,7 +6,6 @@ function mapTransitionsToBehavior(folderPath)
 
 % load transition indices (in downsampEMG time base)
 load(fullfile(folderPath, 'EMG_Neural_AllChannels.mat'), 'validTransitionsCell');
-validTransitions = validTransitionsCell{ch};
 
 % load only the necessary behavior variables from UMAP
 load(fullfile(folderPath, 'UMAP.mat'), 'regionAssignmentsFiltered', 'behvLabelsNoArt', 'origDownsampEMGInd');
