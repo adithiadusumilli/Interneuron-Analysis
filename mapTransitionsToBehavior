@@ -1,17 +1,15 @@
 function mapTransitionsToBehavior(folderPath)
 % mapping emg transition windows to behavior labels from umap & manual annotation
 % loads transition points, maps them to the reduced time axis used for umap and manual labels
-% assigns behavior values from both regionAssignmentFiltered (1-7) and behvLabelsNoArt (0-10)
+% assigns behavior values from both regionAssignmentsFiltered (1-7) and behvLabelsNoArt (0-10)
 % saves behavior assignments and plots histograms of transition counts per behavior type
 
 % load transition indices (in downsampEMG time base)
-load(fullfile(folderPath, 'emg_Neural_AllChannels.mat'), 'validTransitions');
-
-% load origDownsampEMGInd (maps UMAP indices to full downsampEMG time base)
-load(fullfile(folderPath, 'EMG1ms.mat'), 'origDownsampEMGInd');
+load(fullfile(folderPath, 'EMG_Neural_AllChannels.mat'), 'validTransitionsCell');
+validTransitions = validTransitionsCell{ch};
 
 % load only the necessary behavior variables from UMAP
-load(fullfile(folderPath, 'UMAP.mat'), 'regionAssignmentFiltered', 'behvLabelsNoArt');
+load(fullfile(folderPath, 'UMAP.mat'), 'regionAssignmentsFiltered', 'behvLabelsNoArt', 'origDownsampEMGInd');
 
 % initialize outputs with nan
 regionLabelsPerTransition = nan(size(validTransitions));
@@ -32,8 +30,8 @@ for i = 1:length(validTransitions)
     if isnan(umapIdx), continue; end
 
     % get and normalize region assignment (e.g., if 33–39, make it 1–7)
-    regionVal = regionAssignmentFiltered(umapIdx);
-    regionLabelsPerTransition(i) = regionVal - min(regionAssignmentFiltered) + 1;
+    regionVal = regionAssignmentsFiltered(umapIdx);
+    regionLabelsPerTransition(i) = regionVal - min(regionAssignmentsFiltered) + 1;
 
     % get manual behavior label (already 0–10, but clip just in case)
     manualVal = behvLabelsNoArt(umapIdx);
