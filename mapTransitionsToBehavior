@@ -1,56 +1,71 @@
 function mapTransitionsToBehavior(folderPath)
 % mapping emg transition windows to behavior labels from umap & manual annotation
 % loads transition points, maps them to the reduced time axis used for umap and manual labels
-% assigns behavior values from both regionAssignmentsFiltered (1-7) and behvLabelsNoArt (0-10)
+% assigns behavior values from both regionAssignmentsFiltered (1–7) and behvLabelsNoArt (0–10)
 % saves behavior assignments and plots histograms of transition counts per behavior type
 
 % load transition indices (in downsampEMG time base)
 load(fullfile(folderPath, 'EMG_Neural_AllChannels.mat'), 'validTransitionsCell');
 
-% load only the necessary behavior variables from UMAP
+% load only the necessary behavior variables from umap
 load(fullfile(folderPath, 'UMAP.mat'), 'regionAssignmentsFiltered', 'behvLabelsNoArt', 'origDownsampEMGInd');
 
-% initialize outputs with nan
-regionLabelsPerTransition = nan(size(validTransitions));
-manualLabelsPerTransition = nan(size(validTransitions));
-
-% reverse map from full (~5 million) to UMAP indices (~4 million) & build lookup table (index i in full space → index in umap space)
+% reverse map from full (~5 million) to umap indices (~4 million) 
 map = nan(max(origDownsampEMGInd), 1);
 map(origDownsampEMGInd) = 1:numel(origDownsampEMGInd);
 
-% loop over each transition and find corresponding umap index
-for i = 1:length(validTransitions)
-    transitionIdx = validTransitions(i);
-    
-    % get corresponding index into umap time axis
-    umapIdx = map(transitionIdx);
-    
-    % skip if not in umap time base
-    if isnan(umapIdx), continue; end
+% initialize outputs: 1 cell per muscle (1x4), each storing label per transition
+regionLabelsPerTransition = cell(1, 4);
+manualLabelsPerTransition = cell(1, 4);
 
-    % get and normalize region assignment (e.g., if 33–39, make it 1–7)
-    regionVal = regionAssignmentsFiltered(umapIdx);
-    regionLabelsPerTransition(i) = regionVal - min(regionAssignmentsFiltered) + 1;
+% loop over each muscle channel (1–4)
+for ch = 1:4
+    validTransitions = validTransitionsCell{ch}; % transition indices for this muscle
+    regLabels = nan(size(validTransitions));     % preallocate
+    manLabels = nan(size(validTransitions));     % preallocate
 
-    % get manual behavior label (already 0–10, but clip just in case)
-    manualVal = behvLabelsNoArt(umapIdx);
-    manualLabelsPerTransition(i) = min(max(manualVal, 0), 10);
+    for i = 1:length(validTransitions)
+        transitionIdx = validTransitions(i);
+        umapIdx = map(transitionIdx);  % get umap index
+
+        if isnan(umapIdx)
+            continue;  % skip if not mapped
+        end
+
+        regionVal = regionAssignmentsFiltered(umapIdx);
+        regLabels(i) = regionVal - min(regionAssignmentsFiltered) + 1;
+
+        manualVal = behvLabelsNoArt(umapIdx);
+        manLabels(i) = min(max(manualVal, 0), 10);
+    end
+
+    regionLabelsPerTransition{ch} = regLabels;
+    manualLabelsPerTransition{ch} = manLabels;
 end
 
 % save output variables
-save(fullfile(folderPath, 'transitionBehaviorLabels.mat'), 'regionLabelsPerTransition', 'manualLabelsPerTransition');
+save(fullfile(folderPath, 'transitionBehaviorLabels.mat'), ...
+    'regionLabelsPerTransition', 'manualLabelsPerTransition');
 
-% plot histogram of transitions by region behavior (1–7)
-figure('Name','Transitions by UMAP Region','Color','w');
-histogram(regionLabelsPerTransition, 'BinMethod','integers', 'FaceColor','b');
-xlabel('umap region label (1–7)');
-ylabel('# of transitions');
-title('transition counts by umap region');
+% plot histogram of transitions by UMAP region for each muscle
+figure('Name','Transitions by UMAP Region (Per Muscle)','Color','w');
+tiledlayout(1,4,'Padding','compact');
+for ch = 1:4
+    nexttile; 
+    histogram(regionLabelsPerTransition{ch}, 'BinMethod','integers', 'FaceColor','b');
+    xlabel('UMAP Region (1–7)');
+    ylabel('Count');
+    title(sprintf('Muscle %d', ch));
+end
 
-% plot histogram of transitions by manual behavior label (0–10)
-figure('Name','Transitions by Manual Label','Color','w');
-histogram(manualLabelsPerTransition, 'BinMethod','integers', 'FaceColor','g');
-xlabel('manual label (0–10)');
-ylabel('# of transitions');
-title('transition counts by manual behavior label');
+% plot histogram of transitions by manual label for each muscle
+figure('Name','Transitions by Manual Label (Per Muscle)','Color','w');
+tiledlayout(1,4,'Padding','compact');
+for ch = 1:4
+    nexttile;
+    histogram(manualLabelsPerTransition{ch}, 'BinMethod','integers', 'FaceColor','g');
+    xlabel('Manual Label (0–10)');
+    ylabel('Count');
+    title(sprintf('Muscle %d', ch));
+end
 end
