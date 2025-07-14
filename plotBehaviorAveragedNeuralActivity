@@ -54,7 +54,7 @@ for b = umapVals
     for ch = channelsToUse
         trIdxs = validTransitionsCell{ch};
 
-        mask = ismember(trIdxs, validTransitions(validLabels));
+        mask = ismember(trIdxs, validTransitions(validLabels)); % mask refers to a logical array that is used to filter/select specific elements from a dataset
 
         pyrUnshift = squeeze(mean(pyrCxWinCell{ch}(mask,:,:), 2, 'omitnan'));
         intUnshift = squeeze(mean(intCxWinCell{ch}(mask,:,:), 2, 'omitnan'));
