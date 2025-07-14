@@ -1,77 +1,66 @@
 function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse)
 % plots avg cortex neural activity per behavior label (umap and manual)
 % behavior labels precomputed with mapTransitionsToBehavior function
-% pools across emg channels specified by channelsToUse input
+% pools across emg channels (specified by channelsToUse)
 
-if nargin < 2, channelsToUse = 1:4; end  % default to all 4 muscles
+if nargin < 2
+    channelsToUse = 1:4;
+end
 
 % load transition behavior labels
-load(fullfile(folderPath, 'transitionBehaviorLabels.mat'), ...
-    'regionLabelsPerTransition', 'manualLabelsPerTransition');
+load(fullfile(folderPath, 'transitionBehaviorLabels.mat'), 'regionLabelsPerTransition', 'manualLabelsPerTransition');
 
 % load neural data aligned to emg transitions
-load(fullfile(folderPath, 'EMG_Neural_AllChannels.mat'), ...
-    'pyrCxWinCell', 'intCxWinCell', 'validTransitionsCell', 'tAxis');
+load(fullfile(folderPath, 'EMG_Neural_AllChannels.mat'), 'pyrCxWinCell', 'intCxWinCell', 'validTransitionsCell', 'tAxis');
 
 % initialize pooled neural data and corresponding behavior labels
-allPyr = {};      % each cell: (events × neurons × time)
+allPyr = {};
 allInt = {};
-allRegionLabels = [];    % 1 × total # of events
+allRegionLabels = [];
 allManualLabels = [];
 
 % loop through each selected emg channel and collect data
 for ch = channelsToUse
-    % get neural windows and transitions for this channel
-    pyrData = pyrCxWinCell{ch};   % (events × neurons × time)
+    pyrData = pyrCxWinCell{ch};
     intData = intCxWinCell{ch};
-    transitions = validTransitionsCell{ch};  % indices in downsampEMG
+    transitions = validTransitionsCell{ch};
 
-    % get behavior labels for this channel
-    % match validTransitionsCell{ch} entries to overall transition label arrays
-    [~, labelIdxs] = ismember(transitions, find(~isnan(regionLabelsPerTransition)));
-    
-    % only keep transitions with valid behavior labels
-    validMask = labelIdxs > 0;
-    pyrData = pyrData(validMask,:,:);
-    intData = intData(validMask,:,:);
+    validLabels = transitions > 0 & transitions <= length(regionLabelsPerTransition) & ~isnan(regionLabelsPerTransition(transitions));
+    pyrData = pyrData(validLabels, :, :);
+    intData = intData(validLabels, :, :);
 
-    % collect corresponding behavior labels
-    regionLabels = regionLabelsPerTransition(transitions(validMask));
-    manualLabels = manualLabelsPerTransition(transitions(validMask));
+    regionLabels = regionLabelsPerTransition(transitions(validLabels));
+    manualLabels = manualLabelsPerTransition(transitions(validLabels));
 
-    % pool data
     allPyr{end+1} = pyrData;
     allInt{end+1} = intData;
     allRegionLabels = [allRegionLabels; regionLabels];
     allManualLabels = [allManualLabels; manualLabels];
 end
 
-% concatenate across pooled channels
-allPyrMat = cat(1, allPyr{:});   % (total events × neurons × time)
+allPyrMat = cat(1, allPyr{:});
 allIntMat = cat(1, allInt{:});
 
-% helper to compute event-averaged mean ± sem traces for each behavior type
-computeMeanSEM = @(data) deal( ...
-    mean(data, 1, 'omitnan'), ...
-    std(data, 0, 1, 'omitnan') ./ sqrt(size(data, 1)) );
-
-% average across neurons for each event (event × time)
+computeMeanSEM = @(data) deal(mean(data, 1, 'omitnan'), std(data, 0, 1, 'omitnan') ./ sqrt(size(data, 1)));
 meanEvt = @(X) squeeze(mean(X, 2, 'omitnan'));
 
-% --------- plot by UMAP region (1–7) ---------
+% plot by umap region (1–7)
 figure('Name','UMAP Region Cortex Activity','Color','w');
 tl1 = tiledlayout(2, 4, 'TileSpacing','tight', 'Padding','compact');
 for r = 1:7
     idx = allRegionLabels == r;
-    if sum(idx) == 0, continue; end
+    if sum(idx) == 0
+        continue;
+    end
 
-    pyr = meanEvt(allPyrMat(idx,:,:));
-    int = meanEvt(allIntMat(idx,:,:));
+    pyr = meanEvt(allPyrMat(idx, :, :));
+    int = meanEvt(allIntMat(idx, :, :));
 
     [mPyr, sePyr] = computeMeanSEM(pyr);
     [mInt, seInt] = computeMeanSEM(int);
 
-    nexttile(tl1); hold on;
+    nexttile(tl1);
+    hold on;
     yyaxis left
     shadedErrorBar(tAxis, mPyr, sePyr, 'lineProps', {'b', 'LineWidth', 1.5});
     ylabel('Pyramidal');
@@ -85,20 +74,23 @@ for r = 1:7
 end
 sgtitle('Cortex Neural by UMAP Region (1–7)');
 
-% --------- plot by manual label (0–10) ---------
+% plot by manual label (0–10)
 figure('Name','Manual Label Cortex Activity','Color','w');
 tl2 = tiledlayout(3, 4, 'TileSpacing','tight', 'Padding','compact');
 for lbl = 0:10
     idx = allManualLabels == lbl;
-    if sum(idx) == 0, continue; end
+    if sum(idx) == 0
+        continue;
+    end
 
-    pyr = meanEvt(allPyrMat(idx,:,:));
-    int = meanEvt(allIntMat(idx,:,:));
+    pyr = meanEvt(allPyrMat(idx, :, :));
+    int = meanEvt(allIntMat(idx, :, :));
 
     [mPyr, sePyr] = computeMeanSEM(pyr);
     [mInt, seInt] = computeMeanSEM(int);
 
-    nexttile(tl2); hold on;
+    nexttile(tl2);
+    hold on;
     yyaxis left
     shadedErrorBar(tAxis, mPyr, sePyr, 'lineProps', {'b', 'LineWidth', 1.5});
     ylabel('Pyramidal');
