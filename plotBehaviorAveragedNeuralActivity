@@ -24,10 +24,9 @@ manualLabels = [];
 
 for ch = channelsToUse
     validTransitions = [validTransitions; validTransitionsCell{ch}(:)];
+    regionLabels = [regionLabels; regionLabelsPerTransitionCell{ch}(:)];
+    manualLabels = [manualLabels; manualLabelsPerTransitionCell{ch}(:)];
 end
-
-regionLabels = regionLabelsPerTransition(validTransitions);
-manualLabels = manualLabelsPerTransition(validTransitions);
 
 % behavior values
 umapVals = 1:7;
