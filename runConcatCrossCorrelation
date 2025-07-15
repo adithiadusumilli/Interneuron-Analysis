@@ -70,4 +70,13 @@ save(fullfile(animalFolder, 'concatCrossCorrResult.mat'), 'lags', 'binSize', 'xc
 fprintf('Saved cross-correlation results for %s\n', animalFolder);
 fprintf('→ Peak lag = %.3f sec\n', peakLagSec);
 
+% plot cross-correlation result
+figure('Name', 'Concatenated Cross-Correlation', 'Color', 'w');
+plot(lags * binSize, xc, 'k', 'LineWidth', 2); hold on;
+xline(peakLagSec, 'r--', sprintf('Peak Lag = %.3f s', peakLagSec));
+xlabel('Lag (s)');
+ylabel('Correlation');
+title('Cross-Correlation: Interneuron vs Pyramidal (Concatenated Windows)');
+grid on;
+box off;
 end
