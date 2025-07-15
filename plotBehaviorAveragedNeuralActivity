@@ -23,7 +23,7 @@ regionLabels = [];
 manualLabels = [];
 
 for ch = channelsToUse
-    validTransitions = [validTransitions; validTransitionsCell{ch}];
+    validTransitions = [validTransitions; validTransitionsCell{ch}(:)];
 end
 
 regionLabels = regionLabelsPerTransition(validTransitions);
