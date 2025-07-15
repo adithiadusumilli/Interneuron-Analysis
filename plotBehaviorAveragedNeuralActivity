@@ -119,35 +119,43 @@ for b = manualVals
 
         mask = ismember(trIdxs, validTransitions(validLabels));
 
+        % --- unshifted pyramidal ---
         pyrUnshift = squeeze(mean(pyrCxWinCell{ch}(mask,:,:), 2, 'omitnan'));
+        if isvector(pyrUnshift), pyrUnshift = reshape(pyrUnshift, 1, []); end
+
+        % --- unshifted interneuron ---
         intUnshift = squeeze(mean(intCxWinCell{ch}(mask,:,:), 2, 'omitnan'));
+        if isvector(intUnshift), intUnshift = reshape(intUnshift, 1, []); end
 
         pyrPool = [pyrPool; pyrUnshift];
         intPool = [intPool; intUnshift];
 
-        % get first full-shift trace as a row
-        shift1Pyr = reshape(squeeze(mean(mean(pyrCxWinShiftedCell{ch}(mask,:,:), 2, 'omitnan'), 1, 'omitnan')), 1, []);
-        shift1Int = reshape(squeeze(mean(mean(intCxWinShiftedCell{ch}(mask,:,:), 2, 'omitnan'), 1, 'omitnan')), 1, []);
+        % --- shifted pyramidal ---
+        shift1Pyr = squeeze(mean(mean(pyrCxWinShiftedCell{ch}(mask,:,:), 2, 'omitnan'), 1, 'omitnan'));
+        shift1Pyr = reshape(shift1Pyr, 1, []);  % ensure row
+        pyrShiftCells = pyrCxWinShiftedMeanCell(ch, :);  % 1x99 cells
+        pyrAllShifts = vertcat(shift1Pyr, pyrShiftCells{:});  % 100 x time
 
-        % get remaining shifts as row vectors
-        pyrShiftCells = pyrCxWinShiftedMeanCell(ch, :);
+        % --- shifted interneuron ---
+        shift1Int = squeeze(mean(mean(intCxWinShiftedCell{ch}(mask,:,:), 2, 'omitnan'), 1, 'omitnan'));
+        shift1Int = reshape(shift1Int, 1, []);
         intShiftCells = intCxWinShiftedMeanCell(ch, :);
-
-        % concatenate 1st shift + 99 stored shifts (100 × timepoints)
-        pyrAllShifts = vertcat(shift1Pyr, pyrShiftCells{:});
         intAllShifts = vertcat(shift1Int, intShiftCells{:});
 
         shiftPyr = [shiftPyr; pyrAllShifts];
         shiftInt = [shiftInt; intAllShifts];
     end
 
+    % compute means and SEM
     [mPyr, sePyr] = computeAverages(pyrPool, 'pyr');
     [mInt, seInt] = computeAverages(intPool, 'int');
 
+    % compute 95% control bounds from shifts
     pctPyr = prctile(shiftPyr, [2.5 97.5], 1);
     pctInt = prctile(shiftInt, [2.5 97.5], 1);
 
-    nexttile(b+1); hold on;
+    % plot
+    nexttile(b + 1); hold on;
     yyaxis left
     shadedErrorBar(tAxis, mPyr, sePyr, 'lineProps', {'b', 'LineWidth', 1.5});
     plot(tAxis, pctPyr(1,:), 'b--'); plot(tAxis, pctPyr(2,:), 'b--');
