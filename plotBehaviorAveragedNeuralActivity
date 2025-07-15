@@ -53,7 +53,7 @@ for b = umapVals
     for ch = channelsToUse
         trIdxs = validTransitionsCell{ch};
 
-        mask = ismember(trIdxs, validTransitions(validLabels));
+        mask = ismember(trIdxs, validTransitions(validLabels)); % mask = logical array (t/f vals) used to select or filter elements from another array
 
         pyrUnshift = squeeze(mean(pyrCxWinCell{ch}(mask,:,:), 2, 'omitnan'));
         intUnshift = squeeze(mean(intCxWinCell{ch}(mask,:,:), 2, 'omitnan'));
