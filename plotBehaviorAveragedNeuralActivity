@@ -125,11 +125,17 @@ for b = manualVals
         pyrPool = [pyrPool; pyrUnshift];
         intPool = [intPool; intUnshift];
 
-        shift1Pyr = squeeze(mean(mean(pyrCxWinShiftedCell{ch}(mask,:,:), 2, 'omitnan'), 1, 'omitnan'))';
-        shift1Int = squeeze(mean(mean(intCxWinShiftedCell{ch}(mask,:,:), 2, 'omitnan'), 1, 'omitnan'))';
+        % get first full-shift trace as a row
+        shift1Pyr = reshape(squeeze(mean(mean(pyrCxWinShiftedCell{ch}(mask,:,:), 2, 'omitnan'), 1, 'omitnan')), 1, []);
+        shift1Int = reshape(squeeze(mean(mean(intCxWinShiftedCell{ch}(mask,:,:), 2, 'omitnan'), 1, 'omitnan')), 1, []);
 
-        pyrAllShifts = [shift1Pyr; cell2mat(pyrCxWinShiftedMeanCell(ch, :))];
-        intAllShifts = [shift1Int; cell2mat(intCxWinShiftedMeanCell(ch, :))];
+        % get remaining shifts as row vectors
+        pyrShiftCells = pyrCxWinShiftedMeanCell(ch, :);
+        intShiftCells = intCxWinShiftedMeanCell(ch, :);
+
+        % concatenate 1st shift + 99 stored shifts (100 × timepoints)
+        pyrAllShifts = vertcat(shift1Pyr, pyrShiftCells{:});
+        intAllShifts = vertcat(shift1Int, intShiftCells{:});
 
         shiftPyr = [shiftPyr; pyrAllShifts];
         shiftInt = [shiftInt; intAllShifts];
