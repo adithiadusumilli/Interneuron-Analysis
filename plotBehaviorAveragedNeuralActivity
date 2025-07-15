@@ -24,8 +24,8 @@ manualLabels = [];
 
 for ch = channelsToUse
     validTransitions = [validTransitions; validTransitionsCell{ch}(:)];
-    regionLabels = [regionLabels; regionLabelsPerTransitionCell{ch}(:)];
-    manualLabels = [manualLabels; manualLabelsPerTransitionCell{ch}(:)];
+    regionLabels = [regionLabels; regionLabelsPerTransition{ch}(:)];
+    manualLabels = [manualLabels; manualLabelsPerTransition{ch}(:)];
 end
 
 % behavior values
