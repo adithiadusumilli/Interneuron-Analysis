@@ -43,29 +43,35 @@ for b = umapVals
     % get mask for this behavior
     validLabels = find(regionLabels == b);
 
-    % pool neural windows across selected channels and valid labels
+   % pool neural windows across selected channels and valid labels
     pyrPool = [];
     intPool = [];
-
+    
     shiftPyr = [];
     shiftInt = [];
 
     for ch = channelsToUse
         trIdxs = validTransitionsCell{ch};
 
-        mask = ismember(trIdxs, validTransitions(validLabels)); % mask refers to a logical array that is used to filter/select specific elements from a dataset
+        mask = ismember(trIdxs, validTransitions(validLabels));
 
         pyrUnshift = squeeze(mean(pyrCxWinCell{ch}(mask,:,:), 2, 'omitnan'));
         intUnshift = squeeze(mean(intCxWinCell{ch}(mask,:,:), 2, 'omitnan'));
-
+    
         pyrPool = [pyrPool; pyrUnshift];
         intPool = [intPool; intUnshift];
 
-        shift1Pyr = squeeze(mean(mean(pyrCxWinShiftedCell{ch}(mask,:,:), 2, 'omitnan'), 1, 'omitnan'))';
-        shift1Int = squeeze(mean(mean(intCxWinShiftedCell{ch}(mask,:,:), 2, 'omitnan'), 1, 'omitnan'))';
+        % --- shifted pyramidal ---
+        shift1Pyr = squeeze(mean(mean(pyrCxWinShiftedCell{ch}(mask,:,:), 2, 'omitnan'), 1, 'omitnan'));
+        shift1Pyr = reshape(shift1Pyr, 1, []);  % ensure row vector
+        pyrShiftCells = pyrCxWinShiftedMeanCell(ch, :);  % 1x99 cells
+        pyrAllShifts = vertcat(shift1Pyr, pyrShiftCells{:});  % 100 x time
 
-        pyrAllShifts = [shift1Pyr; cell2mat(pyrCxWinShiftedMeanCell(ch, :))];
-        intAllShifts = [shift1Int; cell2mat(intCxWinShiftedMeanCell(ch, :))];
+        % --- shifted interneuron ---
+        shift1Int = squeeze(mean(mean(intCxWinShiftedCell{ch}(mask,:,:), 2, 'omitnan'), 1, 'omitnan'));
+        shift1Int = reshape(shift1Int, 1, []);
+        intShiftCells = intCxWinShiftedMeanCell(ch, :);
+        intAllShifts = vertcat(shift1Int, intShiftCells{:});
 
         shiftPyr = [shiftPyr; pyrAllShifts];
         shiftInt = [shiftInt; intAllShifts];
