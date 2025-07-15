@@ -1,0 +1,73 @@
+function runConcatCrossCorrelation(animalFolder)
+% computes cross-correlation between concatenated pyramidal and interneuron activity window around EMG transitions (−500 to +500 ms) per animal
+% saves lag vector, cross-correlation values, and peak lag into .mat file in same folder
+
+% load data
+load(fullfile(animalFolder, 'EMG_Neural_AllChannels.mat'), 'pyrCxWinCell', 'intCxWinCell', 'validTransitionsCell', 'tAxis');
+
+channelsToUse = 1:4;   % default EMG channels to pool
+binSize = mean(diff(tAxis)); % e.g., 0.001 s or 0.01 s depending on data
+maxLagSecs = 0.5; % max lag = ±500 ms
+maxLagBins = round(maxLagSecs / binSize);
+lags = -maxLagBins:maxLagBins;
+
+% initialize pooled traces
+pyrAll = [];
+intAll = [];
+
+for ch = channelsToUse
+    % extract data from this channel
+    pyr = pyrCxWinCell{ch};  % events × neurons × time
+    int = intCxWinCell{ch};
+
+    % avg across neurons → (events × time)
+    pyrMean = squeeze(mean(pyr, 2, 'omitnan'));
+    intMean = squeeze(mean(int, 2, 'omitnan'));
+
+    % concat across events
+    pyrAll = [pyrAll; pyrMean];  % events × time
+    intAll = [intAll; intMean];
+end
+
+% reshape to 1D time series by concatenating each window (row-wise)
+pyrConcat = reshape(pyrAll', 1, []);  % (1 × events*timepoints)
+intConcat = reshape(intAll', 1, []);
+
+% remove NaNs from both (synchronized)
+nanMask = isnan(pyrConcat) | isnan(intConcat);
+pyrConcat(nanMask) = [];
+intConcat(nanMask) = [];
+
+% cross-corr
+xc = nan(size(lags));
+for i = 1:length(lags)
+    lag = lags(i);
+    if lag < 0
+        % interneuron leads
+        intSeg = intConcat(1:end+lag);
+        pyrSeg = pyrConcat(1-lag:end);
+    elseif lag > 0
+        % pyramidal leads
+        intSeg = intConcat(1+lag:end);
+        pyrSeg = pyrConcat(1:end-lag);
+    else
+        intSeg = intConcat;
+        pyrSeg = pyrConcat;
+    end
+
+    if length(intSeg) > 10
+        xc(i) = corr(intSeg', pyrSeg', 'rows', 'complete');
+    end
+end
+
+% peak lag
+[~, peakIdx] = max(xc);
+peakLagSec = lags(peakIdx) * binSize;
+
+% save output
+save(fullfile(animalFolder, 'concatCrossCorrResult.mat'), 'lags', 'binSize', 'xc', 'peakLagSec');
+
+fprintf('Saved cross-correlation results for %s\n', animalFolder);
+fprintf('→ Peak lag = %.3f sec\n', peakLagSec);
+
+end
