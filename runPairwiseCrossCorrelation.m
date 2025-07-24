@@ -185,20 +185,33 @@ end
 % save results
 save('PairwiseCrossCorrelationResults.mat', 'allXC', 'allPeakLags', 'allPeakCorrs', 'allXC_Shifted', 'allPeakLags_Shifted', 'allPeakCorrs_Shifted', 'lags');
 
-% plot histograms
+% flatten matrices into vectors
 peakLagVec = cell2mat(cellfun(@(x) x(:), allPeakLags(:), 'UniformOutput', false));
 peakCorrVec = cell2mat(cellfun(@(x) x(:), allPeakCorrs(:), 'UniformOutput', false));
 
+peakLagVec_shift = cell2mat(cellfun(@(x) x(:), allPeakLags_Shifted(:), 'UniformOutput', false));
+peakCorrVec_shift = cell2mat(cellfun(@(x) x(:), allPeakCorrs_Shifted(:), 'UniformOutput', false));
+
+% plot histogram of peak lags
 figure;
-histogram(peakLagVec, 50);
+histogram(peakLagVec, 50, 'FaceAlpha', 0.6, 'EdgeColor', 'none');
+hold on;
+histogram(peakLagVec_shift, 50, 'FaceAlpha', 0.4, 'EdgeColor', 'none');
 xlabel('Peak Lag (sec)');
 ylabel('Count');
 title('Histogram of Peak Lags');
+legend('Unshifted', 'Shifted');
+grid on;
 
+% plot histogram of peak correlations
 figure;
-histogram(peakCorrVec, 50);
+histogram(peakCorrVec, 50, 'FaceAlpha', 0.6, 'EdgeColor', 'none');
+hold on;
+histogram(peakCorrVec_shift, 50, 'FaceAlpha', 0.4, 'EdgeColor', 'none');
 xlabel('Peak Correlation');
 ylabel('Count');
 title('Histogram of Peak Correlations');
+legend('Unshifted', 'Shifted');
+grid on;
 
 end
