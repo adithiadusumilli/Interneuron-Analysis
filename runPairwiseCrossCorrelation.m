@@ -1,4 +1,4 @@
-function runPairwiseCrossCorrelation(baseDirs, classificationFile)
+function runPairwiseCrossCorrelation(baseDirs)
 % pairwise cross-correlation between each interneuron and pyramidal neuron
 % code works for both cortex and striatum + saves 3D xcorr matrix (and peak lags and peak correlations)
 
@@ -6,6 +6,12 @@ binSize = 0.01;  % 10 ms bins
 maxLagSecs = 1;
 maxLagBins = round(maxLagSecs / binSize);
 lags = -maxLagBins:maxLagBins;
+
+conslidatedDataFoler = 'X:\David\AnalysesData';
+load(fullfile(conslidatedDataFoler, 'AA_classifications.mat'), 'classifications');
+
+% define known base folders (match order used when AA_classifications.mat was created)
+animalFolders = {'X:\David\ArenaRecordings\D026-032923-ArenaRecording\ProcessedData', 'Z:\David\ArenaRecordings\NeuropixelsTest\D020-062922-ArenaRecording\ProcessedData', 'Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData'};
 
 regions = {'Cortex', 'Striatum'};
 
@@ -20,16 +26,20 @@ for iRegion = 1:length(regions)
         baseDir = baseDirs{iDir};
         fprintf('\nProcessing %s — Session %d: %s\n', regionName, iDir, baseDir);
 
-        classificationPath = fullfile(baseDir, classificationFile);
         neuronFile = fullfile(baseDir, 'neuronDataStruct.mat');
         frFile = fullfile(baseDir, 'NeuralFiringRates10msBins30msGauss.mat');
 
-        if ~isfile(classificationPath) || ~isfile(neuronFile) || ~isfile(frFile)
+        if ~isfile(neuronFile) || ~isfile(frFile)
             warning('Missing required files for session %d. Skipping.', iDir);
             continue;
         end
 
-        load(classificationPath, 'classifications', 'regions');
+        % Match classification by baseDir
+        matchRow = find(contains(animalFolders, baseDir), 1);
+        if isempty(matchRow)
+            warning('Could not match folderPath to an entry in animalFolders. Skipping.');
+            continue;
+        end
         load(neuronFile, 'neuronDataStruct');
         load(frFile, 'cortexFRs', 'cortexInds', 'striatumFRs', 'striatumInds');
 
@@ -42,13 +52,8 @@ for iRegion = 1:length(regions)
             regionInds = striatumInds;
         end
 
-        neuronType = classifications{1, iRegion};
-        if isempty(neuronType)
-            warning('No classification data for session %d (%s). Skipping.', iDir, regionName);
-            continue;
-        end
-
-        regionClass = neuronType(regionInds);
+        neuronTypeRow = classifications(matchRow, :);
+        regionClass = neuronTypeRow{1, iRegion}(regionInds);
         interFRs = frMatrix(regionClass == 1, :);
         pyrFRs = frMatrix(regionClass == 0, :);
 
@@ -118,8 +123,7 @@ for iRegion = 1:length(regions)
 end
 
 % save results
-save('PairwiseCrossCorrelationResults.mat', ...
-    'allXC', 'allPeakLags', 'allPeakCorrs', 'lags');
+save('PairwiseCrossCorrelationResults.mat', 'allXC', 'allPeakLags', 'allPeakCorrs', 'lags');
 
 % plot histograms
 peakLagVec = cell2mat(cellfun(@(x) x(:), allPeakLags(:), 'UniformOutput', false));
