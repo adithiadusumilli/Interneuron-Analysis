@@ -110,23 +110,51 @@ for iRegion = 1:length(regions)
             end
         end
 
-        % finding peak
+        % finding peak of real data
         [~, peakIdx] = max(xc);
         peakLag = lags(peakIdx) * binSize;
         peakLags(iDir, iRegion) = peakLag;
+
+        % control: circular shift interneuron signal
+        minShiftBins = round(30 / binSize);                  % 30 seconds
+        maxShiftBins = length(meanInt) - minShiftBins;
+        randShift = randi([minShiftBins, maxShiftBins]);
+        intShifted = circshift(meanInt, randShift);
+
+        % calculate cross-correlation with shifted interneuron signal
+        xc_shifted = nan(size(lags));
+        for li = 1:length(lags)
+            lag = lags(li);
+            if lag < 0
+                intSeg = intShifted(1:end+lag);
+                pyrSeg = meanPyr(1-lag:end);
+            elseif lag > 0
+                intSeg = intShifted(1+lag:end);
+                pyrSeg = meanPyr(1:end-lag);
+            else
+                intSeg = intShifted;
+                pyrSeg = meanPyr;
+            end
+
+            if length(intSeg) > 2
+                xc_shifted(li) = corr(intSeg', pyrSeg');
+            end
+        end
 
         % tiled layout code
         tileNum = iDir + (iRegion - 1) * length(baseDirs);
         nexttile(tile_lay, tileNum);
 
         % Plot
-        plot(lags * binSize, xc, 'k', 'LineWidth', 2);
+        plot(lags * binSize, xc, 'k', 'LineWidth', 2); % original
         hold on;
+        plot(lags * binSize, xc_shifted, 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5); % control
         line([peakLag peakLag], get(gca, 'ylim'), 'LineStyle', '--', 'Color', 'r');
         xlabel('Lag (seconds)');
         ylabel('Correlation');
-        title(sprintf('%s — Session %d — Peak Lag: %.3f sec', regionName, iDir, peakLag));
+        title(sprintf('%s — Session %d\nPeak Lag: %.3f sec', regionName, iDir, peakLag));
         box off;
+        legend('Original', 'Shifted control', 'Location', 'best');
         drawnow;
 
         fprintf('→ %s — Session %d Peak Lag: %.3f seconds\n', regionName, iDir, peakLag);
