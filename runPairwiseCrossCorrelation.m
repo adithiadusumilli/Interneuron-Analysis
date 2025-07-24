@@ -19,6 +19,10 @@ allXC = cell(length(baseDirs), length(regions));
 allPeakLags = cell(length(baseDirs), length(regions));
 allPeakCorrs = cell(length(baseDirs), length(regions));
 
+allXC_Shifted = cell(length(baseDirs), length(regions));
+allPeakLags_Shifted = cell(length(baseDirs), length(regions));
+allPeakCorrs_Shifted = cell(length(baseDirs), length(regions));
+
 for iRegion = 1:length(regions)
     regionName = regions{iRegion};
 
@@ -56,6 +60,13 @@ for iRegion = 1:length(regions)
         regionClass = neuronTypeRow{1, iRegion}(regionInds);
         interFRs = frMatrix(regionClass == 1, :);
         pyrFRs = frMatrix(regionClass == 0, :);
+
+        % shift interneuron matrix uniformly for control
+        numBins = size(interFRs, 2);
+        minShift = round(30 / binSize);
+        maxShift = numBins - minShift;
+        shiftAmount = randi([minShift, maxShift]);
+        interFRsShifted = circshift(interFRs, [0, shiftAmount]);
 
         numInter = size(interFRs, 1);
         numPyr = size(pyrFRs, 1);
@@ -119,11 +130,60 @@ for iRegion = 1:length(regions)
 
         fprintf('→ %s — Session %d: %d interneurons × %d pyramidal processed\n', ...
             regionName, iDir, numInter, numPyr);
+
+        % second run: shifted interneurons vs unshifted pyramidal neurons
+        xcMat_shift = nan(numInter, numPyr, length(lags));
+        peakLagMat_shift = nan(numInter, numPyr);
+        peakCorrMat_shift = nan(numInter, numPyr);
+
+        for intIdx = 1:numInter
+            intTS = interFRsShifted(intIdx, :);
+
+            for pyrIdx = 1:numPyr
+                pyrTS = pyrFRs(pyrIdx, :);
+
+                xc = nan(size(lags));
+                for li = 1:length(lags)
+                    lag = lags(li);
+                    if lag < 0
+                        intSeg = intTS(1:end+lag);
+                        pyrSeg = pyrTS(1-lag:end);
+                    elseif lag > 0
+                        intSeg = intTS(1+lag:end);
+                        pyrSeg = pyrTS(1:end-lag);
+                    else
+                        intSeg = intTS;
+                        pyrSeg = pyrTS;
+                    end
+
+                    nanIdx = unique([find(isnan(intSeg)), find(isnan(pyrSeg))]);
+                    intSeg(nanIdx) = [];
+                    pyrSeg(nanIdx) = [];
+
+                    if length(intSeg) > 2
+                        xc(li) = corr(intSeg', pyrSeg');
+                    end
+                end
+
+                xcMat_shift(intIdx, pyrIdx, :) = xc;
+                [peakCorr, peakIdx] = max(xc);
+                peakLag = lags(peakIdx) * binSize;
+
+                peakLagMat_shift(intIdx, pyrIdx) = peakLag;
+                peakCorrMat_shift(intIdx, pyrIdx) = peakCorr;
+            end
+        end
+
+        % store shifted results
+        allXC_Shifted{iDir, iRegion} = xcMat_shift;
+        allPeakLags_Shifted{iDir, iRegion} = peakLagMat_shift;
+        allPeakCorrs_Shifted{iDir, iRegion} = peakCorrMat_shift;
+
     end
 end
 
 % save results
-save('PairwiseCrossCorrelationResults.mat', 'allXC', 'allPeakLags', 'allPeakCorrs', 'lags');
+save('PairwiseCrossCorrelationResults.mat', 'allXC', 'allPeakLags', 'allPeakCorrs', 'allXC_Shifted', 'allPeakLags_Shifted', 'allPeakCorrs_Shifted', 'lags');
 
 % plot histograms
 peakLagVec = cell2mat(cellfun(@(x) x(:), allPeakLags(:), 'UniformOutput', false));
