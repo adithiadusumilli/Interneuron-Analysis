@@ -65,6 +65,7 @@ for iRegion = 1:length(regions)
         numBins = size(interFRs, 2);
         minShift = round(30 / binSize);
         maxShift = numBins - minShift;
+        rng(42); % or any fixed number as random seed
         shiftAmount = randi([minShift, maxShift]);
         interFRsShifted = circshift(interFRs, [0, shiftAmount]);
 
