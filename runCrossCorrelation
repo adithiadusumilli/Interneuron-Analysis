@@ -1,9 +1,9 @@
-function runCrossCorrelation(baseDirs, classificationFile)
+function runCrossCorrelation(baseDirs)
 % function manually computes cross-correlation between interneuron
 % and pyramidal population activity for cortex and striatum & properly handles nans
 
 binSize = 0.01;       % 10 ms bins
-maxLagSecs = 1;
+maxLagSecs = 0.2;
 maxLagBins = round(maxLagSecs / binSize);
 
 regions = {'Cortex', 'Striatum'};
@@ -20,14 +20,16 @@ for iRegion = 1:length(regions)
         baseDir = baseDirs{iDir};
         fprintf('\nProcessing %s — Session %d: %s\n', regionName, iDir, baseDir);
 
-        classificationPath = fullfile(baseDir, classificationFile);
+        % load centralized classifications file 1x 
+        conslidatedDataFoler = 'X:\David\AnalysesData';
+        load(fullfile(conslidatedDataFoler, 'AA_classifications.mat'), 'classifications');
 
-        if ~isfile(classificationPath)
-            warning('Missing classification file in %s. Skipping.', classificationPath);
-            continue;
-        end
-
-        load(classificationPath, 'classifications', 'regions');
+        % define known base folders (match order used in classifications)
+        animalFolders = {
+            'X:\David\ArenaRecordings\D026-032923-ArenaRecording\ProcessedData', ...
+            'Z:\David\ArenaRecordings\NeuropixelsTest\D020-062922-ArenaRecording\ProcessedData', ...
+            'Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData'
+        };
 
         neuronFile = fullfile(baseDir, 'neuronDataStruct.mat');
         frFile = fullfile(baseDir, 'NeuralFiringRates10msBins30msGauss.mat');
@@ -49,7 +51,13 @@ for iRegion = 1:length(regions)
             regionInds = striatumInds;
         end
 
-        neuronType = classifications{1, iRegion};
+        matchRow = find(contains(animalFolders, baseDir), 1);
+        if isempty(matchRow)
+          warning('Could not match baseDir to animalFolders list. Skipping.');
+          continue;
+        end
+        neuronType = classifications{matchRow, iRegion};
+
         if isempty(neuronType)
             warning('No classification data for session %d (%s). Skipping.', 1, regionName);
             continue;
