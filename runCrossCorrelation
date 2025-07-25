@@ -115,31 +115,28 @@ for iRegion = 1:length(regions)
         peakLag = lags(peakIdx) * binSize;
         peakLags(iDir, iRegion) = peakLag;
 
-        % control: circular shift interneuron signal
-        minShiftBins = round(30 / binSize);                  % 30 seconds
+        % control: 100 shifts — single full-trace correlation per shift
+        numShifts = 100;
+        minShiftBins = round(30 / binSize);
         maxShiftBins = length(meanInt) - minShiftBins;
-        randShift = randi([minShiftBins, maxShiftBins]);
-        intShifted = circshift(meanInt, randShift);
 
-        % calculate cross-correlation with shifted interneuron signal
-        xc_shifted = nan(size(lags));
-        for li = 1:length(lags)
-            lag = lags(li);
-            if lag < 0
-                intSeg = intShifted(1:end+lag);
-                pyrSeg = meanPyr(1-lag:end);
-            elseif lag > 0
-                intSeg = intShifted(1+lag:end);
-                pyrSeg = meanPyr(1:end-lag);
-            else
-                intSeg = intShifted;
-                pyrSeg = meanPyr;
-            end
+        controlCorrs = nan(1, numShifts);  % store 1 value per shift
 
-            if length(intSeg) > 2
-                xc_shifted(li) = corr(intSeg', pyrSeg');
+        for s = 1:numShifts
+            shiftAmt = randi([minShiftBins, maxShiftBins]);
+            intShifted = circshift(meanInt, shiftAmt);
+
+            % remove any NaNs from both
+            validIdx = ~isnan(intShifted) & ~isnan(meanPyr);
+
+            if sum(validIdx) > 2
+                controlCorrs(s) = corr(intShifted(validIdx)', meanPyr(validIdx)');
             end
         end
+    
+        % get control bounds
+        prc25 = prctile(controlCorrs, 2.5);
+        prc975 = prctile(controlCorrs, 97.5)
 
         % tiled layout code
         tileNum = iDir + (iRegion - 1) * length(baseDirs);
@@ -147,6 +144,9 @@ for iRegion = 1:length(regions)
 
         % Plot
         plot(lags * binSize, xc, 'k', 'LineWidth', 2); % original
+        % overlay control percentiles as horizontal dotted lines
+        yline(prc25, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.2);
+        yline(prc975, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.2);
         hold on;
         plot(lags * binSize, xc_shifted, 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5); % control
         line([peakLag peakLag], get(gca, 'ylim'), 'LineStyle', '--', 'Color', 'r');
@@ -154,7 +154,7 @@ for iRegion = 1:length(regions)
         ylabel('Correlation');
         title(sprintf('%s — Session %d\nPeak Lag: %.3f sec', regionName, iDir, peakLag));
         box off;
-        legend('Original', 'Shifted control', 'Location', 'best');
+        legend('Original xcorr', '2.5% control', '97.5% control', 'Location', 'best');
         drawnow;
 
         fprintf('→ %s — Session %d Peak Lag: %.3f seconds\n', regionName, iDir, peakLag);
