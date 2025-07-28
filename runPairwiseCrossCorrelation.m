@@ -2,7 +2,7 @@ function runPairwiseCrossCorrelation(baseDirs)
 % pairwise cross-correlation between each interneuron and pyramidal neuron
 % code works for both cortex and striatum + saves 3D xcorr matrix (and peak lags and peak correlations)
 
-binSize = 0.01;  % 10 ms bins
+binSize = 0.001;  % 1 ms bins
 maxLagSecs = 1;
 maxLagBins = round(maxLagSecs / binSize);
 lags = -maxLagBins:maxLagBins;
@@ -129,56 +129,38 @@ for iRegion = 1:length(regions)
         allPeakLags{iDir, iRegion} = peakLagMat;
         allPeakCorrs{iDir, iRegion} = peakCorrMat;
 
-        fprintf('→ %s — Session %d: %d interneurons × %d pyramidal processed\n', ...
-            regionName, iDir, numInter, numPyr);
+        fprintf('→ %s — Session %d: %d interneurons × %d pyramidal processed\n', regionName, iDir, numInter, numPyr);
 
-        % second run: shifted interneurons vs unshifted pyramidal neurons
-        xcMat_shift = nan(numInter, numPyr, length(lags));
-        peakLagMat_shift = nan(numInter, numPyr);
-        peakCorrMat_shift = nan(numInter, numPyr);
+        % compute control %s for each pair (shifted interneurons & unshifted pyramidal)
+        numShifts = 100;
+        numInter = size(interFRs, 1);
+        numPyr = size(pyrFRs, 1);
+        numBins = size(interFRs, 2);
 
-        for intIdx = 1:numInter
-            intTS = interFRsShifted(intIdx, :);
+        controlCorrs = nan(numInter, numPyr, numShifts);
+        minShift = round(30 / binSize);
+        maxShift = numBins - minShift;
 
-            for pyrIdx = 1:numPyr
-                pyrTS = pyrFRs(pyrIdx, :);
+        for s = 1:numShifts
+            shiftAmt = randi([minShift, maxShift]);
+            shiftedFRs = circshift(interFRs, [0, shiftAmt]);
 
-                xc = nan(size(lags));
-                for li = 1:length(lags)
-                    lag = lags(li);
-                    if lag < 0
-                        intSeg = intTS(1:end+lag);
-                        pyrSeg = pyrTS(1-lag:end);
-                    elseif lag > 0
-                        intSeg = intTS(1+lag:end);
-                        pyrSeg = pyrTS(1:end-lag);
-                    else
-                        intSeg = intTS;
-                        pyrSeg = pyrTS;
-                    end
+            for i = 1:numInter
+                for j = 1:numPyr
+                    intTS = shiftedFRs(i, :);
+                    pyrTS = pyrFRs(j, :);
+                    validIdx = ~isnan(intTS) & ~isnan(pyrTS);
 
-                    nanIdx = unique([find(isnan(intSeg)), find(isnan(pyrSeg))]);
-                    intSeg(nanIdx) = [];
-                    pyrSeg(nanIdx) = [];
-
-                    if length(intSeg) > 2
-                        xc(li) = corr(intSeg', pyrSeg');
+                    if sum(validIdx) > 2
+                        controlCorrs(i, j, s) = corr(intTS(validIdx)', pyrTS(validIdx)');
                     end
                 end
-
-                xcMat_shift(intIdx, pyrIdx, :) = xc;
-                [peakCorr, peakIdx] = max(xc);
-                peakLag = lags(peakIdx) * binSize;
-
-                peakLagMat_shift(intIdx, pyrIdx) = peakLag;
-                peakCorrMat_shift(intIdx, pyrIdx) = peakCorr;
             end
         end
 
-        % store shifted results
-        allXC_Shifted{iDir, iRegion} = xcMat_shift;
-        allPeakLags_Shifted{iDir, iRegion} = peakLagMat_shift;
-        allPeakCorrs_Shifted{iDir, iRegion} = peakCorrMat_shift;
+        % calc for percentiles across shifts for each pair
+        prc2_5 = prctile(controlCorrs, 2.5, 3);
+        prc97_5 = prctile(controlCorrs, 97.5, 3);
 
     end
 end
