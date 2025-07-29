@@ -159,8 +159,8 @@ for iRegion = 1:length(regions)
         end
 
         % calc for percentiles across shifts for each pair
-        prc2_5 = prctile(controlCorrs, 2.5, 3);
-        prc97_5 = prctile(controlCorrs, 97.5, 3);
+        prc25 = prctile(controlCorrs, 2.5, 3);
+        prc975 = prctile(controlCorrs, 97.5, 3);
 
     end
 end
