@@ -139,14 +139,12 @@ for iRegion = 1:length(regions)
         tileNum = iDir + (iRegion - 1) * length(baseDirs);
         nexttile(tile_lay, tileNum);
 
-        % Plot
+        % plot
         plot(lags * binSize, xc, 'k', 'LineWidth', 2); % original
-        % overlay control percentiles as horizontal dotted lines
-        yline(prc25, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.2);
-        yline(prc975, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.2);
         hold on;
-        plot(lags * binSize, xc_shifted, 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5); % control
-        line([peakLag peakLag], get(gca, 'ylim'), 'LineStyle', '--', 'Color', 'r');
+        yline(prc25, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.2);  % 2.5% control bound
+        yline(prc975, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.2); % 97.5% control bound
+        line([peakLag peakLag], get(gca, 'ylim'), 'LineStyle', '--', 'Color', 'r'); % vertical line
         xlabel('Lag (seconds)');
         ylabel('Correlation');
         title(sprintf('%s — Session %d\nPeak Lag: %.3f sec', regionName, iDir, peakLag));
