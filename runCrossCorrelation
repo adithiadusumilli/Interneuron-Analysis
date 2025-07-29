@@ -76,14 +76,9 @@ for iRegion = 1:length(regions)
         meanInt = nanmean(interneuronFRs, 1);
         meanPyr = nanmean(pyramidalFRs, 1);
 
-        % finding all NaN indices
-        nanInt = find(isnan(meanInt));
-        nanPyr = find(isnan(meanPyr));
-        allNanIdx = unique([nanInt, nanPyr]);
-
-        % removing nan indices from both population time series
-        meanInt(allNanIdx) = [];
-        meanPyr(allNanIdx) = [];
+       % use raw (w nan) means
+        meanIntRaw = nanmean(interneuronFRs, 1);
+        meanPyrRaw = nanmean(pyramidalFRs, 1);
 
         % manual cross-correlation
         lags = -maxLagBins:maxLagBins;
@@ -93,20 +88,22 @@ for iRegion = 1:length(regions)
             lag = lags(li);
 
             if lag < 0
-                % Shift left (int leads)
-                intSeg = meanInt(1:end+lag);
-                pyrSeg = meanPyr(1-lag:end);
+                % shift left (int leads)
+                intSeg = meanIntRaw(1:end+lag);
+                pyrSeg = meanPyrRaw(1-lag:end);
             elseif lag > 0
-                % Shift right (pyr leads)
-                intSeg = meanInt(1+lag:end);
-                pyrSeg = meanPyr(1:end-lag);
+                % shift right (pyr leads)
+                intSeg = meanIntRaw(1+lag:end);
+                pyrSeg = meanPyrRaw(1:end-lag);
             else
-                intSeg = meanInt;
-                pyrSeg = meanPyr;
+                intSeg = meanIntRaw;
+                pyrSeg = meanPyrRaw;
             end
 
-            if length(intSeg) > 2
-                xc(li) = corr(intSeg', pyrSeg');
+            % remove nans after aligning
+            validIdx = ~isnan(intSeg) & ~isnan(pyrSeg);
+            if sum(validIdx) > 2
+                xc(li) = corr(intSeg(validIdx)', pyrSeg(validIdx)');
             end
         end
 
@@ -118,19 +115,19 @@ for iRegion = 1:length(regions)
         % control: 100 shifts — single full-trace correlation per shift
         numShifts = 100;
         minShiftBins = round(30 / binSize);
-        maxShiftBins = length(meanInt) - minShiftBins;
+        maxShiftBins = length(meanIntRaw) - minShiftBins;
 
         controlCorrs = nan(1, numShifts);  % store 1 value per shift
 
         for s = 1:numShifts
             shiftAmt = randi([minShiftBins, maxShiftBins]);
-            intShifted = circshift(meanInt, shiftAmt);
+            intShifted = circshift(meanIntRaw, shiftAmt);
 
-            % remove any NaNs from both
-            validIdx = ~isnan(intShifted) & ~isnan(meanPyr);
+            % remove nans after shifting
+            validIdx = ~isnan(intShifted) & ~isnan(meanPyrRaw);
 
             if sum(validIdx) > 2
-                controlCorrs(s) = corr(intShifted(validIdx)', meanPyr(validIdx)');
+                controlCorrs(s) = corr(intShifted(validIdx)', meanPyrRaw(validIdx)');
             end
         end
     
