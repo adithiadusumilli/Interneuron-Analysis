@@ -76,6 +76,7 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
 
     % main loop over emg channels
     for ch = 1:nChannels
+        tic;
         signal = downsampEMG(ch, :);  % get emg signal for current channel
         allSignal = downsampEMG(1:nChannels, :);
 
@@ -221,6 +222,7 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
                 end
             end
         end
+        disp(toc);
     end
 
     % save everything together
