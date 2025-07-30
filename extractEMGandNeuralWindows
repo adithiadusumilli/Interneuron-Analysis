@@ -166,6 +166,7 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
             end
 
             % sync to neural time
+            currentDir = pwd;
             cd(folderPath);
             neuralIndices = NeurEMGSync(transitions * 20, frameEMGSamples, frameNeuropixelSamples, 'EMG');
             cd(currentDir);
