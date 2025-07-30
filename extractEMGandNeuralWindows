@@ -138,7 +138,7 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
             for e = 1:nEvt
                 idx = currentTransitions(e);
                 if idx > preSamples && idx + postSamples <= nPoints
-                    emgWin(e,:,:) = downsampEMG(:, idx-preSamples:idx+postSamples);
+                    emgWin(e,:,:) = downsampEMG(1:nChannels, idx-preSamples:idx+postSamples);
                 end
             end
 
