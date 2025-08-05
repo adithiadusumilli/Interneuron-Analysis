@@ -8,7 +8,7 @@ function runConcatCrossCorrelation(animalFolder)
 load(fullfile(animalFolder, 'EMG_Neural_AllChannels.mat'), 'pyrCxWinCell', 'intCxWinCell', 'validTransitionsCell', 'tAxis');
 
 channelsToUse = 1:4;
-binSize = mean(diff(tAxis)); 
+binSize = 0.001; 
 maxLagSecs = 0.5;
 maxLagBins = round(maxLagSecs / binSize);
 lags = -maxLagBins:maxLagBins;
