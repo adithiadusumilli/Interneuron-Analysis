@@ -14,7 +14,7 @@ maxLagBins = round(maxLagSecs / binSize);
 lags = -maxLagBins:maxLagBins;
 
 % define padding to prevent segment overlap during shift
-nanGap = 103;
+nanGap = maxLagBins + 3;
 nanPad = nan(1, nanGap);
 
 % initialize concatenated time series
