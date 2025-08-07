@@ -5,7 +5,7 @@ function runConcatCrossCorrelation(animalFolder)
 % saves lag vector, xc vals, peak lag, and control bounds into .mat file
 
 % load emg-triggered neural activity
-load(fullfile(animalFolder, 'EMG_Neural_AllChannels.mat'), 'pyrCxWinCell', 'intCxWinCell', 'validTransitionsCell', 'tAxis');
+load(fullfile(animalFolder, 'EMG_Neural_AllChannels.mat'), 'pyrCxWinCell', 'intCxWinCell', 'intCxWinShiftedCell', 'intCxWinShiftedMeanCell', 'validTransitionsCell', 'tAxis');
 
 channelsToUse = 1:4;
 binSize = 0.001; 
@@ -55,46 +55,75 @@ for i = 1:length(lags)
         xc(i) = corr(intSeg(validIdx)', pyrSeg(validIdx)');
     end
 end
+realXC = xc;  % save the real xc before overwriting
 
 % find peak lag from main curve
-[~, peakIdx] = max(xc);
+[~, peakIdx] = max(realXC);
 peakLagSec = lags(peakIdx) * binSize;
 
-% control: 100 random circ shifts of interneuron signal
-numShifts = 100;
-controlCorrs = nan(1, numShifts);
-
-for s = 1:numShifts
-    shiftAmt = randi([round(30 / binSize), length(intConcat) - round(30 / binSize)]);
-    intShifted = circshift(intConcat, shiftAmt);
-
-    % remove nans only after shift
-    validIdx = ~isnan(intShifted) & ~isnan(pyrConcat);
-    if sum(validIdx) > 10
-        controlCorrs(s) = corr(intShifted(validIdx)', pyrConcat(validIdx)');
+% control: cross-correlation between shifted interneuron and unshifted pyramidal
+% initialize pyramidal concat (same as original analysis)
+pyrConcat = [];
+for ch = channelsToUse
+    pyr = pyrCxWinCell{ch};  
+    pyrMean = squeeze(mean(pyr, 2, 'omitnan'));  % average across neurons
+    for evt = 1:size(pyrMean, 1)
+        pyrConcat = [pyrConcat, pyrMean(evt,:), nanPad];
     end
 end
 
-% calculate % bounds
-prc2_5 = prctile(controlCorrs, 2.5);
-prc97_5 = prctile(controlCorrs, 97.5);
+% avg over neurons, then events for first shift (→ 1 × time)
+intFirstShiftTrace = [];
+for ch = channelsToUse
+    shiftedFull = intCxWinShiftedCell{ch};  % events × neurons × time
+    shiftedAvg = squeeze(mean(shiftedFull, 2, 'omitnan'));   % avg over neurons → events × time
+    firstTrace = mean(shiftedAvg, 1, 'omitnan');  % avg over events → 1 × time
+    intFirstShiftTrace = cat(1, intFirstShiftTrace, firstTrace);  % accumulate across channels
+end
+intFirstShiftTrace = mean(intFirstShiftTrace, 1, 'omitnan');  % final avg over channels → 1 × time
 
-% save results
-save(fullfile(animalFolder, 'concatCrossCorrResult.mat'), ...
-    'lags', 'binSize', 'xc', 'peakLagSec', 'prc2_5', 'prc97_5');
+% gather the remaining 99 avgd shifted traces
+intShiftedMeanMatrix = [];
+for ch = channelsToUse
+    meanShifts = intCxWinShiftedMeanCell(ch, :);  % 1×99 cell
+    shiftTraces = vertcat(meanShifts{:});  % 99 × time
+    intShiftedMeanMatrix = cat(1, intShiftedMeanMatrix, shiftTraces);  % concat across channels
+end
+
+% prepend full first shift (converted to 1 x time)
+intShiftedMeanMatrix = [intFirstShiftTrace; intShiftedMeanMatrix];  % → 100 × time
+
+% trim nan edges from shifted and unshifted
+pyrConcatNoNaN = pyrConcat(~isnan(pyrConcat));
+shiftedCorrs = [];
+
+for i = 1:size(intShiftedMeanMatrix, 1)
+    shifted = intShiftedMeanMatrix(i, :);
+    shiftedNoNaN = shifted(~isnan(shifted));
+    len = min(length(shiftedNoNaN), length(pyrConcatNoNaN));
+    xc = xcorr(pyrConcatNoNaN(1:len), shiftedNoNaN(1:len), maxLagBins, 'coeff');
+    shiftedCorrs(i, :) = xc;
+end
+
+% compute percentile bounds across shifts
+prc25  = prctile(shiftedCorrs, 2.5, 1);  % → 1 × lags
+prc975 = prctile(shiftedCorrs, 97.5, 1);
 
 % plot
-figure('Name', 'Concatenated Cross-Correlation', 'Color', 'w');
-plot(lags * binSize, xc, 'k', 'LineWidth', 2); hold on;
-xline(peakLagSec, 'r--', sprintf('Peak Lag = %.3f s', peakLagSec));
-yline(prc2_5, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.2);
-yline(prc97_5, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.2);
+figure('Name', 'Concatenated Cross-Correlation with Control', 'Color', 'w');
+plot(lags * binSize, realXC, 'k', 'LineWidth', 2); hold on;
+plot(lags * binSize, prc25, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5);
+plot(lags * binSize, prc975, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5);
+xline(0, 'r--');
+
+% label plot
+numEvents = size(pyrCxWinCell{1}, 1);
+title(sprintf('Cross-Correlation: Shifted Interneuron vs Pyramidal\n(%d transitions)', numEvents));
 xlabel('Lag (s)');
 ylabel('Correlation');
-title('Cross-Correlation: Interneuron vs Pyramidal (Concatenated Windows)');
-legend('Cross-corr', 'Peak Lag', '2.5% Control', '97.5% Control', 'Location', 'best');
 grid on;
 box off;
 
-fprintf('→ %s\nSaved lagged xcorr + control shift percentiles\nPeak Lag = %.3f s\n', animalFolder, peakLagSec);
+% save results
+save(fullfile(animalFolder, 'concatCrossCorrResult_D026.mat'), 'lags', 'binSize', 'realXC', 'peakLagSec', 'shiftedCorrs', 'prc25', 'prc975');
 end
