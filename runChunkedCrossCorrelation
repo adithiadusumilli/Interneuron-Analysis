@@ -1,0 +1,120 @@
+function runChunkedCrossCorrelation(animalFolder, channelsToUse, chunkHalf, maxLagSecs)
+% computes xc using per-window subchunks, then concats the subchunks
+% each lag uses 401 samples per window (default = -200..+200) from pyr and int uses the same # but shifted by -lag (in bins)
+% no nan padding; nans removed synchronously after concat
+
+% inputs:
+%   animalfolder: folder w 'emg_neural_allchannels.mat'
+%   channelsToUse: which emg channels to include (default is 1:4)
+%   chunkhalf: half-length of subchunk (default 200 -> 400 samples)
+%   maxLagsSecs: desired max lag in secs (but will be clipped to fit windows)
+
+if nargin < 2 || isempty(channelsToUse), channelsToUse = 1:4; end
+if nargin < 3 || isempty(chunkHalf), chunkHalf = 200; end % 400 = 200*2
+if nargin < 4 || isempty(maxLagSecs), maxLagSecs = 0.5; end  % request; will be clipped
+
+% load emg-triggered neural activity windows
+S = load(fullfile(animalFolder, 'EMG_Neural_AllChannels.mat'), 'pyrCxWinCell','intCxWinCell','tAxis');
+
+% sampling and sizes
+tAxis = S.tAxis(:)';
+binSize = mean(diff(tAxis));  % secs per bin (0.001)
+T = numel(tAxis); % 1001 for -500:500
+
+% center index where t=0
+[~, cIdx] = min(abs(tAxis - 0));
+
+% base subchunk in pyr is [cIdx-chunkHalf : cIdx+chunkHalf] → 401 samples
+pyrStart = cIdx - chunkHalf;
+pyrEnd   = cIdx + chunkHalf;
+
+% safety: make sure this is inside win
+if pyrStart < 1 || pyrEnd > T
+    error('chosen chunkHalf=%d does not fit inside the available window length=%d.', chunkHalf, T);
+end
+
+% clip max lag in bins so int shifted subchunk stays inside win for all lags
+reqMaxLagBins = round(maxLagSecs / binSize);
+maxLagLeft  = pyrStart - 1; % how many bins i can go - and stay in range
+maxLagRight = T - pyrEnd; % how many bins i can go + and stay in range
+maxLagBins  = min([reqMaxLagBins, maxLagLeft, maxLagRight]); % clip
+
+lags = -maxLagBins:maxLagBins; % int bins
+
+% preallocate result
+xc = nan(1, numel(lags));
+
+% loop over lags
+for iL = 1:numel(lags)
+    L = lags(iL);  % + L means int chunk is shifted left by L bins (i.e. leads)
+
+    % idx for int subchunk (shifted by -L)
+    intStart = pyrStart - L;
+    intEnd   = pyrEnd   - L;
+
+    % sanity check
+    if intStart < 1 || intEnd > T
+        % skip if smth weird happens
+        continue;
+    end
+
+    % holders for concat per-window subchunks
+    pyrVec = [];
+    intVec = [];
+
+    % iterate channels then events, extracting subchunks and concat
+    for ch = channelsToUse
+        % windows: events × neurons × time
+        pyrWin = S.pyrCxWinCell{ch};
+        intWin = S.intCxWinCell{ch};
+
+        % average across neurons -> events × time
+        % (mean with 'omitnan' shouldn't change alignment; nans remain where they're present in time)
+        pyrEvt = squeeze(mean(pyrWin, 2, 'omitnan'));  % events × time
+        intEvt = squeeze(mean(intWin, 2, 'omitnan'));  % events × time
+
+        % number of events for this channel
+        nEvt = size(pyrEvt, 1);
+
+        % for each event, pull the 401-sample pyr subchunk and the shifted 401-sample int subchunk
+        for e = 1:nEvt
+            pseg = pyrEvt(e, pyrStart:pyrEnd);     % 1 × 401
+            iseg = intEvt(e, intStart:intEnd);     % 1 × 401 (shifted by -L)
+
+            % append to growing vectors (keep nans; remove them after)
+            pyrVec = [pyrVec, pseg];
+            intVec = [intVec, iseg];
+        end
+    end
+
+    % remove nans, preserve alignment
+    valid = ~isnan(pyrVec) & ~isnan(intVec);
+    pyrVec = pyrVec(valid);
+    intVec = intVec(valid);
+
+    % compute corr if enough points
+    if numel(pyrVec) > 10
+        xc(iL) = corr(pyrVec', intVec');
+    end
+end
+
+% find peak lag (in seconds)
+[~, peakIdx] = max(xc);
+peakLagSec = lags(peakIdx) * binSize;
+
+% plot result
+figure('Name','chunked window cross-correlation','Color','w');
+plot(lags * binSize, xc, 'k', 'LineWidth', 2); hold on;
+xline(0, 'r--');
+xline(peakLagSec, 'b--', sprintf('peak = %.3f s', peakLagSec), 'LabelVerticalAlignment','bottom');
+xlabel('lag (s)');
+ylabel('correlation');
+title(sprintf('chunked xcorr (pyr [-%d..+%d] vs int shifted, %d chans)', ...
+    chunkHalf, chunkHalf-1, numel(channelsToUse)));
+grid on; box off;
+
+% save output
+outFile = fullfile(animalFolder, 'concatCrossCorr_chunked.mat');
+save(outFile, 'lags', 'binSize', 'xc', 'peakLagSec', 'chunkHalf', 'channelsToUse');
+fprintf('saved: %s\n', outFile);
+end
