@@ -3,7 +3,7 @@ function runPairwiseCrossCorrelation(baseDirs)
 % code works for both cortex and striatum + saves 3D xcorr matrix (and peak lags and peak correlations)
 
 binSize = 0.001;  % 1 ms bins
-maxLagSecs = 1;
+maxLagSecs = 0.2;
 maxLagBins = round(maxLagSecs / binSize);
 lags = -maxLagBins:maxLagBins;
 
@@ -30,10 +30,9 @@ for iRegion = 1:length(regions)
         baseDir = baseDirs{iDir};
         fprintf('\nProcessing %s — Session %d: %s\n', regionName, iDir, baseDir);
 
-        neuronFile = fullfile(baseDir, 'neuronDataStruct.mat');
-        frFile = fullfile(baseDir, 'NeuralFiringRates10msBins30msGauss.mat');
+        frFile = fullfile(baseDir, 'NeuralFiringRates1msBins0msGauss.mat');
 
-        if ~isfile(neuronFile) || ~isfile(frFile)
+        if ~isfile(frFile)
             warning('Missing required files for session %d. Skipping.', iDir);
             continue;
         end
@@ -44,7 +43,6 @@ for iRegion = 1:length(regions)
             warning('Could not match folderPath to an entry in animalFolders. Skipping.');
             continue;
         end
-        load(neuronFile, 'neuronDataStruct');
         load(frFile, 'cortexFRs', 'cortexInds', 'striatumFRs', 'striatumInds');
 
         % region-specific firing rates and indices
@@ -166,7 +164,7 @@ for iRegion = 1:length(regions)
 end
 
 % save results
-save('PairwiseCrossCorrelationResults.mat', 'allXC', 'allPeakLags', 'allPeakCorrs', 'allXC_Shifted', 'allPeakLags_Shifted', 'allPeakCorrs_Shifted', 'lags');
+save('PairwiseCrossCorrelationResults_withShifting_D024.mat', 'allXC', 'allPeakLags', 'allPeakCorrs', 'allXC_Shifted', 'allPeakLags_Shifted', 'allPeakCorrs_Shifted', 'lags');
 
 % flatten matrices into vectors
 peakLagVec = cell2mat(cellfun(@(x) x(:), allPeakLags(:), 'UniformOutput', false));
