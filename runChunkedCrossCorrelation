@@ -19,7 +19,7 @@ S = load(fullfile(animalFolder, 'EMG_Neural_AllChannels.mat'),'pyrCxWinCell','in
 
 % sampling and sizes
 tAxis = S.tAxis(:)';
-binSize = mean(diff(tAxis));  % secs per bin (0.001)
+binSize = 0.001;
 T = numel(tAxis); % 1001 for -500:500
 
 % center index where t=0
