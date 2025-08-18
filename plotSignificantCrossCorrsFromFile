@@ -6,13 +6,13 @@ function plotSignificantCrossCorrsFromFile(matFile)
 %
 % Inputs:
 %   matFile - string path to the .mat file containing:
-%       allPeakLags, allPeakCorrs, controlCorrs (3D matrix)
+%       allPeakLags, allPeakCorrs, allXC_Shifted (3D matrix)
 %
 % Example:
 %   plotSignificantCrossCorrsFromFile('PairwiseCrossCorrelationResults.mat')
 
 % Load required variables
-load(matFile, 'allPeakLags', 'allPeakCorrs', 'controlCorrs');
+load(matFile, 'allPeakLags', 'allPeakCorrs', 'allXC_Shifted');
 
 % Initialize output containers
 sigLagVec = [];
@@ -29,12 +29,12 @@ for sess = 1:numSessions
         peakCorrs = allPeakCorrs{sess, reg};
         peakLags = allPeakLags{sess, reg};
 
-        if isempty(peakCorrs) || isempty(controlCorrs)
+        if isempty(peakCorrs) || isempty(allXC_Shifted)
             continue;
         end
 
         % Pull matching 3D null distribution
-        nullDist = controlCorrs;
+        nullDist = allXC_Shifted;
 
         if ndims(nullDist) ~= 3
             warning('Control correlation matrix is not 3D.');
