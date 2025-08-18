@@ -14,7 +14,8 @@ if nargin < 3 || isempty(chunkHalf), chunkHalf = 200; end % 400 = 200*2
 if nargin < 4 || isempty(maxLagSecs), maxLagSecs = 0.5; end  % request; will be clipped
 
 % load emg-triggered neural activity windows
-S = load(fullfile(animalFolder, 'EMG_Neural_AllChannels.mat'), 'pyrCxWinCell','intCxWinCell','tAxis');
+S = load(fullfile(animalFolder, 'EMG_Neural_AllChannels.mat'),'pyrCxWinCell','intCxWinCell','intCxWinShiftedCell','intCxWinShiftedMeanCell','tAxis');
+
 
 % sampling and sizes
 tAxis = S.tAxis(:)';
@@ -102,19 +103,65 @@ end
 [~, peakIdx] = max(xc);
 peakLagSec = lags(peakIdx) * binSize;
 
-% plot result
-figure('Name','chunked window cross-correlation','Color','w');
+% -------- control: no lags, use precomputed shifted windows --------
+% one correlation per shift (first shift from intCxWinShiftedCell averaged over neurons,
+% remaining shifts from intCxWinShiftedMeanCell which store events×time)
+numStoredShifts = size(S.intCxWinShiftedMeanCell, 2);   % typically 99
+numShifts       = 1 + numStoredShifts;                  % 1 (full) + 99 (means) = 100
+ctrlCorrs       = nan(1, numShifts);
+
+for s = 1:numShifts
+    pyrVec_ctrl = [];
+    intVec_ctrl = [];
+
+    for ch = channelsToUse
+        % pyr (unshifted): events×neurons×time → avg over neurons → events×time
+        pyrEvt = squeeze(mean(S.pyrCxWinCell{ch}, 2, 'omitnan'));   % events × time
+
+        % int (already shifted for this s)
+        if s == 1
+            % fully saved first shift: events×neurons×time → avg over neurons → events×time
+            intEvt = squeeze(mean(S.intCxWinShiftedCell{ch}, 2, 'omitnan'));
+        else
+            % mean-shift store: events×time (already neuron-averaged in extract step)
+            intEvt = S.intCxWinShiftedMeanCell{ch, s-1};            % events × time
+        end
+
+        if isempty(pyrEvt) || isempty(intEvt), continue; end
+        nEvt = min(size(pyrEvt,1), size(intEvt,1));
+
+        for e = 1:nEvt
+            pseg = pyrEvt(e, pyrStart:pyrEnd);   % 1×401 (unshifted)
+            iseg = intEvt(e, pyrStart:pyrEnd);   % 1×401 (already shifted in data)
+            pyrVec_ctrl = [pyrVec_ctrl, pseg];
+            intVec_ctrl = [intVec_ctrl, iseg];
+        end
+    end
+
+    valid = ~isnan(pyrVec_ctrl) & ~isnan(intVec_ctrl);
+    if nnz(valid) > 10
+        ctrlCorrs(s) = corr(pyrVec_ctrl(valid)', intVec_ctrl(valid)');
+    end
+end
+
+% percentile bounds from control
+prc2p5  = prctile(ctrlCorrs, 2.5);
+prc97p5 = prctile(ctrlCorrs, 97.5);
+
+% -------- plot --------
+figure('Name','chunked window cross-correlation (with control)', 'Color','w');
 plot(lags * binSize, xc, 'k', 'LineWidth', 2); hold on;
+yline(prc2p5,  '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5);
+yline(prc97p5, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5);
 xline(0, 'r--');
 xline(peakLagSec, 'b--', sprintf('peak = %.3f s', peakLagSec), 'LabelVerticalAlignment','bottom');
-xlabel('lag (s)');
-ylabel('correlation');
-title(sprintf('chunked xcorr (pyr [-%d..+%d] vs int shifted, %d chans)', ...
-    chunkHalf, chunkHalf-1, numel(channelsToUse)));
+xlabel('lag (s)'); ylabel('correlation');
+title(sprintf('chunked xcorr (pyr [-%d..+%d] vs int shifted, %d chans) + control percentiles', chunkHalf, chunkHalf, numel(channelsToUse)));
+legend({'xc (lags)', 'control 2.5%', 'control 97.5%', '0 lag', 'peak'}, 'Location','best');
 grid on; box off;
 
 % save output
-outFile = fullfile(animalFolder, 'concatCrossCorr_chunked.mat');
-save(outFile, 'lags', 'binSize', 'xc', 'peakLagSec', 'chunkHalf', 'channelsToUse');
+outFile = fullfile(animalFolder, 'concatCrossCorr_chunked_withControl.mat');
+save(outFile, 'lags','binSize','xc','peakLagSec','chunkHalf','channelsToUse', 'ctrlCorrs','prc2p5','prc97p5');
 fprintf('saved: %s\n', outFile);
 end
