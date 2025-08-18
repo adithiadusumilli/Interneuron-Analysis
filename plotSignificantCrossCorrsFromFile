@@ -1,20 +1,15 @@
 function plotSignificantCrossCorrsFromFile(matFile)
-% plotSignificantCrossCorrsFromFile(matFile)
-% Loads pairwise cross-correlation data from a .mat file
-% Filters neuron pairs whose peak correlations are > 3 SDs above null distribution
-% Plots histograms of peak lag and correlation for only those significant pairs
-%
-% Inputs:
-%   matFile - string path to the .mat file containing:
-%       allPeakLags, allPeakCorrs, allXC_Shifted (3D matrix)
-%
-% Example:
-%   plotSignificantCrossCorrsFromFile('PairwiseCrossCorrelationResults.mat')
+% load pairwise xc data from .mat file
+% filter neuron pairs w peak corrs > 3 SDs above null dist
+% plot hists of peak lag and corr for only significant pairs
 
-% Load required variables
+% input: matFile - string path to the .mat file containing allPeakLags, allPeakCorrs, allXC_Shifted (3D matrix)
+% eg plotSignificantCrossCorrsFromFile('PairwiseCrossCorrelationResults.mat')
+
+% load data
 load(matFile, 'allPeakLags', 'allPeakCorrs', 'allXC_Shifted');
 
-% Initialize output containers
+% initialize
 sigLagVec = [];
 sigCorrVec = [];
 allLagVec = [];
@@ -23,38 +18,33 @@ allCorrVec = [];
 numSessions = size(allPeakCorrs, 1);
 numRegions = size(allPeakCorrs, 2);
 
-% Iterate through sessions and regions
 for sess = 1:numSessions
     for reg = 1:numRegions
         peakCorrs = allPeakCorrs{sess, reg};
         peakLags = allPeakLags{sess, reg};
+        shiftedXC = allXC_Shifted{sess, reg};  % [int × pyr × numShifts]
 
-        if isempty(peakCorrs) || isempty(allXC_Shifted)
+        if isempty(peakCorrs) || isempty(shiftedXC)
             continue;
         end
 
-        % Pull matching 3D null distribution
-        nullDist = allXC_Shifted;
-
-        if ndims(nullDist) ~= 3
-            warning('Control correlation matrix is not 3D.');
-            continue;
-        end
-
-        [numInt, numPyr, ~] = size(nullDist);
+        [numInt, numPyr, ~] = size(shiftedXC);
 
         for i = 1:numInt
             for j = 1:numPyr
-                nullVals = squeeze(nullDist(i, j, :));
+                % get null dist: all peak xcorrs across shifts
+                nullVals = squeeze(shiftedXC(i, j, :));
                 nullMean = mean(nullVals, 'omitnan');
                 nullStd = std(nullVals, 'omitnan');
 
                 actualCorr = peakCorrs(i, j);
                 actualLag = peakLags(i, j);
 
+                % save all vals for histogram reference
                 allCorrVec(end+1) = actualCorr;
                 allLagVec(end+1) = actualLag;
 
+                % check if significantly above null
                 if ~isnan(actualCorr) && actualCorr > (nullMean + 3 * nullStd)
                     sigCorrVec(end+1) = actualCorr;
                     sigLagVec(end+1) = actualLag;
@@ -64,11 +54,11 @@ for sess = 1:numSessions
     end
 end
 
-% Count
+% counts
 totalPairs = numel(allCorrVec);
 sigPairs = numel(sigCorrVec);
 
-% Plot: Peak Lag Histogram
+% plot: peak lag hist
 figure;
 histogram(sigLagVec, 50, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
 xlabel('Peak Lag (sec)');
@@ -76,11 +66,13 @@ ylabel('Count');
 title(sprintf('Significant Peak Lags (n = %d / %d)', sigPairs, totalPairs));
 grid on;
 
-% Plot: Peak Correlation Histogram
+% plot: peak corr hist
 figure;
 histogram(sigCorrVec, 50, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
 xlabel('Peak Correlation');
 ylabel('Count');
 title(sprintf('Significant Peak Correlations (n = %d / %d)', sigPairs, totalPairs));
 grid on;
+
 end
+
