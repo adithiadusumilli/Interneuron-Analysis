@@ -44,29 +44,37 @@ function plotEMGandNeuralAverages(dataFile, channelsToUse)
     intStr_shiftMat = [];
 
     for ch = channelsToUse
-        % first shift: mean across events & # neurons → 1 × time
-        firstPyrCx  = squeeze(mean(mean(S.pyrCxWinShiftedCell{ch}, 2, 'omitnan'), 1, 'omitnan'))';  % → 1×time
-        firstIntCx  = squeeze(mean(mean(S.intCxWinShiftedCell{ch}, 2, 'omitnan'), 1, 'omitnan'))';
+        % first shift (fully saved): avg across neurons then across events → 1 × time
+        firstPyrCx = squeeze(mean(mean(S.pyrCxWinShiftedCell{ch}, 2, 'omitnan'), 1, 'omitnan'))';  %  1 ×time
+        firstIntCx = squeeze(mean(mean(S.intCxWinShiftedCell{ch}, 2, 'omitnan'), 1, 'omitnan'))';
         firstPyrStr = squeeze(mean(mean(S.pyrStrWinShiftedCell{ch}, 2, 'omitnan'), 1, 'omitnan'))';
         firstIntStr = squeeze(mean(mean(S.intStrWinShiftedCell{ch}, 2, 'omitnan'), 1, 'omitnan'))';
 
-        % remaining 99 shifts (stored as 1x99 cells of 1x1001 each)
-        pyrCxShifts  = S.pyrCxWinShiftedMeanCell(ch, :);
-        intCxShifts  = S.intCxWinShiftedMeanCell(ch, :);
-        pyrStrShifts = S.pyrStrWinShiftedMeanCell(ch, :);
-        intStrShifts = S.intStrWinShiftedMeanCell(ch, :);
+        % remaining 99 shifts: each cell is (events × time) → average across events for each shift
+        % result per region per channel: 99 × time
+        pyrCxShifts = cellfun(@(M) mean(M, 1, 'omitnan'), S.pyrCxWinShiftedMeanCell(ch, :), 'UniformOutput', false);
+        intCxShifts = cellfun(@(M) mean(M, 1, 'omitnan'), S.intCxWinShiftedMeanCell(ch, :), 'UniformOutput', false);
+        pyrStrShifts = cellfun(@(M) mean(M, 1, 'omitnan'), S.pyrStrWinShiftedMeanCell(ch, :), 'UniformOutput', false);
+        intStrShifts = cellfun(@(M) mean(M, 1, 'omitnan'), S.intStrWinShiftedMeanCell(ch, :), 'UniformOutput', false);
 
-        % concatenate into 1x100 cell array
-        pyrCxAll = [ {firstPyrCx},  pyrCxShifts ];
-        intCxAll = [ {firstIntCx},  intCxShifts ];
-        pyrStrAll = [ {firstPyrStr}, pyrStrShifts ];
-        intStrAll = [ {firstIntStr}, intStrShifts ];
+        % stack into numeric matrices: 99 × time
+        pyrCxShifts = vertcat(pyrCxShifts{:});
+        intCxShifts = vertcat(intCxShifts{:});
+        pyrStrShifts = vertcat(pyrStrShifts{:});
+        intStrShifts = vertcat(intStrShifts{:});
 
-        % concatenate across channels (each row = one shift)
-        pyrCx_shiftMat = cat(1, pyrCx_shiftMat, vertcat(pyrCxAll{:}));
-        intCx_shiftMat  = cat(1, intCx_shiftMat , vertcat(intCxAll{:}));
-        pyrStr_shiftMat = cat(1, pyrStr_shiftMat, vertcat(pyrStrAll{:}));
-        intStr_shiftMat = cat(1, intStr_shiftMat, vertcat(intStrAll{:}));
+        % 100 × time including the fully saved first shift
+        pyrCxAll  = [firstPyrCx ; pyrCxShifts]; 
+        intCxAll  = [firstIntCx ; intCxShifts];
+        pyrStrAll = [firstPyrStr; pyrStrShifts];
+        intStrAll = [firstIntStr; intStrShifts];
+
+        % concat across channels (each row = one shift)
+        % since these are numeric matrices now, not using vertcat(...{:})
+        pyrCx_shiftMat = cat(1, pyrCx_shiftMat, pyrCxAll);
+        intCx_shiftMat = cat(1, intCx_shiftMat, intCxAll);
+        pyrStr_shiftMat = cat(1, pyrStr_shiftMat, pyrStrAll);
+        intStr_shiftMat = cat(1, intStr_shiftMat, intStrAll);
     end
 
     % --- compute 95% bounds ---
