@@ -7,29 +7,29 @@ function runChunkedCrossCorrelationPerBehavior_Tiled(animalFolder, chunkHalf, ma
 %   animalFolder: folder with 'EMG_Neural_AllChannels.mat' and 'transitionBehaviorLabels.mat'
 %   chunkHalf: half-length of subchunk (default 200 -> 401 samples total)
 %   maxLagSecs: requested max lag in seconds (clipped to fit window, default 0.5)
-%   behaviors: vector of UMAP behaviors to plot (default 1:7)
+%   behaviors: vector of umap behaviors to plot (default 1:7)
 %   doBaselineNorm: logical, per-trial baseline subtract in [-200,-150] ms (default true)
 
 % outputs:
-% saves per-behavior .mat files: concatCrossCorr_chunked_withControl_behXX.mat
-% figure with one tile per behavior: xc(lag) and control mean ± sem
+%   saves per-behavior .mat files: concatCrossCorr_chunked_withControl_behXX.mat
+%   figure with one tile per behavior: xc(lag) and control mean ± sem
 
     % defaults
-    if nargin < 2 || isempty(chunkHalf),      chunkHalf      = 200; end
-    if nargin < 3 || isempty(maxLagSecs),     maxLagSecs     = 0.5; end
-    if nargin < 4 || isempty(behaviors),      behaviors      = 1:7; end
+    if nargin < 2 || isempty(chunkHalf), chunkHalf = 200; end
+    if nargin < 3 || isempty(maxLagSecs), maxLagSecs = 0.5; end
+    if nargin < 4 || isempty(behaviors), behaviors = 1:7; end
     if nargin < 5 || isempty(doBaselineNorm), doBaselineNorm = true; end
 
-    % load cortex EMG-triggered windows + shifted controls
-    S = load(fullfile(animalFolder, 'EMG_Neural_AllChannels.mat'), 'pyrCxWinCell','intCxWinCell', 'intCxWinShiftedCell','intCxWinShiftedMeanCell', 'tAxis');
+    % load cortex emg-triggered windows + shifted controls
+    S = load(fullfile(animalFolder, 'EMG_Neural_AllChannels.mat'), 'pyrCxWinCell','intCxWinCell','intCxWinShiftedCell','intCxWinShiftedMeanCell','tAxis');
 
-    % load behavior labels per transition (UMAP 1..7; NaN if unmapped)
+    % load behavior labels per transition (umap 1..7; nan if unmapped)
     L = load(fullfile(animalFolder, 'transitionBehaviorLabels.mat'), 'regionLabelsPerTransition');
 
     % sampling and sizes
-    tAxis   = S.tAxis(:)'; % assumed secs aka -0.5:0.001:0.5
+    tAxis = S.tAxis(:)';  % assumed secs aka -0.5:0.001:0.5
     binSize = 0.001; % 1 ms bins
-    T = numel(tAxis);
+    T  = numel(tAxis);
 
     % center index (t = 0)
     [~, cIdx] = min(abs(tAxis - 0));
@@ -45,9 +45,9 @@ function runChunkedCrossCorrelationPerBehavior_Tiled(animalFolder, chunkHalf, ma
 
     % max lag in bins such that int subchunk stays within [1..T]
     reqMaxLagBins = round(maxLagSecs / binSize);
-    maxLagLeft = pyrStart - 1;
+    maxLagLeft  = pyrStart - 1;
     maxLagRight = T - pyrEnd;
-    maxLagBins = min([reqMaxLagBins, maxLagLeft, maxLagRight]);
+    maxLagBins  = min([reqMaxLagBins, maxLagLeft, maxLagRight]);
     lagsBins = -maxLagBins:maxLagBins;
     lagsSec = lagsBins * binSize;
 
@@ -65,24 +65,52 @@ function runChunkedCrossCorrelationPerBehavior_Tiled(animalFolder, chunkHalf, ma
         Eout = Ein - baselines;  % implicit expansion per row
     end
 
-    % pre-allocate plotting holders
-    behData = struct('beh',[],'lags',[],'xc',[],'peakLagSec',[], 'ctrlCorrs',[],'ctrlMean',[],'ctrlSEM',[]);
+    % pre-allocate plotting holders (now includes nTrials)
+    behData = struct('beh',[],'lags',[],'xc',[],'peakLagSec',[], 'ctrlCorrs',[],'ctrlMean',[],'ctrlSEM',[],'nTrials',[]);
     behData(1:numel(behaviors)) = behData;
 
     % track global y-limits
     yMin = +Inf; yMax = -Inf;
 
-    % ------------ MAIN LOOP over behaviors!!!!!!! ------------
+    % ------------ main loop over behaviors!!!!!!! ------------
     for bIdx = 1:numel(behaviors)
         beh = behaviors(bIdx);
 
-        % compute xc(lag) for this behavior
+        % ----- count trials for this behavior (pooled across channels; do once, not per lag) -----
+        nTrialsThisBehavior = 0;
+        for ch = 1:nCh
+            if ch > numel(L.regionLabelsPerTransition) || isempty(L.regionLabelsPerTransition{ch})
+                continue;
+            end
+            if isempty(S.pyrCxWinCell{ch}) || isempty(S.intCxWinCell{ch})
+                continue;
+            end
+
+            pyrEvt_forCount = meanEvt(S.pyrCxWinCell{ch});
+            intEvt_forCount = meanEvt(S.intCxWinCell{ch});
+            if doBaselineNorm
+                pyrEvt_forCount = subtractTrialBaseline(pyrEvt_forCount, tAxis, -0.2, -0.15);
+                intEvt_forCount = subtractTrialBaseline(intEvt_forCount, tAxis, -0.2, -0.15);
+            end
+            if isempty(pyrEvt_forCount) || isempty(intEvt_forCount), continue; end
+
+            labels = L.regionLabelsPerTransition{ch}(:);
+            if isempty(labels), continue; end
+            nEvtBound = min(size(pyrEvt_forCount,1), size(intEvt_forCount,1));
+            evIdx = find(labels == beh);
+            evIdx = evIdx(evIdx >= 1 & evIdx <= nEvtBound);
+            if isempty(evIdx), continue; end
+
+            nTrialsThisBehavior = nTrialsThisBehavior + numel(evIdx);
+        end
+
+        % ----- compute xc(lag) for this behavior -----
         xc = nan(1, numel(lagsBins));
 
         for iL = 1:numel(lagsBins)
-            LAG = lagsBins(iL); % +LAG: int chunk shifted left by LAG bins
-            intStart = pyrStart - LAG; % shifted int subchunk indices
-            intEnd   = pyrEnd - LAG;
+            LAG = lagsBins(iL);  % +LAG: int chunk shifted left by LAG bins
+            intStart = pyrStart - LAG;  % shifted int subchunk indices
+            intEnd   = pyrEnd   - LAG;
             if intStart < 1 || intEnd > T
                 continue;
             end
@@ -91,7 +119,7 @@ function runChunkedCrossCorrelationPerBehavior_Tiled(animalFolder, chunkHalf, ma
             intVec = [];
 
             for ch = 1:nCh
-                % guards!!!!
+                % guards
                 if ch > numel(L.regionLabelsPerTransition) || isempty(L.regionLabelsPerTransition{ch})
                     continue;
                 end
@@ -230,6 +258,7 @@ function runChunkedCrossCorrelationPerBehavior_Tiled(animalFolder, chunkHalf, ma
         behData(bIdx).ctrlCorrs = ctrlCorrs;
         behData(bIdx).ctrlMean = ctrlMean;
         behData(bIdx).ctrlSEM = ctrlSEM;
+        behData(bIdx).nTrials = nTrialsThisBehavior;
 
         % y-limits
         yCand = xc(~isnan(xc));
@@ -243,12 +272,13 @@ function runChunkedCrossCorrelationPerBehavior_Tiled(animalFolder, chunkHalf, ma
 
         % save per-behavior outputs
         outFile = fullfile(animalFolder, sprintf('concatCrossCorr_chunked_withControl_beh%02d.mat', beh));
-        lags = lagsBins; %#ok<NASGU>  % save integer-bin lags for reproducibility
-        save(outFile, 'lags','lagsSec','binSize','xc','peakLagSec','chunkHalf','beh', 'ctrlCorrs','ctrlMean','ctrlSEM','doBaselineNorm');
+        lags = lagsBins;  % save integer-bin lags for reproducibility
+        nTrials = nTrialsThisBehavior; %#ok<NASGU>
+        save(outFile, 'lags','lagsSec','binSize','xc','peakLagSec','chunkHalf','beh', 'ctrlCorrs','ctrlMean','ctrlSEM','doBaselineNorm','nTrials');
         fprintf('saved: %s\n', outFile);
     end
 
-    % nothing to plot condition j in case
+    % nothing to plot condition
     if isinf(yMin) || isinf(yMax)
         warning('no valid behaviors to plot.');
         return;
@@ -285,7 +315,7 @@ function runChunkedCrossCorrelationPerBehavior_Tiled(animalFolder, chunkHalf, ma
 
         xlabel('lag (s)');
         if bIdx == 1, ylabel('correlation'); end
-        title(sprintf('behavior %d', bd.beh));
+        title(sprintf('behavior %d (n = %d)', bd.beh, bd.nTrials));
         ylim([yMin - 0.02, yMax + 0.02]);
         grid on; box off;
 
@@ -294,11 +324,11 @@ function runChunkedCrossCorrelationPerBehavior_Tiled(animalFolder, chunkHalf, ma
         end
     end
 
-    sgtitle(sprintf('chunked xcorr per UMAP behavior (1–7), chunkHalf=%d, maxLag=\\pm%.3f s, %s', chunkHalf, maxLagBins*binSize, tern(doBaselineNorm,'baseline-subtracted','raw')));
+    sgtitle(sprintf('chunked xcorr per umap behavior (1–7), chunkHalf=%d, maxLag=\\pm%.3f s, %s', chunkHalf, maxLagBins*binSize, tern(doBaselineNorm,'baseline-subtracted','raw')));
 
 end
 
-% inline ternary for titles yay!
+% inline ternary for titles
 function out = tern(cond, a, b)
     if cond, out = a; else, out = b; end
 end
