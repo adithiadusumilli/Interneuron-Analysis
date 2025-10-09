@@ -1,4 +1,4 @@
-function runChunkedCrossCorrelationPerMuscle_Tiled(animalFolder, chunkHalf, maxLagSecs)
+function runChunkedCrossCorrelationPerMuscle_Tiled(animalFolder, chunkHalf, maxLagSecs, doBaselineNorm)
 % computes chunked xcorr per emg muscle channel (1-4) separately
 % same logic as chunking code, but plots as 1x4 tiled figure
 % cortex only, avg across neurons per channel, concat across events
@@ -7,21 +7,22 @@ function runChunkedCrossCorrelationPerMuscle_Tiled(animalFolder, chunkHalf, maxL
 %   animalfolder: folder w 'EMG_Neural_AllChannels.mat'
 %   chunkhalf: half-length of subchunk (default 200 -> 401 samples total)
 %   maxLagsSecs: requested max lag seconds (clipped to window, typically 0.5)
+%   doBaselineNorm: logical, per-trial baseline subtract in [-200,-150] ms (default = true)
 
 % outputs:
 %   1 fig w 4 tiles (chans 1-4)
-%   saves per-channel .mat outputs (same vars as before)
+%   saves per-channel .mat outputs
 
 % defaults
 if nargin < 2 || isempty(chunkHalf),  chunkHalf  = 200; end
 if nargin < 3 || isempty(maxLagSecs), maxLagSecs = 0.5; end
+if nargin < 4 || isempty(doBaselineNorm), doBaselineNorm = true; end
 
 % load emg-triggered neural activity windows (cortex only)
-S = load(fullfile(animalFolder, 'EMG_Neural_AllChannels.mat'), ...
-    'pyrCxWinCell','intCxWinCell','intCxWinShiftedCell','intCxWinShiftedMeanCell','tAxis');
+S = load(fullfile(animalFolder, 'EMG_Neural_AllChannels.mat'), 'pyrCxWinCell','intCxWinCell','intCxWinShiftedCell','intCxWinShiftedMeanCell','tAxis');
 
 % sampling and sizes
-tAxis = S.tAxis(:)';
+tAxis = S.tAxis(:)'; % assumed seconds (e.g., -0.5:0.001:0.5)
 binSize = 0.001;
 T = numel(tAxis); % typically 1001 for -0.5..+0.5 s in 1 ms bins
 
@@ -39,16 +40,26 @@ end
 
 % clip max lag in bins so int subchunk remains in range for all the lags
 reqMaxLagBins = round(maxLagSecs / binSize);
-maxLagLeft    = pyrStart - 1;
-maxLagRight   = T - pyrEnd;
-maxLagBins    = min([reqMaxLagBins, maxLagLeft, maxLagRight]);
-lags          = -maxLagBins:maxLagBins;  % integer lag bins
+maxLagLeft = pyrStart - 1;
+maxLagRight = T - pyrEnd;
+maxLagBins = min([reqMaxLagBins, maxLagLeft, maxLagRight]);
+lags = -maxLagBins:maxLagBins;  % integer lag bins
 
 % chans to include in tiled plot
 channelsToPlot = 1:4;
 
+% helper: per-trial baseline subtraction on events×time
+function Eout = subtractTrialBaseline(Ein, tAxisSec, tStartSec, tEndSec)
+    [~, iStart] = min(abs(tAxisSec - tStartSec));
+    [~, iEnd]   = min(abs(tAxisSec - tEndSec));
+    if iEnd < iStart, tmp = iStart; iStart = iEnd; iEnd = tmp; end
+    baselines = mean(Ein(:, iStart:iEnd), 2, 'omitnan');  % events×1
+    Eout = Ein - baselines;  % implicit expansion per-event
+end
+
 % pre-allocate holders for plotting after computation
-chanData = struct('ch',[],'lags',[],'xc',[],'peakLagSec',[], 'ctrlCorrs',[],'prc2p5',[],'prc97p5',[]);
+chanData = struct('ch',[],'lags',[],'xc',[],'peakLagSec',[], ...
+                  'ctrlCorrs',[],'ctrlMean',[],'ctrlSEM',[]);
 chanData(1:numel(channelsToPlot)) = chanData; 
 
 % p 1: calc results per chan and track global y-limits for consistent axes
@@ -70,6 +81,12 @@ for idx = 1:numel(channelsToPlot)
     if isempty(pyrEvt) || isempty(intEvt)
         warning('channel %d has empty event matrices; skipping.', ch);
         continue;
+    end
+
+    % --- normalization (optional): per-trial baseline subtract in [-0.2, -0.15] s ---
+    if doBaselineNorm
+        pyrEvt = subtractTrialBaseline(pyrEvt, tAxis, -0.2, -0.15);
+        intEvt = subtractTrialBaseline(intEvt, tAxis, -0.2, -0.15);
     end
 
     % compute chunked xcorr across lags (per channel)
@@ -94,8 +111,8 @@ for idx = 1:numel(channelsToPlot)
         for e = 1:nEvt
             pseg = pyrEvt(e, pyrStart:pyrEnd); % 1×(2*chunkHalf+1)
             iseg = intEvt(e, intStart:intEnd); % shifted by -L
-            pyrVec = [pyrVec, pseg];
-            intVec = [intVec, iseg];
+            pyrVec = [pyrVec, pseg]; %#ok<AGROW>
+            intVec = [intVec, iseg]; %#ok<AGROW>
         end
 
         % remove nans in sync
@@ -113,15 +130,15 @@ for idx = 1:numel(channelsToPlot)
     if ch > size(S.intCxWinShiftedMeanCell,1) || isempty(S.intCxWinShiftedMeanCell)
         warning('no shifted-mean storage found for channel %d; control skipped.', ch);
         ctrlCorrs = nan(1,0);
-        prc25 = NaN;
-        prc975 = NaN;
+        ctrlMean  = NaN;
+        ctrlSEM   = NaN;
     else
         numStoredShifts = size(S.intCxWinShiftedMeanCell, 2); % typically 99
         numShifts = 1 + numStoredShifts; % 100 total
         ctrlCorrs = nan(1, numShifts);
 
         for s = 1:numShifts
-            % pyr (unshifted) alr avg over neurons
+            % pyr (unshifted) avg over neurons (already)
             pyrEvt_ctrl = pyrEvt;
 
             % int for this shift (events×time)
@@ -135,13 +152,19 @@ for idx = 1:numel(channelsToPlot)
                 continue;
             end
 
+            % apply same normalization to controls
+            if doBaselineNorm
+                pyrEvt_ctrl = subtractTrialBaseline(pyrEvt_ctrl, tAxis, -0.2, -0.15);
+                intEvt_ctrl = subtractTrialBaseline(intEvt_ctrl, tAxis, -0.2, -0.15);
+            end
+
             nEvt_ctrl = min(size(pyrEvt_ctrl,1), size(intEvt_ctrl,1));
             pvec = []; ivec = [];
             for e = 1:nEvt_ctrl
                 pseg = pyrEvt_ctrl(e, pyrStart:pyrEnd); % unshifted
                 iseg = intEvt_ctrl(e, pyrStart:pyrEnd); % already shifted in data
-                pvec = [pvec, pseg];
-                ivec = [ivec, iseg];
+                pvec = [pvec, pseg]; %#ok<AGROW>
+                ivec = [ivec, iseg]; %#ok<AGROW>
             end
 
             valid = ~isnan(pvec) & ~isnan(ivec);
@@ -150,30 +173,37 @@ for idx = 1:numel(channelsToPlot)
             end
         end
 
-        prc25  = prctile(ctrlCorrs, 2.5);
-        prc975 = prctile(ctrlCorrs, 97.5);
+        % mean ± SEM across shifts
+        if ~all(isnan(ctrlCorrs))
+            ctrlMean = mean(ctrlCorrs, 'omitnan');
+            ctrlSEM  = std(ctrlCorrs, 'omitnan') / sqrt(sum(~isnan(ctrlCorrs)));
+        else
+            ctrlMean = NaN; ctrlSEM = NaN;
+        end
     end
 
     % store channel results
     chanData(idx).ch = ch;
     chanData(idx).lags = lags * binSize;
     chanData(idx).xc = xc;
-    chanData(idx).peakLagSec = peakLagSec;
+    chanData(idx).peakLagSec= peakLagSec;
     chanData(idx).ctrlCorrs = ctrlCorrs;
-    chanData(idx).prc2p5 = prc25;
-    chanData(idx).prc97p5 = prc975;
+    chanData(idx).ctrlMean = ctrlMean;
+    chanData(idx).ctrlSEM = ctrlSEM;
 
     % update global y-limits
     yCand = xc(~isnan(xc));
-    if ~isempty(ctrlCorrs), yCand = [yCand, prc25, prc975]; end
+    if ~isnan(ctrlMean) && ~isnan(ctrlSEM)
+        yCand = [yCand, ctrlMean - ctrlSEM, ctrlMean + ctrlSEM]; %#ok<AGROW>
+    end
     if ~isempty(yCand)
         yMin = min(yMin, min(yCand));
         yMax = max(yMax, max(yCand));
     end
 
-    % save per-chan outputs (same pattern as original code)
+    % save per-chan outputs
     outFile = fullfile(animalFolder, sprintf('concatCrossCorr_chunked_withControl_ch%02d.mat', ch));
-    save(outFile, 'lags','binSize','xc','peakLagSec','chunkHalf','ch','ctrlCorrs','prc25','prc975');
+    save(outFile, 'lags','binSize','xc','peakLagSec','chunkHalf','ch', 'ctrlCorrs','ctrlMean','ctrlSEM','doBaselineNorm');
     fprintf('saved: %s\n', outFile);
 end
 
@@ -184,7 +214,7 @@ if isinf(yMin) || isinf(yMax)
 end
 
 % p 2: plot single 1x4 tiled layout w consistent y-limits
-figure('Name','chunked xcorr per muscle (channels 1–4) with control', 'Color','w');
+figure('Name','chunked xcorr per muscle (channels 1–4) with control mean ± sem', 'Color','w');
 tiledlayout(1,4, 'Padding','compact', 'TileSpacing','compact');
 
 for idx = 1:numel(channelsToPlot)
@@ -199,9 +229,9 @@ for idx = 1:numel(channelsToPlot)
     plot(cd_.lags, cd_.xc, 'k', 'LineWidth', 2); hold on;
 
     if ~isempty(cd_.ctrlCorrs) && ~all(isnan(cd_.ctrlCorrs))
-        yline(cd_.prc25,  '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5);
-        yline(cd_.prc975, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5);
-        legendNames = {'xc (lags)','control 2.5%','control 97.5%','0 lag','peak'};
+        yline(cd_.ctrlMean - cd_.ctrlSEM, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5);
+        yline(cd_.ctrlMean + cd_.ctrlSEM, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5);
+        legendNames = {'xc (lags)','control mean \pm sem','0 lag','peak'};
     else
         legendNames = {'xc (lags)','0 lag','peak'};
     end
@@ -221,6 +251,10 @@ for idx = 1:numel(channelsToPlot)
     end
 end
 
-sgtitle(sprintf('chunked xcorr per muscle (channels 1–4), chunkHalf=%d, maxLag=\\pm%.3f s', chunkHalf, maxLagBins*binSize));
+sgtitle(sprintf('chunked xcorr per muscle (channels 1–4), chunkHalf=%d, maxLag=\\pm%.3f s, %s', chunkHalf, maxLagBins*binSize, tern(doBaselineNorm,'baseline-subtracted','raw')));
 
+end
+
+function out = tern(cond, a, b)
+    if cond, out = a; else, out = b; end
 end
