@@ -59,7 +59,7 @@ end
 
 % pre-allocate holders for plotting after computation
 chanData = struct('ch',[],'lags',[],'xc',[],'peakLagSec',[], ...
-                  'ctrlCorrs',[],'ctrlMean',[],'ctrlSEM',[]);
+                  'ctrlCorrs',[],'ctrlMean',[],'ctrlSEM',[],'nTrials',[]);  % <-- added nTrials
 chanData(1:numel(channelsToPlot)) = chanData; 
 
 % p 1: calc results per chan and track global y-limits for consistent axes
@@ -82,6 +82,9 @@ for idx = 1:numel(channelsToPlot)
         warning('channel %d has empty event matrices; skipping.', ch);
         continue;
     end
+
+    % count trials for this channel (events)
+    nTrialsThisChan = size(pyrEvt,1);  % <-- added
 
     % --- normalization (optional): per-trial baseline subtract in [-0.2, -0.15] s ---
     if doBaselineNorm
@@ -183,13 +186,14 @@ for idx = 1:numel(channelsToPlot)
     end
 
     % store channel results
-    chanData(idx).ch = ch;
-    chanData(idx).lags = lags * binSize;
-    chanData(idx).xc = xc;
+    chanData(idx).ch        = ch;
+    chanData(idx).lags      = lags * binSize;
+    chanData(idx).xc        = xc;
     chanData(idx).peakLagSec= peakLagSec;
     chanData(idx).ctrlCorrs = ctrlCorrs;
-    chanData(idx).ctrlMean = ctrlMean;
-    chanData(idx).ctrlSEM = ctrlSEM;
+    chanData(idx).ctrlMean  = ctrlMean;
+    chanData(idx).ctrlSEM   = ctrlSEM;
+    chanData(idx).nTrials   = nTrialsThisChan;  % <-- added
 
     % update global y-limits
     yCand = xc(~isnan(xc));
@@ -241,7 +245,7 @@ for idx = 1:numel(channelsToPlot)
 
     xlabel('lag (s)');
     if idx == 1, ylabel('correlation'); end 
-    title(sprintf('channel %d', cd_.ch));
+    title(sprintf('channel %d (n = %d)', cd_.ch, cd_.nTrials));  % <-- added
     ylim([yMin - 0.02, yMax + 0.02]);
     grid on; box off;
 
