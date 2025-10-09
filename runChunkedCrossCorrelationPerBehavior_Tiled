@@ -1,0 +1,304 @@
+function runChunkedCrossCorrelationPerBehavior_Tiled(animalFolder, chunkHalf, maxLagSecs, behaviors, doBaselineNorm)
+% computes chunked xcorr per umap-defined behavior (1..7), pooling events across muscles
+% cortex only, avg across neurons, optional per-trial baseline subtraction, concat across events & control distribution from shifted int windows 
+% plot 1×(#behaviors) tiled fig
+
+% inputs:
+%   animalFolder: folder with 'EMG_Neural_AllChannels.mat' and 'transitionBehaviorLabels.mat'
+%   chunkHalf: half-length of subchunk (default 200 -> 401 samples total)
+%   maxLagSecs: requested max lag in seconds (clipped to fit window, default 0.5)
+%   behaviors: vector of UMAP behaviors to plot (default 1:7)
+%   doBaselineNorm: logical, per-trial baseline subtract in [-200,-150] ms (default true)
+
+% outputs:
+% saves per-behavior .mat files: concatCrossCorr_chunked_withControl_behXX.mat
+% figure with one tile per behavior: xc(lag) and control mean ± sem
+
+    % defaults
+    if nargin < 2 || isempty(chunkHalf),      chunkHalf      = 200; end
+    if nargin < 3 || isempty(maxLagSecs),     maxLagSecs     = 0.5; end
+    if nargin < 4 || isempty(behaviors),      behaviors      = 1:7; end
+    if nargin < 5 || isempty(doBaselineNorm), doBaselineNorm = true; end
+
+    % load cortex EMG-triggered windows + shifted controls
+    S = load(fullfile(animalFolder, 'EMG_Neural_AllChannels.mat'), 'pyrCxWinCell','intCxWinCell', 'intCxWinShiftedCell','intCxWinShiftedMeanCell', 'tAxis');
+
+    % load behavior labels per transition (UMAP 1..7; NaN if unmapped)
+    L = load(fullfile(animalFolder, 'transitionBehaviorLabels.mat'), 'regionLabelsPerTransition');
+
+    % sampling and sizes
+    tAxis   = S.tAxis(:)'; % assumed secs aka -0.5:0.001:0.5
+    binSize = 0.001; % 1 ms bins
+    T = numel(tAxis);
+
+    % center index (t = 0)
+    [~, cIdx] = min(abs(tAxis - 0));
+
+    % pyr subchunk indices [cIdx-chunkHalf : cIdx+chunkHalf] -> 2*chunkHalf+1 samples (e.g., 401)
+    pyrStart = cIdx - chunkHalf;
+    pyrEnd   = cIdx + chunkHalf;
+
+    % bounds
+    if pyrStart < 1 || pyrEnd > T
+        error('chosen chunkHalf=%d doesnt fit in available window length=%d.', chunkHalf, T);
+    end
+
+    % max lag in bins such that int subchunk stays within [1..T]
+    reqMaxLagBins = round(maxLagSecs / binSize);
+    maxLagLeft = pyrStart - 1;
+    maxLagRight = T - pyrEnd;
+    maxLagBins = min([reqMaxLagBins, maxLagLeft, maxLagRight]);
+    lagsBins = -maxLagBins:maxLagBins;
+    lagsSec = lagsBins * binSize;
+
+    % channels available
+    nCh = numel(S.pyrCxWinCell);
+
+    % helpers
+    meanEvt = @(M) squeeze(mean(M, 2, 'omitnan'));   % events×neurons×time -> events×time
+    function Eout = subtractTrialBaseline(Ein, tAxisSec, tStartSec, tEndSec)
+        % per-trial baseline subtract: Ein (events×time), subtract each trial's mean in [tStartSec, tEndSec]
+        [~, iStart] = min(abs(tAxisSec - tStartSec));
+        [~, iEnd]   = min(abs(tAxisSec - tEndSec));
+        if iEnd < iStart, tmp = iStart; iStart = iEnd; iEnd = tmp; end
+        baselines = mean(Ein(:, iStart:iEnd), 2, 'omitnan');  % events×1
+        Eout = Ein - baselines;  % implicit expansion per row
+    end
+
+    % pre-allocate plotting holders
+    behData = struct('beh',[],'lags',[],'xc',[],'peakLagSec',[], 'ctrlCorrs',[],'ctrlMean',[],'ctrlSEM',[]);
+    behData(1:numel(behaviors)) = behData;
+
+    % track global y-limits
+    yMin = +Inf; yMax = -Inf;
+
+    % ------------ MAIN LOOP over behaviors!!!!!!! ------------
+    for bIdx = 1:numel(behaviors)
+        beh = behaviors(bIdx);
+
+        % compute xc(lag) for this behavior
+        xc = nan(1, numel(lagsBins));
+
+        for iL = 1:numel(lagsBins)
+            LAG = lagsBins(iL); % +LAG: int chunk shifted left by LAG bins
+            intStart = pyrStart - LAG; % shifted int subchunk indices
+            intEnd   = pyrEnd - LAG;
+            if intStart < 1 || intEnd > T
+                continue;
+            end
+
+            pyrVec = [];
+            intVec = [];
+
+            for ch = 1:nCh
+                % guards!!!!
+                if ch > numel(L.regionLabelsPerTransition) || isempty(L.regionLabelsPerTransition{ch})
+                    continue;
+                end
+                if isempty(S.pyrCxWinCell{ch}) || isempty(S.intCxWinCell{ch})
+                    continue;
+                end
+
+                % avg over neurons -> events×time
+                pyrEvt = meanEvt(S.pyrCxWinCell{ch});
+                intEvt = meanEvt(S.intCxWinCell{ch});
+                if isempty(pyrEvt) || isempty(intEvt), continue; end
+
+                % optional per-trial baseline subtraction using -200 to -150 ms
+                if doBaselineNorm
+                    pyrEvt = subtractTrialBaseline(pyrEvt, tAxis, -0.2, -0.15);
+                    intEvt = subtractTrialBaseline(intEvt, tAxis, -0.2, -0.15);
+                end
+
+                % select events for this behavior
+                labels = L.regionLabelsPerTransition{ch}(:);
+                if isempty(labels), continue; end
+                evMask = (labels == beh);
+                if ~any(evMask), continue; end
+
+                % safe event bound
+                nEvt = min(size(pyrEvt,1), size(intEvt,1));
+                evIdx = find(evMask);
+                evIdx = evIdx(evIdx >= 1 & evIdx <= nEvt);
+                if isempty(evIdx), continue; end
+
+                % concat subchunks across matching events
+                for e = evIdx(:)'
+                    pseg = pyrEvt(e, pyrStart:pyrEnd);
+                    iseg = intEvt(e, intStart:intEnd);
+                    pyrVec = [pyrVec, pseg]; %#ok<AGROW>
+                    intVec = [intVec, iseg]; %#ok<AGROW>
+                end
+            end
+
+            % remove nans synchronously
+            valid = ~isnan(pyrVec) & ~isnan(intVec);
+            if nnz(valid) > 10
+                xc(iL) = corr(pyrVec(valid)', intVec(valid)');
+            end
+        end
+
+        % peak lag (seconds)
+        [~, peakIdx] = max(xc);
+        if all(isnan(xc)), peakLagSec = NaN; else, peakLagSec = lagsSec(peakIdx); end
+
+        % -------- controls: distribution across precomputed shifts (lag=0) --------
+        ctrlCorrs = nan(1,0); ctrlMean = NaN; ctrlSEM = NaN;
+
+        if isfield(S, 'intCxWinShiftedMeanCell') && ~isempty(S.intCxWinShiftedMeanCell)
+            if iscell(S.intCxWinShiftedMeanCell)
+                numStoredShifts = size(S.intCxWinShiftedMeanCell, 2); % typically 99
+            else
+                numStoredShifts = 0;
+            end
+            numShifts = 1 + numStoredShifts;
+            ctrlCorrs = nan(1, numShifts);
+
+            for s = 1:numShifts
+                pvec = []; ivec = [];
+
+                for ch = 1:nCh
+                    if ch > numel(L.regionLabelsPerTransition) || isempty(L.regionLabelsPerTransition{ch})
+                        continue;
+                    end
+                    if isempty(S.pyrCxWinCell{ch}), continue; end
+
+                    % unshifted pyr -> events×time (avg over neurons)
+                    pyrEvt_ctrl = meanEvt(S.pyrCxWinCell{ch});
+                    if isempty(pyrEvt_ctrl), continue; end
+
+                    % shifted int for this shift -> events×time
+                    if s == 1
+                        if ch > numel(S.intCxWinShiftedCell) || isempty(S.intCxWinShiftedCell{ch})
+                            continue;
+                        end
+                        intEvt_ctrl = meanEvt(S.intCxWinShiftedCell{ch});
+                    else
+                        if ch > size(S.intCxWinShiftedMeanCell,1) || isempty(S.intCxWinShiftedMeanCell{ch, s-1})
+                            continue;
+                        end
+                        intEvt_ctrl = S.intCxWinShiftedMeanCell{ch, s-1};  % already avg over neurons
+                    end
+                    if isempty(intEvt_ctrl), continue; end
+
+                    % optional baseline subtract on events×time
+                    if doBaselineNorm
+                        pyrEvt_ctrl = subtractTrialBaseline(pyrEvt_ctrl, tAxis, -0.2, -0.15);
+                        intEvt_ctrl = subtractTrialBaseline(intEvt_ctrl, tAxis, -0.2, -0.15);
+                    end
+
+                    % select behavior-matching events
+                    labels = L.regionLabelsPerTransition{ch}(:);
+                    evMask = (labels == beh);
+                    if ~any(evMask), continue; end
+
+                    % safe event bound
+                    nEvt_ctrl = min(size(pyrEvt_ctrl,1), size(intEvt_ctrl,1));
+                    evIdx = find(evMask);
+                    evIdx = evIdx(evIdx >= 1 & evIdx <= nEvt_ctrl);
+                    if isempty(evIdx), continue; end
+
+                    % concat centered chunks (lag = 0 for control)
+                    for e = evIdx(:)'
+                        pseg = pyrEvt_ctrl(e, pyrStart:pyrEnd);
+                        iseg = intEvt_ctrl(e, pyrStart:pyrEnd);
+                        pvec = [pvec, pseg]; %#ok<AGROW>
+                        ivec = [ivec, iseg]; %#ok<AGROW>
+                    end
+                end
+
+                valid = ~isnan(pvec) & ~isnan(ivec);
+                if nnz(valid) > 10
+                    ctrlCorrs(s) = corr(pvec(valid)', ivec(valid)');
+                end
+            end
+
+            % mean ± sem across shifts
+            if ~all(isnan(ctrlCorrs))
+                ctrlMean = mean(ctrlCorrs, 'omitnan');
+                ctrlSEM  = std(ctrlCorrs, 'omitnan') / sqrt(sum(~isnan(ctrlCorrs)));
+            end
+        else
+            warning('no shifted-mean storage found; control skipped for behavior %d.', beh);
+        end
+
+        % store for plotting
+        behData(bIdx).beh = beh;
+        behData(bIdx).lags = lagsSec;
+        behData(bIdx).xc = xc;
+        behData(bIdx).peakLagSec = peakLagSec;
+        behData(bIdx).ctrlCorrs = ctrlCorrs;
+        behData(bIdx).ctrlMean = ctrlMean;
+        behData(bIdx).ctrlSEM = ctrlSEM;
+
+        % y-limits
+        yCand = xc(~isnan(xc));
+        if ~isnan(ctrlMean) && ~isnan(ctrlSEM)
+            yCand = [yCand, ctrlMean - ctrlSEM, ctrlMean + ctrlSEM]; %#ok<AGROW>
+        end
+        if ~isempty(yCand)
+            yMin = min(yMin, min(yCand));
+            yMax = max(yMax, max(yCand));
+        end
+
+        % save per-behavior outputs
+        outFile = fullfile(animalFolder, sprintf('concatCrossCorr_chunked_withControl_beh%02d.mat', beh));
+        lags = lagsBins; %#ok<NASGU>  % save integer-bin lags for reproducibility
+        save(outFile, 'lags','lagsSec','binSize','xc','peakLagSec','chunkHalf','beh', 'ctrlCorrs','ctrlMean','ctrlSEM','doBaselineNorm');
+        fprintf('saved: %s\n', outFile);
+    end
+
+    % nothing to plot condition j in case
+    if isinf(yMin) || isinf(yMax)
+        warning('no valid behaviors to plot.');
+        return;
+    end
+
+    % ------------ plot tiled layout: one tile per behavior ------------
+    nB = numel(behaviors);
+    figure('Name', sprintf('chunked xcorr per behavior (baseline%s, control mean ± sem)', tern(doBaselineNorm,'-subtracted','-raw')), 'Color','w');
+    tiledlayout(1, nB, 'Padding','compact', 'TileSpacing','compact');
+
+    for bIdx = 1:nB
+        bd = behData(bIdx);
+        nexttile;
+
+        if isempty(bd.lags)
+            axis off; title(sprintf('behavior %d (no data)', behaviors(bIdx)));
+            continue;
+        end
+
+        plot(bd.lags, bd.xc, 'k', 'LineWidth', 2); hold on;
+
+        if ~isnan(bd.ctrlMean) && ~isnan(bd.ctrlSEM)
+            yline(bd.ctrlMean - bd.ctrlSEM, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5);
+            yline(bd.ctrlMean + bd.ctrlSEM, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5);
+            legendNames = {'xc (lags)','control mean \pm sem','0 lag','peak'};
+        else
+            legendNames = {'xc (lags)','0 lag','peak'};
+        end
+
+        xline(0, 'r--');
+        if ~isnan(bd.peakLagSec)
+            xline(bd.peakLagSec, 'b--', sprintf('peak = %.3f s', bd.peakLagSec), 'LabelVerticalAlignment','bottom');
+        end
+
+        xlabel('lag (s)');
+        if bIdx == 1, ylabel('correlation'); end
+        title(sprintf('behavior %d', bd.beh));
+        ylim([yMin - 0.02, yMax + 0.02]);
+        grid on; box off;
+
+        if bIdx == 1
+            legend(legendNames, 'Location','best');
+        end
+    end
+
+    sgtitle(sprintf('chunked xcorr per UMAP behavior (1–7), chunkHalf=%d, maxLag=\\pm%.3f s, %s', chunkHalf, maxLagBins*binSize, tern(doBaselineNorm,'baseline-subtracted','raw')));
+
+end
+
+% inline ternary for titles yay!
+function out = tern(cond, a, b)
+    if cond, out = a; else, out = b; end
+end
