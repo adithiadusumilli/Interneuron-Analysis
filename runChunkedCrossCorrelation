@@ -16,8 +16,7 @@ if nargin < 4 || isempty(maxLagSecs), maxLagSecs = 0.5; end  % request; will be 
 if nargin < 5 || isempty(doBaselineNorm), doBaselineNorm = true; end
 
 % load emg-triggered neural activity windows
-S = load(fullfile(animalFolder, 'EMG_Neural_AllChannels.mat'), ...
-         'pyrCxWinCell','intCxWinCell','intCxWinShiftedCell','intCxWinShiftedMeanCell','tAxis');
+S = load(fullfile(animalFolder, 'EMG_Neural_AllChannels.mat'), 'pyrCxWinCell','intCxWinCell','intCxWinShiftedCell','intCxWinShiftedMeanCell','tAxis');
 
 % sampling and sizes
 tAxis = S.tAxis(:)';
@@ -131,7 +130,7 @@ for s = 1:numShifts
 
     for ch = channelsToUse
         % pyr (unshifted): events×neurons×time → avg over neurons → events×time
-        pyrEvt = squeeze(mean(S.pyrCxWinCell{ch}, 2, 'omitnan'));   % events × time
+        pyrEvt = squeeze(mean(S.pyrCxWinCell{ch}, 2, 'omitnan')); % events × time
 
         % int (already shifted for this s)
         if s == 1
@@ -139,7 +138,7 @@ for s = 1:numShifts
             intEvt = squeeze(mean(S.intCxWinShiftedCell{ch}, 2, 'omitnan'));
         else
             % mean-shift store: events×time (already neuron-averaged in extract step)
-            intEvt = S.intCxWinShiftedMeanCell{ch, s-1};            % events × time
+            intEvt = S.intCxWinShiftedMeanCell{ch, s-1}; % events × time
         end
 
         if isempty(pyrEvt) || isempty(intEvt), continue; end
@@ -153,8 +152,8 @@ for s = 1:numShifts
         nEvt = min(size(pyrEvt,1), size(intEvt,1));
 
         for e = 1:nEvt
-            pseg = pyrEvt(e, pyrStart:pyrEnd);   % unshifted center window
-            iseg = intEvt(e, pyrStart:pyrEnd);   % already shifted in data
+            pseg = pyrEvt(e, pyrStart:pyrEnd); % unshifted center window
+            iseg = intEvt(e, pyrStart:pyrEnd); % already shifted in data
             pyrVec_ctrl = [pyrVec_ctrl, pseg];
             intVec_ctrl = [intVec_ctrl, iseg];
         end
