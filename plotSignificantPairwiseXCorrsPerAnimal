@@ -3,14 +3,18 @@ function plotSignificantPairwiseXCorrsPerAnimal(matFile)
 % plot hists of peak lag and corr for only significant pairs
 % this new func plots each animal separately, cortex only
 
-% input: matFile - string path to the .mat file containing allPeakLags, allPeakCorrs, allXC_Shifted qkq plotSignificantPairwiseXCorrsPerAnimal('PairwiseCrossCorrelationResults.mat')
+% added:
+% - extra plot per animal: peak correlations > 0.2 (doesn't consider significance)
+% - 1 ms bin edges for peak lag histogram (uses vector of bin edges)
+
+% input: matFile - string path to the .mat file containing allPeakLags, allPeakCorrs, allXC_Shifted
+% command prompt: plotSignificantPairwiseXCorrsPerAnimal('PairwiseCrossCorrelationResults.mat')
 
 % load data
 load(matFile, 'allPeakLags', 'allPeakCorrs', 'allXC_Shifted');
 
 % indices
 numSessions = size(allPeakCorrs, 1);
-% numRegions = size(allPeakCorrs, 2); % unchanged but not needed now
 cortexIdx = 1; % cortex = column 1 (cell array is 3x2: animals x [cortex, striatum])
 
 for sess = 1:numSessions
@@ -45,7 +49,7 @@ for sess = 1:numSessions
             actualLag  = peakLags(i, j);
 
             % save all vals for histogram reference
-            allCorrVec(end+1) = actualCorr;
+            allCorrVec(end+1) = actualCorr; %#ok<*AGROW>
             allLagVec(end+1)  = actualLag;
 
             % check if significantly above null
@@ -60,20 +64,44 @@ for sess = 1:numSessions
     totalPairs = numel(allCorrVec);
     sigPairs   = numel(sigCorrVec);
 
-    % plot: peak lag hist (per animal)
+    % ---- build 1 ms bin edges for lag histogram (in seconds) ----
+    % use the observed lag range (fall back to ±0.2s if empty)
+    if ~isempty(sigLagVec)
+        minLagSec = floor(min(sigLagVec)*1000)/1000;
+        maxLagSec = ceil(max(sigLagVec)*1000)/1000;
+    elseif ~isempty(allLagVec)
+        minLagSec = floor(min(allLagVec)*1000)/1000;
+        maxLagSec = ceil(max(allLagVec)*1000)/1000;
+    else
+        minLagSec = -0.2;  % default if nothing present
+        maxLagSec =  0.2;
+    end
+    % expand by 1 ms on each side to ensure edges include endpoints
+    lagBinEdgesSec = (minLagSec-0.001):0.001:(maxLagSec+0.001);
+
+    % plot: peak lag hist (per animal) — significant only, with 1 ms bin edges
     figure;
-    histogram(sigLagVec, 50, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
+    histogram(sigLagVec, 'BinEdges', lagBinEdgesSec, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
     xlabel('Peak Lag (sec)');
     ylabel('Count');
     title(sprintf('Animal %d (Cortex) – Significant Peak Lags (n = %d / %d)', sess, sigPairs, totalPairs));
     grid on;
 
-    % plot: peak corr hist (per animal)
+    % plot: peak corr hist (per animal) — significant only (unchanged binning: 50 bins)
     figure;
     histogram(sigCorrVec, 50, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
     xlabel('Peak Correlation');
     ylabel('Count');
     title(sprintf('Animal %d (Cortex) – Significant Peak Correlations (n = %d / %d)', sess, sigPairs, totalPairs));
+    grid on;
+
+    % new! plot peak correlations > 0.2 (regardless of significance), per animal
+    corrOverThresh = allCorrVec(allCorrVec > 0.2);
+    figure;
+    histogram(corrOverThresh, 50, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
+    xlabel('Peak Correlation (> 0.2)');
+    ylabel('Count');
+    title(sprintf('Animal %d (Cortex) – Peak Correlations > 0.2 (n = %d / %d)', sess, numel(corrOverThresh), totalPairs));
     grid on;
 end
 
