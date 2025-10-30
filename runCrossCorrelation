@@ -29,7 +29,7 @@ for iDir = 1:length(baseDirs)
     };
 
     neuronFile = fullfile(baseDir, 'neuronDataStruct.mat');
-    frFile = fullfile(baseDir, 'NeuralFiringRates10msBins30msGauss.mat');
+    frFile = fullfile(baseDir, 'NeuralFiringRates1msBins10msGauss.mat');
 
     if ~isfile(neuronFile) || ~isfile(frFile)
         warning('Missing files in %s. Skipping.', baseDir);
