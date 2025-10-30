@@ -1,166 +1,196 @@
 function runCrossCorrelation(baseDirs)
-% function manually computes cross-correlation between interneuron
-% and pyramidal population activity for cortex and striatum & properly handles nans
+% func manually computes xc btwn int & pyr population activity for cortex only & properly handles nans
 
-binSize = 0.01;       % 10 ms bins
+binSize = 0.01; % 10 ms bins
 maxLagSecs = 0.2;
 maxLagBins = round(maxLagSecs / binSize);
 
-regions = {'Cortex', 'Striatum'};
-peakLags = nan(length(baseDirs), length(regions));
+regionName = 'Cortex'; % cortex only now
+peakLags   = nan(length(baseDirs), 1);
+peakCorrs  = nan(length(baseDirs), 1);
 
-% set up tiled plot
-figure('Name', 'Cross-Correlation Summary', 'Color', 'w');
-tile_lay = tiledlayout(2, 3, 'TileSpacing', 'compact', 'Padding', 'compact');
+% set up tiled plot (one row: sessions)
+figure('Name', 'Cross-Correlation Summary (Cortex only)', 'Color', 'w');
+tile_lay = tiledlayout(1, length(baseDirs), 'TileSpacing', 'compact', 'Padding', 'compact');
 
-for iRegion = 1:length(regions)
-    regionName = regions{iRegion};
+for iDir = 1:length(baseDirs)
+    baseDir = baseDirs{iDir};
+    fprintf('\nProcessing %s — Session %d: %s\n', regionName, iDir, baseDir);
 
-    for iDir = 1:length(baseDirs)
-        baseDir = baseDirs{iDir};
-        fprintf('\nProcessing %s — Session %d: %s\n', regionName, iDir, baseDir);
+    % load centralized classifications file 
+    conslidatedDataFoler = 'X:\David\AnalysesData';
+    load(fullfile(conslidatedDataFoler, 'AA_classifications.mat'), 'classifications');
 
-        % load centralized classifications file 1x 
-        conslidatedDataFoler = 'X:\David\AnalysesData';
-        load(fullfile(conslidatedDataFoler, 'AA_classifications.mat'), 'classifications');
+    % define known base folders (match order used in classifications)
+    animalFolders = {
+        'X:\David\ArenaRecordings\D026-032923-ArenaRecording\ProcessedData', ...
+        'Z:\David\ArenaRecordings\NeuropixelsTest\D020-062922-ArenaRecording\ProcessedData', ...
+        'Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData'
+    };
 
-        % define known base folders (match order used in classifications)
-        animalFolders = {
-            'X:\David\ArenaRecordings\D026-032923-ArenaRecording\ProcessedData', ...
-            'Z:\David\ArenaRecordings\NeuropixelsTest\D020-062922-ArenaRecording\ProcessedData', ...
-            'Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData'
-        };
+    neuronFile = fullfile(baseDir, 'neuronDataStruct.mat');
+    frFile = fullfile(baseDir, 'NeuralFiringRates10msBins30msGauss.mat');
 
-        neuronFile = fullfile(baseDir, 'neuronDataStruct.mat');
-        frFile = fullfile(baseDir, 'NeuralFiringRates10msBins30msGauss.mat');
-
-        if ~isfile(neuronFile) || ~isfile(frFile)
-            warning('Missing files in %s. Skipping.', baseDir);
-            continue;
-        end
-
-        load(neuronFile, 'neuronDataStruct');
-        load(frFile, 'cortexFRs', 'cortexInds', 'striatumFRs', 'striatumInds');
-
-        % retrieving region-specific data
-        if iRegion == 1
-            frMatrix = cortexFRs;
-            regionInds = cortexInds;
-        else
-            frMatrix = striatumFRs;
-            regionInds = striatumInds;
-        end
-
-        matchRow = find(contains(animalFolders, baseDir), 1);
-        if isempty(matchRow)
-          warning('Could not match baseDir to animalFolders list. Skipping.');
-          continue;
-        end
-        neuronType = classifications{matchRow, iRegion};
-
-        if isempty(neuronType)
-            warning('No classification data for session %d (%s). Skipping.', 1, regionName);
-            continue;
-        end
-
-        regionClass = neuronType(regionInds);
-        interneuronFRs = frMatrix(regionClass == 1, :);
-        pyramidalFRs   = frMatrix(regionClass == 0, :);
-
-        if isempty(interneuronFRs) || isempty(pyramidalFRs)
-            warning('No valid interneuron or pyramidal data in session %d (%s). Skipping.', iDir, regionName);
-            continue;
-        end
-
-        % calculating raw mean time series
-        meanInt = nanmean(interneuronFRs, 1);
-        meanPyr = nanmean(pyramidalFRs, 1);
-
-       % use raw (w nan) means
-        meanIntRaw = nanmean(interneuronFRs, 1);
-        meanPyrRaw = nanmean(pyramidalFRs, 1);
-
-        % manual cross-correlation
-        lags = -maxLagBins:maxLagBins;
-        xc = nan(size(lags));
-
-        for li = 1:length(lags)
-            lag = lags(li);
-
-            if lag < 0
-                % shift left (int leads)
-                intSeg = meanIntRaw(1:end+lag);
-                pyrSeg = meanPyrRaw(1-lag:end);
-            elseif lag > 0
-                % shift right (pyr leads)
-                intSeg = meanIntRaw(1+lag:end);
-                pyrSeg = meanPyrRaw(1:end-lag);
-            else
-                intSeg = meanIntRaw;
-                pyrSeg = meanPyrRaw;
-            end
-
-            % remove nans after aligning
-            validIdx = ~isnan(intSeg) & ~isnan(pyrSeg);
-            if sum(validIdx) > 2
-                xc(li) = corr(intSeg(validIdx)', pyrSeg(validIdx)');
-            end
-        end
-
-        % finding peak of real data
-        [~, peakIdx] = max(xc);
-        peakLag = lags(peakIdx) * binSize;
-        peakLags(iDir, iRegion) = peakLag;
-
-        % control: 100 shifts — single full-trace correlation per shift
-        numShifts = 100;
-        minShiftBins = round(30 / binSize);
-        maxShiftBins = length(meanIntRaw) - minShiftBins;
-
-        controlCorrs = nan(1, numShifts);  % store 1 value per shift
-
-        for s = 1:numShifts
-            shiftAmt = randi([minShiftBins, maxShiftBins]);
-            intShifted = circshift(meanIntRaw, shiftAmt);
-
-            % remove nans after shifting
-            validIdx = ~isnan(intShifted) & ~isnan(meanPyrRaw);
-
-            if sum(validIdx) > 2
-                controlCorrs(s) = corr(intShifted(validIdx)', meanPyrRaw(validIdx)');
-            end
-        end
-    
-        % get control bounds
-        prc25 = prctile(controlCorrs, 2.5);
-        prc975 = prctile(controlCorrs, 97.5)
-
-        % tiled layout code
-        tileNum = iDir + (iRegion - 1) * length(baseDirs);
-        nexttile(tile_lay, tileNum);
-
-        % plot
-        plot(lags * binSize, xc, 'k', 'LineWidth', 2); % original
-        hold on;
-        yline(prc25, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.2);  % 2.5% control bound
-        yline(prc975, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.2); % 97.5% control bound
-        line([peakLag peakLag], get(gca, 'ylim'), 'LineStyle', '--', 'Color', 'r'); % vertical line
-        xlabel('Lag (seconds)');
-        ylabel('Correlation');
-        title(sprintf('%s — Session %d\nPeak Lag: %.3f sec', regionName, iDir, peakLag));
-        box off;
-        legend('Original xcorr', '2.5% control', '97.5% control', 'Location', 'best');
-        drawnow;
-
-        fprintf('→ %s — Session %d Peak Lag: %.3f seconds\n', regionName, iDir, peakLag);
+    if ~isfile(neuronFile) || ~isfile(frFile)
+        warning('Missing files in %s. Skipping.', baseDir);
+        continue;
     end
+
+    load(neuronFile, 'neuronDataStruct'); 
+    load(frFile, 'cortexFRs', 'cortexInds');  % cortex only
+
+    % cortex-specific data
+    frMatrix = cortexFRs;
+    regionInds = cortexInds;
+
+    matchRow = find(contains(animalFolders, baseDir), 1);
+    if isempty(matchRow)
+      warning('Could not match baseDir to animalFolders list. Skipping.');
+      continue;
+    end
+
+    % iRegion = 1 corresponds to Cortex in your classifications
+    iRegion = 1;
+    neuronType = classifications{matchRow, iRegion};
+
+    if isempty(neuronType)
+        warning('No classification data for session %d (%s). Skipping.', 1, regionName);
+        continue;
+    end
+
+    regionClass = neuronType(regionInds);
+    interneuronFRs = frMatrix(regionClass == 1, :);
+    pyramidalFRs = frMatrix(regionClass == 0, :);
+
+    if isempty(interneuronFRs) || isempty(pyramidalFRs)
+        warning('No valid interneuron or pyramidal data in session %d (%s). Skipping.', iDir, regionName);
+        continue;
+    end
+
+    % calculating raw mean time series
+    meanIntRaw = nanmean(interneuronFRs, 1);
+    meanPyrRaw = nanmean(pyramidalFRs, 1);
+
+    % ===== manual xc (using helper) =====
+    [lagsSec, xc, peakLag, peakCorr] = computeManualXCorr(meanIntRaw, meanPyrRaw, binSize, maxLagSecs);
+    peakLags(iDir) = peakLag;
+    peakCorrs(iDir) = peakCorr;
+
+    % control: 100 shifts — single full-trace corr per shift
+    numShifts = 100;
+    minShiftBins = round(30 / binSize);
+    maxShiftBinsOk = length(meanIntRaw) - minShiftBins;
+
+    controlCorrs = nan(1, numShifts);  % store 1 value per shift
+
+    for s = 1:numShifts
+        shiftAmt = randi([minShiftBins, maxShiftBinsOk]);
+        intShifted = circshift(meanIntRaw, shiftAmt);
+
+        % remove nans after shifting
+        validIdx = ~isnan(intShifted) & ~isnan(meanPyrRaw);
+
+        if sum(validIdx) > 2
+            controlCorrs(s) = corr(intShifted(validIdx)', meanPyrRaw(validIdx)');
+        end
+    end
+
+    % get control bounds
+    prc25 = prctile(controlCorrs, 2.5);
+    prc975 = prctile(controlCorrs, 97.5);
+
+    % ===== permutation test (100 shuffles of int/pyr labels) =====
+    numPerms = 100;
+    permPeakCorrs = nan(1, numPerms);
+    permPeakLags = nan(1, numPerms);
+
+    for p = 1:numPerms
+        % shuffle labels within cortex (preserve group sizes)
+        permLabels = regionClass(randperm(numel(regionClass)));
+
+        % rebuild groups under permuted labels
+        permIntFRs = frMatrix(permLabels == 1, :);
+        permPyrFRs = frMatrix(permLabels == 0, :);
+
+        if isempty(permIntFRs) || isempty(permPyrFRs)
+            continue
+        end
+
+        permMeanInt = nanmean(permIntFRs, 1);
+        permMeanPyr = nanmean(permPyrFRs, 1);
+
+        % run the exact same xcorr computation
+        [~, ~, permPeakLag, permPeakCorr] = computeManualXCorr(permMeanInt, permMeanPyr, binSize, maxLagSecs);
+
+        permPeakCorrs(p) = permPeakCorr;
+        permPeakLags(p) = permPeakLag;
+    end
+
+    % quick console summary of permutations
+    goodPerms = ~isnan(permPeakCorrs);
+    if any(goodPerms)
+        fprintf('permutation (n=%d) peak corr median=%.3f | 2.5–97.5%%=[%.3f, %.3f]\n', sum(goodPerms), median(permPeakCorrs(goodPerms)), prctile(permPeakCorrs(goodPerms), 2.5), prctile(permPeakCorrs(goodPerms), 97.5));
+        fprintf('permutation peak lag (s) median=%.3f | 2.5–97.5%%=[%.3f, %.3f]\n', median(permPeakLags(goodPerms)), prctile(permPeakLags(goodPerms), 2.5), prctile(permPeakLags(goodPerms), 97.5));
+    end
+
+    % tiled layout code
+    tileNum = iDir;  % cortex only (aka one row)
+    nexttile(tile_lay, tileNum);
+
+    % plot
+    plot(lagsSec, xc, 'k', 'LineWidth', 2); % original
+    hold on;
+    yline(prc25,  '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.2);  % 2.5% control bound
+    yline(prc975, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.2); % 97.5% control bound
+    line([peakLag peakLag], get(gca, 'ylim'), 'LineStyle', '--', 'Color', 'r'); % vertical line
+    xlabel('Lag (seconds)');
+    ylabel('Correlation');
+    title(sprintf('%s — Session %d\nPeak Lag: %.3f sec', regionName, iDir, peakLag));
+    box off;
+    legend('Original xcorr', '2.5% control', '97.5% control', 'Location', 'best');
+    drawnow;
+
+    % explicit print of non-permuted peak corr and peak lag
+    fprintf('→ %s — Session %d  Peak Lag: %.3f s | Peak Corr: %.3f\n', regionName, iDir, peakLag, peakCorr);
 end
 
 % outputting final summary
-fprintf('\n========== Summary of Peak Lags (in seconds) ==========\n');
-for iRegion = 1:length(regions)
-    fprintf('%s:\n', regions{iRegion});
-    disp(peakLags(:, iRegion));
+fprintf('\n========== Summary (Cortex) ==========\n');
+fprintf('Peak Lags (s):\n'); disp(peakLags);
+fprintf('Peak Corrs   :\n'); disp(peakCorrs);
+
 end
 
+% ================= helper (w my same logic from before) =================
+function [lagsSec, xc, peakLagSec, peakCorr] = computeManualXCorr(meanIntRaw, meanPyrRaw, binSize, maxLagSecs)
+    maxLagBins = round(maxLagSecs / binSize);
+    lagsBins = -maxLagBins:maxLagBins;
+    xc = nan(size(lagsBins));
+
+    for li = 1:length(lagsBins)
+        lag = lagsBins(li);
+
+        if lag < 0
+            % shift left (int leads)
+            intSeg = meanIntRaw(1:end+lag);
+            pyrSeg = meanPyrRaw(1-lag:end);
+        elseif lag > 0
+            % shift right (pyr leads)
+            intSeg = meanIntRaw(1+lag:end);
+            pyrSeg = meanPyrRaw(1:end-lag);
+        else
+            intSeg = meanIntRaw;
+            pyrSeg = meanPyrRaw;
+        end
+
+        % remove nans after aligning
+        validIdx = ~isnan(intSeg) & ~isnan(pyrSeg);
+        if sum(validIdx) > 2
+            xc(li) = corr(intSeg(validIdx)', pyrSeg(validIdx)');
+        end
+    end
+
+    [peakCorr, peakIdx] = max(xc);
+    lagsSec = lagsBins * binSize;
+    peakLagSec = lagsSec(peakIdx);
 end
