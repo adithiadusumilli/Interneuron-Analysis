@@ -57,58 +57,34 @@ function Eout = subtractTrialBaseline(Ein, tAxisSec, tStartSec, tEndSec)
     Eout = Ein - baselines;  % implicit expansion per event
 end
 
-%% ----------- UNPERMUTED: lag sweep -----------
-xc = nan(1, numel(lags));
+%% ----------- UNPERMUTED: build per-channel events×time, then lag sweep -----------
+% (same averaging across neurons and optional baseline subtraction as before)
+pyr_byCh = cell(1, numel(channelsToUse)); % each: events×time
+int_byCh = cell(1, numel(channelsToUse)); % each: events×time
+for ci = 1:numel(channelsToUse)
+    ch = channelsToUse(ci);
+    pyrWin = S.pyrCxWinCell{ch};   % events × neurons × time
+    intWin = S.intCxWinCell{ch};   % events × neurons × time
+    if isempty(pyrWin) || isempty(intWin), continue; end
 
-for iL = 1:numel(lags)
-    L = lags(iL);  % +L means int chunk is shifted left by L bins (i.e. leads)
+    % avg across neurons -> events × time
+    pyrEvt = squeeze(mean(pyrWin, 2, 'omitnan'));
+    intEvt = squeeze(mean(intWin, 2, 'omitnan'));
+    if isempty(pyrEvt) || isempty(intEvt), continue; end
 
-    % idx for int subchunk (shifted by -L)
-    intStart = pyrStart - L;
-    intEnd   = pyrEnd   - L;
-    if intStart < 1 || intEnd > T, continue; end
-
-    % holders for concat per-window subchunks
-    pyrVec = [];
-    intVec = [];
-
-    % iterate chans then events, extracting subchunks and concat
-    for ch = channelsToUse
-        pyrWin = S.pyrCxWinCell{ch};   % events × neurons × time
-        intWin = S.intCxWinCell{ch};   % events × neurons × time
-        if isempty(pyrWin) || isempty(intWin), continue; end
-
-        % avg across neurons -> events × time
-        pyrEvt = squeeze(mean(pyrWin, 2, 'omitnan'));
-        intEvt = squeeze(mean(intWin, 2, 'omitnan'));
-        if isempty(pyrEvt) || isempty(intEvt), continue; end
-
-        % optional per-trial baseline subtraction using -200 to -150 ms
-        if doBaselineNorm
-            pyrEvt = subtractTrialBaseline(pyrEvt, tAxis, -0.2, -0.15);
-            intEvt = subtractTrialBaseline(intEvt, tAxis, -0.2, -0.15);
-        end
-
-        % for each event, pull pyr subchunk and shifted int subchunk
-        nEvt = min(size(pyrEvt,1), size(intEvt,1));
-        for e = 1:nEvt
-            pseg = pyrEvt(e, pyrStart:pyrEnd);
-            iseg = intEvt(e, intStart:intEnd);
-            pyrVec = [pyrVec, pseg];
-            intVec = [intVec, iseg];
-        end
+    % optional baseline subtraction using -200 to -150 ms
+    if doBaselineNorm
+        pyrEvt = subtractTrialBaseline(pyrEvt, tAxis, -0.2, -0.15);
+        intEvt = subtractTrialBaseline(intEvt, tAxis, -0.2, -0.15);
     end
 
-    % remove nans, preserve alignment
-    valid = ~isnan(pyrVec) & ~isnan(intVec);
-    if nnz(valid) > 10
-        xc(iL) = corr(pyrVec(valid)', intVec(valid)');
-    end
+    pyr_byCh{ci} = pyrEvt;
+    int_byCh{ci} = intEvt;
 end
 
-% find peak lag (in seconds)
-[~, peakIdx] = max(xc);
-peakLagSec = lags(peakIdx) * binSize;
+tic
+[xc, peakLagSec] = lagSweepAcrossChannels(pyr_byCh, int_byCh, lags, pyrStart, pyrEnd, T, binSize);
+disp(['Non-permuted, non-shifted cross-correlation analysis done, time: ' num2str(toc) ' s'])
 
 %% ----------- CONTROL (shifted): mean ± SEM -----------
 numStoredShifts = size(S.intCxWinShiftedMeanCell, 2); % typically 99
@@ -119,6 +95,7 @@ for s = 1:numShifts
     pyrVec_ctrl = [];
     intVec_ctrl = [];
 
+    tic
     for ch = channelsToUse
         % pyr (unshifted): events×neurons×time → avg over neurons → events×time
         pyrEvt = squeeze(mean(S.pyrCxWinCell{ch}, 2, 'omitnan'));
@@ -151,16 +128,19 @@ for s = 1:numShifts
     if nnz(valid) > 10
         ctrlCorrs(s) = corr(pyrVec_ctrl(valid)', intVec_ctrl(valid)');
     end
+
+    disp(['Cross-correlation analysis shift ' num2str(s) ' done, time: ' num2str(toc) ' s'])
 end
 
 ctrlMean = mean(ctrlCorrs, 'omitnan');
 ctrlSEM  = std(ctrlCorrs, 'omitnan') / sqrt(sum(~isnan(ctrlCorrs)));
 
-%% ----------- PERMUTATION TEST (shuffle neuron labels) -----------
+%% ----------- PERMUTATION TEST (shuff neuron labels) -----------
 % per chan: pool neurons pyr+int, shuffle labels but keep original counts, then recompute full lag-swept xcorr and take peak lag
 permPeakLagSecs = nan(1, nPerm);
 
 for p = 1:nPerm
+    tic
     % precompute shuffled, neuron-averaged events×time per channel
     shufPyr_byCh = cell(1, numel(channelsToUse));
     shufInt_byCh = cell(1, numel(channelsToUse));
@@ -199,43 +179,18 @@ for p = 1:nPerm
     end
 
     % compute lag-swept xcorr for this permutation (pool across channels & events)
-    xc_perm = nan(1, numel(lags));
-    for iL = 1:numel(lags)
-        L = lags(iL);
-        intStart = pyrStart - L;
-        intEnd   = pyrEnd   - L;
-        if intStart < 1 || intEnd > T, continue; end
-
-        pvec = []; ivec = [];
-        for ci = 1:numel(channelsToUse)
-            pEvt = shufPyr_byCh{ci};
-            iEvt = shufInt_byCh{ci};
-            if isempty(pEvt) || isempty(iEvt), continue; end
-            nEvt = min(size(pEvt,1), size(iEvt,1));
-            for e = 1:nEvt
-                pseg = pEvt(e, pyrStart:pyrEnd);
-                iseg = iEvt(e, intStart:intEnd);
-                pvec = [pvec, pseg];
-                ivec = [ivec, iseg];
-            end
-        end
-
-        valid = ~isnan(pvec) & ~isnan(ivec);
-        if nnz(valid) > 10
-            xc_perm(iL) = corr(pvec(valid)', ivec(valid)');
-        end
-    end
-
+    [xc_perm, pLagSec] = lagSweepAcrossChannels(shufPyr_byCh, shufInt_byCh, lags, pyrStart, pyrEnd, T, binSize); %#ok<NASGU>
     % record permuted peak lag
-    [~, pIdx] = max(xc_perm);
-    permPeakLagSecs(p) = lags(pIdx) * binSize;
+    permPeakLagSecs(p) = pLagSec;
+
+    disp(['Cross-correlation analysis class permute ' num2str(p) ' done, time: ' num2str(toc) ' s'])
 end
 
 % proportion of shuffled peak lags less than the actual (signed + absolute)
 propLessSigned = mean(permPeakLagSecs < peakLagSec, 'omitnan');
-propLessAbs = mean(abs(permPeakLagSecs) < abs(peakLagSec), 'omitnan');
+propLessAbs    = mean(abs(permPeakLagSecs) < abs(peakLagSec), 'omitnan');
 permIsSigSigned = propLessSigned >= 0.95;
-permIsSigAbs = propLessAbs >= 0.95;
+permIsSigAbs    = propLessAbs    >= 0.95;
 
 %% ----------- Plot -----------
 figure('Name','chunked window cross-correlation (with control mean ± sem + permutation test)', 'Color','w');
@@ -248,12 +203,12 @@ xline(0, 'r--');
 xline(peakLagSec, 'b--', sprintf('peak = %.3f s', peakLagSec), 'LabelVerticalAlignment','bottom');
 
 xlabel('lag (s)'); ylabel('correlation');
-ttl = sprintf(['chunked xcorr (pyr [-%d..+%d] vs int shifted, %d chans)\n' 'control mean \\pm sem; perm n=%d | frac(shuf<actual) signed=%.2f%s, abs=%.2f%s'], chunkHalf, chunkHalf, numel(channelsToUse), nPerm, propLessSigned, tern(permIsSigSigned,'*',''), propLessAbs, tern(permIsSigAbs,'*',''));
+ttl = sprintf(['chunked xcorr (pyr [-%d..+%d] vs int shifted, %d chans)\n' 'control mean \\pm sem; perm n=%d | frac(shuf<actual) signed=%.2f%s, abs=%.2f%s'], chunkHalf, chunkHalf, numel(channelsToUse), nPerm, propLessSigned, tern(permIsSigSigned,'*',''), propLessAbs,    tern(permIsSigAbs,'*',''));
 title(ttl);
 legend({'xc (lags)','control mean \pm sem','0 lag','peak'}, 'Location','best');
 grid on; box off;
 
-%% ----------- Save -----------
+%% ----------- save -----------
 outFile = fullfile(animalFolder, 'concatCrossCorr_chunked_withControl.mat');
 save(outFile, 'lags','binSize','xc','peakLagSec','chunkHalf','channelsToUse', 'ctrlCorrs','ctrlMean','ctrlSEM','doBaselineNorm', 'permPeakLagSecs','propLessSigned','propLessAbs', 'permIsSigSigned','permIsSigAbs','nPerm');
 fprintf('saved: %s\n', outFile);
@@ -261,4 +216,36 @@ end
 
 function out = tern(cond, a, b)
     if cond, out = a; else, out = b; end
+end
+
+% ===================== helper (shared by unpermuted & permuted) =====================
+function [xc, peakLagSec] = lagSweepAcrossChannels(pyr_byCh, int_byCh, lags, pyrStart, pyrEnd, T, binSize)
+    xc = nan(1, numel(lags));
+    for iL = 1:numel(lags)
+        L = lags(iL);                  % +L means int chunk is shifted left by L bins (leads)
+        intStart = pyrStart - L;
+        intEnd   = pyrEnd   - L;
+        if intStart < 1 || intEnd > T, continue; end
+
+        pvec = []; ivec = [];
+        for ci = 1:numel(pyr_byCh)
+            pEvt = pyr_byCh{ci};
+            iEvt = int_byCh{ci};
+            if isempty(pEvt) || isempty(iEvt), continue; end
+            nEvt = min(size(pEvt,1), size(iEvt,1));
+            for e = 1:nEvt
+                pseg = pEvt(e, pyrStart:pyrEnd);
+                iseg = iEvt(e, intStart:intEnd);
+                pvec = [pvec, pseg];
+                ivec = [ivec, iseg];
+            end
+        end
+
+        valid = ~isnan(pvec) & ~isnan(ivec);
+        if nnz(valid) > 10
+            xc(iL) = corr(pvec(valid)', ivec(valid)');
+        end
+    end
+    [~, peakIdx] = max(xc);
+    peakLagSec = lags(peakIdx) * binSize;
 end
