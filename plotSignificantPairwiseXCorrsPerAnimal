@@ -103,6 +103,22 @@ for sess = 1:numSessions
     ylabel('Count');
     title(sprintf('Animal %d (Cortex) – Peak Correlations > 0.2 (n = %d / %d)', sess, numel(corrOverThresh), totalPairs));
     grid on;
+
+        % ---- new! significant peak lags > 0.2 s ----
+    lagsOverThresh = sigLagVec(abs(sigLagVec > 0.2));   % changed to abs(sigLagVec) > 0.2 for |0.2|
+    figure;
+    histogram(lagsOverThresh, 'BinEdges', lagBinEdgesSec, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
+    xlabel('Peak Lag (s)'); ylabel('Count');
+    title(sprintf('Animal %d (Cortex) – Significant Peak Lags > 0.2 s (n = %d / %d sig)', sess, numel(lagsOverThresh), numel(sigLagVec)));
+    grid on;
+
+    % ---- new! scatter (x = peak lag, y = peak corr) with marginal histograms ----
+    % uses only significant pairs to match your other plots
+    figure;
+    scatterhist(sigLagVec(:), sigCorrVec(:), 'Direction', 'out', 'Marker', '.'); % central scatter + top/right hists
+    xlabel('Peak Lag (s)');
+    ylabel('Peak Correlation');
+    title(sprintf('Animal %d (Cortex) – Significant Pairs (n = %d / %d)', sess, sigPairs, totalPairs));
 end
 
 end
