@@ -105,7 +105,7 @@ for sess = 1:numSessions
     grid on;
 
         % ---- new! significant peak lags > 0.2 s ----
-    lagsOverThresh = sigLagVec(abs(sigLagVec > 0.2));   % changed to abs(sigLagVec) > 0.2 for |0.2|
+    lagsOverThresh = sigLagVec(abs(sigLagVec) > 0.2);   % changed to abs(sigLagVec) > 0.2 for |0.2|
     figure;
     histogram(lagsOverThresh, 'BinEdges', lagBinEdgesSec, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
     xlabel('Peak Lag (s)'); ylabel('Count');
