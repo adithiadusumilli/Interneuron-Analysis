@@ -1,4 +1,4 @@
-% chunked cross-correlation (quest script, array-aware permutation, no controls/plotting)
+% chunked cross-correlation (loop across animals, with permutation option, no plotting/controls)
 
 % base dirs for animals
 baseDirs = {
@@ -7,14 +7,9 @@ baseDirs = {
     '/home/asa7288/Transfer/D024' ...
 };
 
-% read slurm array index and set permutation flags
-jid_str = getenv('SLURM_ARRAY_TASK_ID');
-if isempty(jid_str)
-    jobInd = 0;
-else
-    jobInd = str2double(jid_str);
-    if isnan(jobInd), jobInd = 0; end
-end
+% manually set jobInd before running this script
+% example: jobInd = 0;  % unpermuted
+%          jobInd = 1;  % first permutation, etc.
 
 if jobInd == 0
     isPermuted = false;
@@ -24,109 +19,111 @@ else
     permInd = jobInd;
 end
 
-% pick animal folder (cycles through basedirs if array > n animals)
-idxAnimal = mod(jobInd, numel(baseDirs)) + 1;
-animalFolder = baseDirs{idxAnimal};
-
-% hardcoded inputs
 channelsToUse  = 1:4;
 chunkHalf      = 200;
 maxLagSecs     = 0.5;
 doBaselineNorm = true;
 
-% load emg-triggered neural activity windows
-S = load(fullfile(animalFolder, 'EMG_Neural_AllChannels.mat'), 'pyrCxWinCell','intCxWinCell','tAxis');
+for iDir = 1:numel(baseDirs)
+    baseDir = baseDirs{iDir};
+    fprintf('\nprocessing cortex session %d: %s (job %d)\n', iDir, baseDir, jobInd);
 
-% sampling and sizes
-tAxis = S.tAxis(:)';
-binSize = 0.001;
-T = numel(tAxis); % 1001 for -500:500
+    % load emg-triggered neural activity windows
+    S = load(fullfile(baseDir, 'EMG_Neural_AllChannels.mat'), 'pyrCxWinCell','intCxWinCell','tAxis');
 
-% center index where t=0
-[~, cIdx] = min(abs(tAxis - 0));
+    % sampling and sizes
+    tAxis = S.tAxis(:)';
+    binSize = 0.001;
+    T = numel(tAxis); % 1001 for -500:500
 
-% base subchunk in pyr is [cIdx-chunkHalf : cIdx+chunkHalf] → 2*chunkHalf+1 samples
-pyrStart = cIdx - chunkHalf;
-pyrEnd   = cIdx + chunkHalf;
+    % center index where t=0
+    [~, cIdx] = min(abs(tAxis - 0));
 
-% clip max lag in bins so int shifted subchunk stays inside win for all lags
-reqMaxLagBins = round(maxLagSecs / binSize);
-maxLagLeft  = pyrStart - 1;
-maxLagRight = T - pyrEnd;
-maxLagBins  = min([reqMaxLagBins, maxLagLeft, maxLagRight]);
-lags = -maxLagBins:maxLagBins;
+    % base subchunk in pyr is [cIdx-chunkHalf : cIdx+chunkHalf]
+    pyrStart = cIdx - chunkHalf;
+    pyrEnd   = cIdx + chunkHalf;
 
-% helper: per-trial baseline subtraction on events×time (after neuron-avg)
-function Eout = subtractTrialBaseline(Ein, tAxisSec, tStartSec, tEndSec)
-    [~, iStart] = min(abs(tAxisSec - tStartSec));
-    [~, iEnd]   = min(abs(tAxisSec - tEndSec));
-    if iEnd < iStart, tmp = iStart; iStart = iEnd; iEnd = tmp; end
-    baselines = mean(Ein(:, iStart:iEnd), 2, 'omitnan');  % events×1
-    Eout = Ein - baselines;  % implicit expansion per event
-end
+    % clip max lag in bins so int shifted subchunk stays inside window
+    reqMaxLagBins = round(maxLagSecs / binSize);
+    maxLagLeft  = pyrStart - 1;
+    maxLagRight = T - pyrEnd;
+    maxLagBins  = min([reqMaxLagBins, maxLagLeft, maxLagRight]);
+    lags = -maxLagBins:maxLagBins;
 
-%% ----------- build per-channel events×time (with isPermuted check), then lag sweep -----------
-pyr_byCh = cell(1, numel(channelsToUse)); % each: events×time
-int_byCh = cell(1, numel(channelsToUse)); % each: events×time
-for ci = 1:numel(channelsToUse)
-    ch = channelsToUse(ci);
-    pyrWin = S.pyrCxWinCell{ch};   % events × neurons × time
-    intWin = S.intCxWinCell{ch};   % events × neurons × time
-    if isempty(pyrWin) || isempty(intWin), continue; end
+    % helper: per-trial baseline subtraction
+    function Eout = subtractTrialBaseline(Ein, tAxisSec, tStartSec, tEndSec)
+        [~, iStart] = min(abs(tAxisSec - tStartSec));
+        [~, iEnd]   = min(abs(tAxisSec - tEndSec));
+        if iEnd < iStart, tmp = iStart; iStart = iEnd; iEnd = tmp; end
+        baselines = mean(Ein(:, iStart:iEnd), 2, 'omitnan');
+        Eout = Ein - baselines;
+    end
 
-    % permute labels for jobs 1..100; keep original for job 0
+    %% ----------- build per-channel events×time (with isPermuted check) -----------
+    pyr_byCh = cell(1, numel(channelsToUse));
+    int_byCh = cell(1, numel(channelsToUse));
+
+    for ci = 1:numel(channelsToUse)
+        ch = channelsToUse(ci);
+        pyrWin = S.pyrCxWinCell{ch};
+        intWin = S.intCxWinCell{ch};
+        if isempty(pyrWin) || isempty(intWin), continue; end
+
+        % permute labels if required
+        if isPermuted
+            [nEvtP, nPyr, ~] = size(pyrWin);
+            [nEvtI, nInt, ~] = size(intWin);
+            nEvt = min(nEvtP, nEvtI);
+            if nPyr + nInt < 2 || nEvt < 1, continue; end
+
+            pooledWin = cat(2, pyrWin(1:nEvt,:,:), intWin(1:nEvt,:,:));
+            totN = nPyr + nInt;
+            idx = randperm(totN);
+            idxP = idx(1:nPyr);
+            idxI = idx(nPyr+1:end);
+
+            pyrEvt = squeeze(mean(pooledWin(:, idxP, :), 2, 'omitnan'));
+            intEvt = squeeze(mean(pooledWin(:, idxI, :), 2, 'omitnan'));
+        else
+            pyrEvt = squeeze(mean(pyrWin, 2, 'omitnan'));
+            intEvt = squeeze(mean(intWin, 2, 'omitnan'));
+        end
+
+        if doBaselineNorm
+            pyrEvt = subtractTrialBaseline(pyrEvt, tAxis, -0.2, -0.15);
+            intEvt = subtractTrialBaseline(intEvt, tAxis, -0.2, -0.15);
+        end
+
+        pyr_byCh{ci} = pyrEvt;
+        int_byCh{ci} = intEvt;
+    end
+
+    %% ----------- compute lag-swept correlation -----------
+    tic
+    [xc, peakLagSec] = lagSweepAcrossChannels(pyr_byCh, int_byCh, lags, pyrStart, pyrEnd, T, binSize);
+    disp(['cross-correlation analysis done, time: ' num2str(toc) ' s'])
+
+    %% ----------- save results -----------
+    outDir = fullfile(baseDir, 'quest_runs');
+    if ~exist(outDir, 'dir'), mkdir(outDir); end
+
     if isPermuted
-        [nEvtP, nPyr, ~] = size(pyrWin);
-        [nEvtI, nInt, ~] = size(intWin);
-        nEvt = min(nEvtP, nEvtI);
-        if nPyr + nInt < 2 || nEvt < 1, continue; end
-
-        pooledWin = cat(2, pyrWin(1:nEvt,:,:), intWin(1:nEvt,:,:));  % events × (nPyr+nInt) × time
-        totN = nPyr + nInt;
-        idx = randperm(totN);                 % no seed set
-        idxP = idx(1:nPyr);
-        idxI = idx(nPyr+1:end);
-
-        pyrEvt = squeeze(mean(pooledWin(:, idxP, :), 2, 'omitnan')); % events×time
-        intEvt = squeeze(mean(pooledWin(:, idxI, :), 2, 'omitnan')); % events×time
+        outFile = fullfile(outDir, sprintf('concatCrossCorr_chunked_perm_%03d.mat', permInd));
     else
-        % avg across neurons -> events × time
-        pyrEvt = squeeze(mean(pyrWin, 2, 'omitnan'));
-        intEvt = squeeze(mean(intWin, 2, 'omitnan'));
+        outFile = fullfile(outDir, 'concatCrossCorr_chunked_unperm.mat');
     end
 
-    if doBaselineNorm
-        pyrEvt = subtractTrialBaseline(pyrEvt, tAxis, -0.2, -0.15);
-        intEvt = subtractTrialBaseline(intEvt, tAxis, -0.2, -0.15);
-    end
-
-    pyr_byCh{ci} = pyrEvt;
-    int_byCh{ci} = intEvt;
+    save(outFile, 'lags','binSize','xc','peakLagSec','chunkHalf','channelsToUse', ...
+        'doBaselineNorm','isPermuted','jobInd','permInd','baseDir');
 end
 
-tic
-[xc, peakLagSec] = lagSweepAcrossChannels(pyr_byCh, int_byCh, lags, pyrStart, pyrEnd, T, binSize);
-disp(['cross-correlation analysis done, time: ' num2str(toc) ' s'])
-
-% save (no controls, no plotting)
-outDir = fullfile(animalFolder, 'quest_runs');
-if ~exist(outDir, 'dir'), mkdir(outDir); end
-
-if isPermuted
-    outFile = fullfile(outDir, sprintf('concatCrossCorr_chunked_perm_%03d.mat', permInd));
-else
-    outFile = fullfile(outDir, 'concatCrossCorr_chunked_unperm.mat');
-end
-
-save(outFile, 'lags','binSize','xc','peakLagSec','chunkHalf','channelsToUse', 'doBaselineNorm','isPermuted','jobInd','permInd','animalFolder');
 
 
-
-% ===================== helper (same as your original) =====================
+% ===================== helper =====================
 function [xc, peakLagSec] = lagSweepAcrossChannels(pyr_byCh, int_byCh, lags, pyrStart, pyrEnd, T, binSize)
     xc = nan(1, numel(lags));
     for iL = 1:numel(lags)
-        L = lags(iL);                  % +L means int chunk is shifted left by L bins (leads)
+        L = lags(iL);
         intStart = pyrStart - L;
         intEnd   = pyrEnd   - L;
         if intStart < 1 || intEnd > T, continue; end
