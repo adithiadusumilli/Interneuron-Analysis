@@ -50,15 +50,6 @@ for iDir = 1:numel(baseDirs)
     maxLagBins  = min([reqMaxLagBins, maxLagLeft, maxLagRight]);
     lags = -maxLagBins:maxLagBins;
 
-    % helper: per-trial baseline subtraction
-    function Eout = subtractTrialBaseline(Ein, tAxisSec, tStartSec, tEndSec)
-        [~, iStart] = min(abs(tAxisSec - tStartSec));
-        [~, iEnd]   = min(abs(tAxisSec - tEndSec));
-        if iEnd < iStart, tmp = iStart; iStart = iEnd; iEnd = tmp; end
-        baselines = mean(Ein(:, iStart:iEnd), 2, 'omitnan');
-        Eout = Ein - baselines;
-    end
-
     %% ----------- build per-channel events×time (with isPermuted check) -----------
     pyr_byCh = cell(1, numel(channelsToUse));
     int_byCh = cell(1, numel(channelsToUse));
@@ -120,6 +111,15 @@ end
 
 
 % ===================== helper =====================
+% helper: per-trial baseline subtraction
+function Eout = subtractTrialBaseline(Ein, tAxisSec, tStartSec, tEndSec)
+    [~, iStart] = min(abs(tAxisSec - tStartSec));
+    [~, iEnd]   = min(abs(tAxisSec - tEndSec));
+    if iEnd < iStart, tmp = iStart; iStart = iEnd; iEnd = tmp; end
+    baselines = mean(Ein(:, iStart:iEnd), 2, 'omitnan');
+    Eout = Ein - baselines;
+end
+
 function [xc, peakLagSec] = lagSweepAcrossChannels(pyr_byCh, int_byCh, lags, pyrStart, pyrEnd, T, binSize)
     xc = nan(1, numel(lags));
     for iL = 1:numel(lags)
