@@ -1,0 +1,255 @@
+% chunked cross-correlation per behavior (loop across animals, with permutation option, no plotting/controls)
+%
+% script version of runChunkedCrossCorrelationPerBehavior_Tiled
+% cortex only, per umap behavior (1..7), pooling events across muscles/channels
+% avg across neurons, optional per-trial baseline subtraction, concat across events
+% jobInd = 0  → unpermuted
+% jobInd > 0  → one permutation per run (permInd = jobInd)
+
+% base dirs for animals
+baseDirs = {
+    '/home/asa7288/Transfer/D026', ...
+    '/home/asa7288/Transfer/D020', ...
+    '/home/asa7288/Transfer/D024' ...
+};
+
+% manually set jobInd before running this script
+% example:
+%   jobInd = 0;  % unpermuted
+%   jobInd = 1;  % first permutation, etc.
+
+if jobInd == 0
+    isPermuted = false;
+    permInd = 0;
+else
+    isPermuted = true;
+    permInd = jobInd;
+end
+
+% params
+chunkHalf      = 200;   % 401 samples total
+maxLagSecs     = 0.5;
+doBaselineNorm = true;
+behaviors      = 1:7;   % umap-defined behaviors
+
+for iDir = 1:numel(baseDirs)
+    baseDir = baseDirs{iDir};
+    fprintf('\nprocessing cortex session %d: %s (job %d)\n', iDir, baseDir, jobInd);
+
+    % load cortex emg-triggered windows
+    S = load(fullfile(baseDir, 'EMG_Neural_AllChannels.mat'), ...
+             'pyrCxWinCell','intCxWinCell','tAxis');
+
+    % load behavior labels per transition (umap 1..7; nan if unmapped)
+    L = load(fullfile(baseDir, 'transitionBehaviorLabels.mat'), ...
+             'regionLabelsPerTransition');
+
+    % sampling and sizes
+    tAxis  = S.tAxis(:)';   % seconds, e.g. -0.5:0.001:0.5
+    binSize = 0.001;
+    T      = numel(tAxis);
+
+    % center index (t = 0)
+    [~, cIdx] = min(abs(tAxis - 0));
+
+    % pyr subchunk indices [cIdx-chunkHalf : cIdx+chunkHalf]
+    pyrStart = cIdx - chunkHalf;
+    pyrEnd   = cIdx + chunkHalf;
+
+    % clip max lag in bins so int subchunk stays within [1..T]
+    reqMaxLagBins = round(maxLagSecs / binSize);
+    maxLagLeft    = pyrStart - 1;
+    maxLagRight   = T - pyrEnd;
+    maxLagBins    = min([reqMaxLagBins, maxLagLeft, maxLagRight]);
+    lags          = -maxLagBins:maxLagBins;  % integer lag bins
+
+    % number of channels
+    nCh = numel(S.pyrCxWinCell);
+
+    % helper: events×neurons×time → events×time
+    meanEvt = @(M) squeeze(mean(M, 2, 'omitnan'));
+
+    % main loop over behaviors
+    for bIdx = 1:numel(behaviors)
+        beh = behaviors(bIdx);
+        fprintf('  behavior %d\n', beh);
+
+        % per-behavior, per-channel events×time holders
+        pyr_byCh = cell(1, nCh);
+        int_byCh = cell(1, nCh);
+
+        % count total trials used for this behavior
+        nTrialsThisBehavior = 0;
+
+        for ch = 1:nCh
+            % skip if no labels or no data
+            if ch > numel(L.regionLabelsPerTransition) || isempty(L.regionLabelsPerTransition{ch})
+                continue;
+            end
+            if isempty(S.pyrCxWinCell{ch}) || isempty(S.intCxWinCell{ch})
+                continue;
+            end
+
+            pyrWin = S.pyrCxWinCell{ch};   % events×neurons×time
+            intWin = S.intCxWinCell{ch};   % events×neurons×time
+            if isempty(pyrWin) || isempty(intWin)
+                continue;
+            end
+
+            labels = L.regionLabelsPerTransition{ch}(:);
+            if isempty(labels)
+                continue;
+            end
+
+            % make sure we do not exceed available events in any array
+            nEvtP = size(pyrWin,1);
+            nEvtI = size(intWin,1);
+            nLab  = numel(labels);
+            nEvt  = min([nEvtP, nEvtI, nLab]);
+            if nEvt < 1
+                continue;
+            end
+
+            labels = labels(1:nEvt);
+            behMask = (labels == beh);
+            if ~any(behMask)
+                continue;
+            end
+
+            evIdx = find(behMask);
+            if isempty(evIdx)
+                continue;
+            end
+
+            % select only events for this behavior
+            pyrWin_sel = pyrWin(evIdx,:,:);
+            intWin_sel = intWin(evIdx,:,:);
+
+            % events×time, with or without permutation of neuron labels
+            if isPermuted
+                [nEvtSel, nPyr, ~] = size(pyrWin_sel);
+                [nEvtSelI, nInt, ~] = size(intWin_sel);
+                nEvtSel = min(nEvtSel, nEvtSelI);
+                if nPyr + nInt < 2 || nEvtSel < 1
+                    continue;
+                end
+
+                pyrWin_sel = pyrWin_sel(1:nEvtSel,:,:);
+                intWin_sel = intWin_sel(1:nEvtSel,:,:);
+
+                % pool neurons and shuffle labels
+                pooledWin = cat(2, pyrWin_sel, intWin_sel);  % events × (nPyr+nInt) × time
+                totN = nPyr + nInt;
+                idxAll = randperm(totN);
+                idxP = idxAll(1:nPyr);
+                idxI = idxAll(nPyr+1:end);
+
+                pyrEvt = squeeze(mean(pooledWin(:, idxP, :), 2, 'omitnan')); % events×time
+                intEvt = squeeze(mean(pooledWin(:, idxI, :), 2, 'omitnan')); % events×time
+            else
+                % avg across neurons -> events×time
+                pyrEvt = meanEvt(pyrWin_sel);
+                intEvt = meanEvt(intWin_sel);
+            end
+
+            if isempty(pyrEvt) || isempty(intEvt)
+                continue;
+            end
+
+            % optional per-trial baseline subtraction in [-0.2, -0.15] s
+            if doBaselineNorm
+                pyrEvt = subtractTrialBaseline(pyrEvt, tAxis, -0.2, -0.15);
+                intEvt = subtractTrialBaseline(intEvt, tAxis, -0.2, -0.15);
+            end
+
+            pyr_byCh{ch} = pyrEvt;
+            int_byCh{ch} = intEvt;
+
+            nTrialsThisBehavior = nTrialsThisBehavior + size(pyrEvt,1);
+        end
+
+        % if no data for this behavior, skip saving
+        if nTrialsThisBehavior == 0
+            fprintf('    no trials for behavior %d; skipping.\n', beh);
+            continue;
+        end
+
+        % compute lag-swept correlation pooling across channels/events
+        tic
+        [xc, peakLagSec] = lagSweepAcrossChannels(pyr_byCh, int_byCh, lags, pyrStart, pyrEnd, T, binSize);
+        disp(['    behavior ' num2str(beh) ' cross-correlation done, time: ' num2str(toc) ' s'])
+
+        % save per-behavior outputs in quest_runs
+        outDir = fullfile(baseDir, 'quest_runs');
+        if ~exist(outDir, 'dir'), mkdir(outDir); end
+
+        if isPermuted
+            outFile = fullfile(outDir, ...
+                sprintf('concatCrossCorrPerBehavior_perm_%03d_beh%02d.mat', permInd, beh));
+        else
+            outFile = fullfile(outDir, ...
+                sprintf('concatCrossCorrPerBehavior_unperm_beh%02d.mat', beh));
+        end
+
+        lagsSec = lags * binSize; %#ok<NASGU>
+        nTrials = nTrialsThisBehavior; %#ok<NASGU>
+
+        save(outFile, 'lags','lagsSec','binSize','xc','peakLagSec', ...
+            'chunkHalf','beh','doBaselineNorm','isPermuted','jobInd', ...
+            'permInd','baseDir','nTrials');
+
+        fprintf('    saved: %s\n', outFile);
+    end
+end
+
+
+
+% ===================== helpers =====================
+
+function Eout = subtractTrialBaseline(Ein, tAxisSec, tStartSec, tEndSec)
+    [~, iStart] = min(abs(tAxisSec - tStartSec));
+    [~, iEnd]   = min(abs(tAxisSec - tEndSec));
+    if iEnd < iStart
+        tmp = iStart;
+        iStart = iEnd;
+        iEnd = tmp;
+    end
+    baselines = mean(Ein(:, iStart:iEnd), 2, 'omitnan');  % events×1
+    Eout = Ein - baselines;  % implicit expansion per-event
+end
+
+function [xc, peakLagSec] = lagSweepAcrossChannels(pyr_byCh, int_byCh, lags, pyrStart, pyrEnd, T, binSize)
+    xc = nan(1, numel(lags));
+    for iL = 1:numel(lags)
+        L = lags(iL);
+        intStart = pyrStart - L;
+        intEnd   = pyrEnd   - L;
+        if intStart < 1 || intEnd > T
+            continue;
+        end
+
+        pvec = [];
+        ivec = [];
+        for ci = 1:numel(pyr_byCh)
+            pEvt = pyr_byCh{ci};
+            iEvt = int_byCh{ci};
+            if isempty(pEvt) || isempty(iEvt)
+                continue;
+            end
+            nEvt = min(size(pEvt,1), size(iEvt,1));
+            for e = 1:nEvt
+                pseg = pEvt(e, pyrStart:pyrEnd);
+                iseg = iEvt(e, intStart:intEnd);
+                pvec = [pvec, pseg]; %#ok<AGROW>
+                ivec = [ivec, iseg]; %#ok<AGROW>
+            end
+        end
+
+        valid = ~isnan(pvec) & ~isnan(ivec);
+        if nnz(valid) > 10
+            xc(iL) = corr(pvec(valid)', ivec(valid)');
+        end
+    end
+    [~, peakIdx] = max(xc);
+    peakLagSec = lags(peakIdx) * binSize;
+end
