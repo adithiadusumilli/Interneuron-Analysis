@@ -1,0 +1,73 @@
+% gather permutation xcorr results across animals for regular chunk script
+% each animal: permXC = 100 x nLags (each row = one permutation)
+%              permPeakLagSec = 1 x 100
+% all three animals saved into one .mat
+
+% base dirs for animals (same as in quest scripts)
+baseDirs = {
+    '/home/asa7288/Transfer/D026', ...
+    '/home/asa7288/Transfer/D020', ...
+    '/home/asa7288/Transfer/D024' ...
+};
+
+nPerm = 100;
+
+% holders for all animals
+allPermXC         = cell(numel(baseDirs), 1);  % each: nPerm x nLags
+allPermPeakLagSec = cell(numel(baseDirs), 1);  % each: 1 x nPerm
+allLags           = cell(numel(baseDirs), 1);  % each: 1 x nLags
+allBinSize        = cell(numel(baseDirs), 1);  % each: scalar
+
+for iDir = 1:numel(baseDirs)
+    baseDir = baseDirs{iDir};
+    outDir  = fullfile(baseDir, 'quest_runs');
+    fprintf('\nprocessing perms for animal %d: %s\n', iDir, baseDir);
+
+    % load first permutation to get nLags, lags, binSize
+    firstFile = fullfile(outDir, 'concatCrossCorr_chunked_perm_001.mat');
+    if ~exist(firstFile, 'file')
+        error('missing file: %s', firstFile);
+    end
+
+    tmp = load(firstFile, 'xc', 'lags', 'binSize', 'peakLagSec');
+    nLags = numel(tmp.xc);
+
+    permXC         = nan(nPerm, nLags);
+    permPeakLagSec = nan(1, nPerm);
+
+    % store first perm
+    permXC(1, :)         = tmp.xc(:)';  % ensure row
+    permPeakLagSec(1)    = tmp.peakLagSec;
+    lags                 = tmp.lags(:)';   % store once per animal
+    binSize              = tmp.binSize;
+
+    % loop through remaining permutations
+    for p = 2:nPerm
+        fname = fullfile(outDir, sprintf('concatCrossCorr_chunked_perm_%03d.mat', p));
+        if ~exist(fname, 'file')
+            warning('missing perm file: %s (skipping)', fname);
+            continue;
+        end
+        S = load(fname, 'xc', 'lags', 'peakLagSec');
+
+        % optional: check lags match
+        if numel(S.lags) ~= nLags || any(S.lags(:) ~= lags(:))
+            warning('lags mismatch in %s; skipping this permutation.', fname);
+            continue;
+        end
+
+        permXC(p, :)      = S.xc(:)';          % row = permutation
+        permPeakLagSec(p) = S.peakLagSec;
+    end
+
+    % store into cell arrays
+    allPermXC{iDir}         = permXC;
+    allPermPeakLagSec{iDir} = permPeakLagSec;
+    allLags{iDir}           = lags;
+    allBinSize{iDir}        = binSize;
+end
+
+% save everything into one mat file (adjust path/name if you want)
+outFileAll = '/home/asa7288/Transfer/allAnimals_concatCrossCorr_chunked_perms.mat';
+save(outFileAll, 'allPermXC', 'allPermPeakLagSec', 'allLags', 'allBinSize', 'baseDirs', 'nPerm');
+fprintf('\nsaved combined perms to: %s\n', outFileAll);
