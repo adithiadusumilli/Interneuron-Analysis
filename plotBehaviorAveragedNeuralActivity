@@ -54,7 +54,7 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
 
     % core helper: compute per-behavior averages + shifted percentiles
     % labelCell is the cell array for one label type (umap / manual / classifier)
-    function [mPyr, sePyr, mInt, seInt, pctPyr, pctInt] = ...
+    function [mPyr, sePyr, mInt, seInt, pctPyr, pctInt, nEvt] = ...
             doOneBehavior(labelCell, bVal)
 
         pyrPool  = []; % events x time
@@ -88,9 +88,9 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
             end
 
             % safety: make mask not longer than #events
-            nEvt = size(pyrAll,1);
-            if numel(mask) > nEvt
-                mask = mask(1:nEvt);
+            nEvtChan = size(pyrAll,1);
+            if numel(mask) > nEvtChan
+                mask = mask(1:nEvtChan);
             end
 
             % select only events belonging to this behavior
@@ -175,8 +175,12 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
             mPyr = []; sePyr = [];
             mInt = []; seInt = [];
             pctPyr = []; pctInt = [];
+            nEvt = 0;
             return;
         end
+
+        % total event count pooled across channels for this behavior
+        nEvt = size(pyrPool,1);
 
         % unshifted mean ± sem
         [mPyr, sePyr] = grandMS(pyrPool);
@@ -196,7 +200,7 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
     tiledlayout(2,4,'TileSpacing','tight','Padding','compact');
 
     for b = umapVals
-        [mPyr, sePyr, mInt, seInt, pctPyr, pctInt] = ...
+        [mPyr, sePyr, mInt, seInt, pctPyr, pctInt, nEvt] = ...
             doOneBehavior(L.regionLabelsPerTransition, b);
 
         nexttile(b); hold on;
@@ -220,7 +224,8 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
         ylabel('interneuron');
 
         xlabel('time (ms)');
-        title(sprintf('umap %d', b));
+        xlim([-150 500]);  % only show -150 to 500 ms
+        title(sprintf('umap %d (n = %d)', b, nEvt));
     end
 
     sgtitle(sprintf('cortex neural activity by umap behavior (1–7)%s', ...
@@ -235,7 +240,7 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
     tiledlayout(3,4,'TileSpacing','tight','Padding','compact');
 
     for b = manualVals
-        [mPyr, sePyr, mInt, seInt, pctPyr, pctInt] = ...
+        [mPyr, sePyr, mInt, seInt, pctPyr, pctInt, nEvt] = ...
             doOneBehavior(L.manualLabelsPerTransition, b);
 
         tileIdx = b + 1;
@@ -260,7 +265,8 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
         ylabel('interneuron');
 
         xlabel('time (ms)');
-        title(sprintf('manual %d', b));
+        xlim([-150 500]);
+        title(sprintf('manual %d (n = %d)', b, nEvt));
     end
 
     sgtitle(sprintf('cortex neural activity by manual behavior (0–10)%s', ...
@@ -275,7 +281,7 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
     tiledlayout(3,4,'TileSpacing','tight','Padding','compact');
 
     for b = classVals
-        [mPyr, sePyr, mInt, seInt, pctPyr, pctInt] = ...
+        [mPyr, sePyr, mInt, seInt, pctPyr, pctInt, nEvt] = ...
             doOneBehavior(L.classifierLabelsPerTransition, b);
 
         tileIdx = b + 1;
@@ -300,7 +306,8 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
         ylabel('interneuron');
 
         xlabel('time (ms)');
-        title(sprintf('classifier %d', b));
+        xlim([-150 500]);
+        title(sprintf('classifier %d (n = %d)', b, nEvt));
     end
 
     sgtitle(sprintf('cortex neural activity by classifier behavior (0–10)%s', ...
