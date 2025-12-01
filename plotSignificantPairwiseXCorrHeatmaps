@@ -1,0 +1,91 @@
+function plotSignificantPairwiseXCorrHeatmaps(matFile, regionIdx)
+% plots heatmaps of significant pairwise peak correlations per animal
+% only neuron pairs with peak corr > mean(null) + 3*std(null) are shown
+% all non-significant pairs are set to nan and rendered transparent
+
+% inputs:
+%   matFile   - path to .mat with allPeakLags, allPeakCorrs, allXC_Shifted
+%   regionIdx - column in cell arrays to use (1 = cortex, 2 = striatum)
+%               default = 1 (cortex)
+
+% example:
+%   plotSignificantPairwiseXCorrHeatmaps('X:\David\AnalysesData\InterneuronAnalyses\tmp\PairwiseCrossCorrelationResults.mat');
+
+    if nargin < 2 || isempty(regionIdx)
+        regionIdx = 1; % cortex by default
+    end
+
+    % load pairwise results
+    load(matFile, 'allPeakLags', 'allPeakCorrs', 'allXC_Shifted');
+
+    numSessions = size(allPeakCorrs, 1);
+
+    for sess = 1:numSessions
+        peakCorrs = allPeakCorrs{sess, regionIdx};
+        peakLags = allPeakLags{sess, regionIdx}; %#ok<NASGU> % not used here but loaded for completeness
+        shiftedXC = allXC_Shifted{sess, regionIdx}; % int x pyr x numShifts
+
+        if isempty(peakCorrs) || isempty(shiftedXC)
+            fprintf('session %d: no data for region %d, skipping.\n', sess, regionIdx);
+            continue;
+        end
+
+        [numInt, numPyr, ~] = size(shiftedXC);
+
+        if any(size(peakCorrs,1) ~= numInt) || any(size(peakCorrs,2) ~= numPyr)
+            warning('session %d: size mismatch between peakCorrs and shiftedXC, skipping.', sess);
+            continue;
+        end
+
+        % matrix to hold only significant peak correlations
+        sigMat = nan(size(peakCorrs));
+
+        totalPairs = numInt * numPyr;
+        sigPairs = 0;
+
+        for i = 1:numInt
+            for j = 1:numPyr
+                nullVals = squeeze(shiftedXC(i, j, :)); % distribution across shifts
+                if all(isnan(nullVals))
+                    continue;
+                end
+                nullMean = mean(nullVals, 'omitnan');
+                nullStd = std(nullVals, 'omitnan');
+
+                actualCorr = peakCorrs(i, j);
+
+                if isnan(actualCorr) || isnan(nullMean) || isnan(nullStd)
+                    continue;
+                end
+
+                if actualCorr > (nullMean + 3 * nullStd)
+                    sigMat(i, j) = actualCorr;
+                    sigPairs = sigPairs + 1;
+                end
+            end
+        end
+
+        % make heatmap
+        figure('Name', sprintf('Session %d – significant pairwise XC (region %d)', sess, regionIdx), ...
+               'Color', 'w');
+
+        % imagesc with nan transparency
+        hImg = imagesc(sigMat);
+        set(hImg, 'AlphaData', ~isnan(sigMat)); % hide nonsignificant pairs
+
+        axis xy; % so interneuron index increases upward
+        colormap(parula); % or whatever you prefer
+        colorbar;
+        c = colorbar;
+        ylabel(c, 'peak correlation');
+
+        xlabel('pyramidal neurons');
+        ylabel('interneurons');
+        title(sprintf('session %d (region %d) – significant pairs: %d / %d', ...
+            sess, regionIdx, sigPairs, totalPairs));
+
+        % optional: tighten axes and add grid-like look
+        set(gca, 'TickDir', 'out');
+        box off;
+    end
+end
