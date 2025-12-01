@@ -73,6 +73,9 @@ function plotSignificantPairwiseXCorrHeatmaps(matFile, regionIdx)
         hImg = imagesc(sigMat);
         set(hImg, 'AlphaData', ~isnan(sigMat)); % hide nonsignificant pairs
 
+        % make the background behind transparent NaNs black
+        set(gca, 'Color', 'k'); 
+
         axis xy; % so interneuron index increases upward
         colormap(parula); % or whatever you prefer
         colorbar;
