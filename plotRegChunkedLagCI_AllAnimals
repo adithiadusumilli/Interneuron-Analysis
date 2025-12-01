@@ -1,0 +1,145 @@
+function plotRegChunkedLagCI_AllAnimals(baseRoot)
+% plots cortical chunked XC peak lag permutation distributions
+% this is for all animals, using quest-run outputs (no baseline normalization here cuz done in quest)
+
+% directory structure from quest stuff:
+%   baseRoot/
+%       D026/quest_runs/concatCrossCorr_chunked_unperm.mat
+%       D026/quest_runs/concatCrossCorr_chunked_perm_001.mat ... _100.mat
+%       D020/quest_runs/...
+%       D024/quest_runs/...
+
+% inputs:
+%   baseRoot (optional): folder containing D026, D020, D024
+%       default: 'C:\Users\mirilab\Documents\GlobusTransfer'
+
+    if nargin < 1 || isempty(baseRoot)
+        baseRoot = 'C:\Users\mirilab\Documents\GlobusTransfer';
+    end
+
+    % animal subfolders under baseRoot
+    baseDirs = {
+        fullfile(baseRoot, 'D026') ...
+        fullfile(baseRoot, 'D020') ...
+        fullfile(baseRoot, 'D024') ...
+    };
+
+    animalLabels = {'D026','D020','D024'};
+
+    % holders for combined summary plot (all animals tg)
+    allPermLags   = []; % all permuted lags from all animals
+    allActualLags = nan(1, numel(baseDirs)); % actual lag per animal
+
+    % figure with one histogram per animal
+    figure('Name','Cortex chunked XC peak lag permutation distributions', ...
+           'Color','w');
+    tiledlayout(1, numel(baseDirs), 'TileSpacing','compact', 'Padding','compact');
+
+    for iA = 1:numel(baseDirs)
+        baseDir  = baseDirs{iA};
+        questDir = fullfile(baseDir, 'quest_runs');
+
+        unpermFile = fullfile(questDir, 'concatCrossCorr_chunked_unperm.mat');
+
+        nexttile; hold on;
+
+        if ~exist(unpermFile, 'file')
+            title(sprintf('%s (no unperm file)', animalLabels{iA}));
+            axis off;
+            continue;
+        end
+
+        % load unpermuted peak lag (cortex only)
+        S_un = load(unpermFile, 'peakLagSec');
+        actualLag = S_un.peakLagSec;   % seconds
+        allActualLags(iA) = actualLag;
+
+        % collect permuted lags
+        nPerm = 100;
+        permLags = nan(1, nPerm);
+
+        for p = 1:nPerm
+            permFile = fullfile(questDir, ...
+                sprintf('concatCrossCorr_chunked_perm_%03d.mat', p));
+            if exist(permFile, 'file')
+                S_p = load(permFile, 'peakLagSec');
+                permLags(p) = S_p.peakLagSec;
+            end
+        end
+
+        validPerm = ~isnan(permLags);
+
+        if ~any(validPerm)
+            title(sprintf('%s (no valid perm lags)', animalLabels{iA}));
+            axis off;
+            continue;
+        end
+
+        permLagsValid = permLags(validPerm);
+
+        % add to combined holder
+        allPermLags = [allPermLags, permLagsValid]; %#ok<AGROW>
+
+        % 95% CI of permuted lags (per animal)
+        lagCI = prctile(permLagsValid, [2.5 97.5]);
+
+        % histogram of permuted peak lags
+        histogram(permLagsValid, 'BinMethod', 'fd'); hold on;
+
+        % CI lines
+        xline(lagCI(1), 'k--', 'LineWidth', 1.5);
+        xline(lagCI(2), 'k--', 'LineWidth', 1.5);
+
+        % actual lag
+        xline(actualLag, 'r-', 'LineWidth', 2);
+
+        xlabel('peak lag (s)');
+        ylabel('count');
+        title(sprintf('%s', animalLabels{iA}));
+
+        legend({ ...
+            'permuted lags', ...
+            sprintf('2.5%% = %.3f s', lagCI(1)), ...
+            sprintf('97.5%% = %.3f s', lagCI(2)), ...
+            sprintf('actual = %.3f s', actualLag)}, ...
+            'Location','best');
+
+        grid on; box off;
+    end
+
+    % ---------- combined summary plot across all animals ----------
+    validAll = ~isnan(allPermLags);
+    if any(validAll)
+        permAll = allPermLags(validAll);
+        lagCI_all = prctile(permAll, [2.5 97.5]);
+
+        figure('Name','Cortex chunked XC peak lag permutations (all animals combined)', ...
+               'Color','w');
+        histogram(permAll, 'BinMethod','fd'); hold on;
+
+        % CI lines for combined distribution
+        xline(lagCI_all(1), 'k--', 'LineWidth', 1.5);
+        xline(lagCI_all(2), 'k--', 'LineWidth', 1.5);
+
+        % actual lags per animal (different colors)
+        co = lines(numel(allActualLags));
+        legEntries = {'permuted lags', ...
+                      sprintf('2.5%% (all) = %.3f s', lagCI_all(1)), ...
+                      sprintf('97.5%% (all) = %.3f s', lagCI_all(2))};
+
+        for iA = 1:numel(allActualLags)
+            if isnan(allActualLags(iA)), continue; end
+            xline(allActualLags(iA), '-', 'Color', co(iA,:), 'LineWidth', 2);
+            legEntries{end+1} = sprintf('actual %s = %.3f s', animalLabels{iA}, allActualLags(iA)); %#ok<AGROW>
+        end
+
+        xlabel('peak lag (s)');
+        ylabel('count');
+        title('combined permutation distribution (all animals)');
+        legend(legEntries, 'Location','best');
+        grid on; box off;
+    else
+        warning('no valid permuted lags found across animals for combined plot.');
+    end
+
+end
