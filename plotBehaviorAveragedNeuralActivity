@@ -1,13 +1,7 @@
 function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselineNorm)
-% plots average cortex activity per behavior type with 95% shifted controls
-% uses emg-triggered neural windows and transition-behavior label mapping
-%
-% inputs:
-%   folderpath      - path to folder with EMG_Neural_AllChannels.mat
-%                     and transitionBehaviorLabels.mat
-%   channelstouse   - vector of emg channels to include (default = 1:4)
-%   doBaselineNorm  - logical, per-trial baseline subtract (-200 to -150 ms)
-%                     before averaging across trials (default = true)
+% plots cortex pyramidal + interneuron activity per behavior class
+% behavior classes come from transitionBehaviorLabels.mat
+% uses same baseline norm + shifted control logic as plotEMGandNeuralAverageswNorm
 
     if nargin < 2 || isempty(channelsToUse), channelsToUse = 1:4; end
     if nargin < 3 || isempty(doBaselineNorm), doBaselineNorm = true; end
@@ -17,202 +11,202 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
     fcn = fullfile(sep,'shadedErrorBar.m');
     if exist(fcn,'file'), addpath(genpath(sep)); end
 
-    % load neural and transition label data (cortex only)
-    S = load(fullfile(folderPath, 'EMG_Neural_AllChannels.mat'), ...
+    % -------- load emg + neural windows (output of extractEMGandNeuralWindows) --------
+    dataFile = fullfile(folderPath,'EMG_Neural_AllChannels.mat');
+    S = load(dataFile, ...
         'pyrCxWinCell','intCxWinCell', ...
         'pyrCxWinShiftedCell','intCxWinShiftedCell', ...
         'pyrCxWinShiftedMeanCell','intCxWinShiftedMeanCell', ...
         'tAxis','validTransitionsCell');
 
-    L = load(fullfile(folderPath, 'transitionBehaviorLabels.mat'), ...
-        'regionLabelsPerTransition', ...      % umap 1–7
-        'manualLabelsPerTransition', ...      % manual 0–10
-        'classifierLabelsPerTransition');     % classifier 0–10 (0 = unlabeled)
-
     tAxis = S.tAxis;
 
-    % ---------- helper funcs ----------
-    % avg across neurons -> events x time
-    meanEvt = @(M) squeeze(mean(M, 2, 'omitnan'));
+    % -------- load behavior labels per transition --------
+    % produced by your transition label mapping code
+    L = load(fullfile(folderPath,'transitionBehaviorLabels.mat'), ...
+        'regionLabelsPerTransition', ...    % umap 1–7
+        'manualLabelsPerTransition', ...    % manual 0–10
+        'classifierLabelsPerTransition');   % classifier 0–10 (0 = unlabeled)
 
-    % mean ± sem across events
-    grandMS = @(E) deal(mean(E,1,'omitnan'), ...
-                        std(E,0,1,'omitnan') ./ max(1, sqrt(size(E,1))));
+    % -------- helper funcs (same style as your working function) --------
+
+    % avg across neurons -> events x time
+    meanEvt = @(M) permute(mean(M, 2, 'omitnan'), [1 3 2]);
+
+    % grand mean and sem across events
+    grandMS = @(E) deal(mean(E,1,'omitnan'), std(E,0,1,'omitnan')./sqrt(size(E,1)));
 
     % per-trial baseline subtraction using -200 to -150 ms window
-    function Eout = subtractTrialBaseline(Ein, tAxisLoc, tStart, tEnd)
+    function Eout = subtractTrialBaseline(Ein, tAxisLocal, tStart, tEnd)
         % ein: events x time
         if isempty(Ein)
             Eout = Ein;
             return;
         end
-
-        [~, iStart] = min(abs(tAxisLoc - tStart));
-        [~, iEnd]   = min(abs(tAxisLoc - tEnd));
+        [~, iStart] = min(abs(tAxisLocal - tStart));
+        [~, iEnd]   = min(abs(tAxisLocal - tEnd));
         if iEnd < iStart
             tmp = iStart; iStart = iEnd; iEnd = tmp;
         end
-
-        % safety check against size(ein,2)
-        if iStart < 1 || iEnd > size(Ein, 2) || iStart > iEnd
-            Eout = Ein;   % invalid baseline window -> skip
-            return;
-        end
-
         baselines = mean(Ein(:, iStart:iEnd), 2, 'omitnan'); % events x 1
-        Eout = Ein - baselines; % implicit expansion per event
+        Eout = Ein - baselines;
     end
 
-    % build per-behavior averages + shifted 2.5/97.5 percentiles
+    % core helper: compute per-behavior averages + shifted percentiles
+    % labelCell is the cell array for one label type (umap / manual / classifier)
     function [mPyr, sePyr, mInt, seInt, pctPyr, pctInt] = ...
-            doOneBehavior(bVal, labelsPerTransition)
+            doOneBehavior(labelCell, bVal)
 
-        pyrPool  = [];   % events x time, pooled across channels
+        pyrPool  = []; % events x time
         intPool  = [];
-        shiftPyr = [];   % rows = shifts (all channels), cols = time
+        shiftPyr = []; % rows = shifts x time
         shiftInt = [];
 
         for ch = channelsToUse
-            if ch > numel(labelsPerTransition) || isempty(labelsPerTransition{ch})
+            % behavior labels for this muscle's transitions
+            if ch > numel(labelCell) || isempty(labelCell{ch})
                 continue;
             end
-            behLabelsCh = labelsPerTransition{ch}(:);
+            labels = labelCell{ch}(:);
 
-            % mask of events for this behavior (and non-nan labels)
-            mask = (behLabelsCh == bVal) & ~isnan(behLabelsCh);
+            if ch > numel(S.validTransitionsCell) || isempty(S.validTransitionsCell{ch})
+                continue;
+            end
+
+            % mask transitions that equal this behavior code
+            mask = (labels == bVal) & ~isnan(labels);
             if ~any(mask)
                 continue;
             end
 
-            % ---------- unshifted windows ----------
-            if ch > numel(S.pyrCxWinCell) || isempty(S.pyrCxWinCell{ch})
+            % ----- unshifted neural windows for this channel -----
+            pyrAll = S.pyrCxWinCell{ch};   % events x neurons x time
+            intAll = S.intCxWinCell{ch};
+
+            if isempty(pyrAll) || isempty(intAll)
                 continue;
             end
 
-            pyr3D = S.pyrCxWinCell{ch};
-            int3D = S.intCxWinCell{ch};
-            if isempty(pyr3D) || isempty(int3D)
+            % safety: make mask not longer than #events
+            nEvt = size(pyrAll,1);
+            if numel(mask) > nEvt
+                mask = mask(1:nEvt);
+            end
+
+            % select only events belonging to this behavior
+            pyrSel = pyrAll(mask,:,:);
+            intSel = intAll(mask,:,:);
+            if isempty(pyrSel) || isempty(intSel)
                 continue;
             end
 
-            pyrSel = pyr3D(mask,:,:);  % events x neurons x time
-            intSel = int3D(mask,:,:);
+            % avg across neurons -> events x time
+            Ep = meanEvt(pyrSel);
+            Ei = meanEvt(intSel);
 
-            pyrEvt = meanEvt(pyrSel);  % events x time
-            intEvt = meanEvt(intSel);
-
-            if isvector(pyrEvt), pyrEvt = reshape(pyrEvt, 1, []); end
-            if isvector(intEvt), intEvt = reshape(intEvt, 1, []); end
-
+            % baseline norm per event
             if doBaselineNorm
-                pyrEvt = subtractTrialBaseline(pyrEvt, tAxis, -200, -150);
-                intEvt = subtractTrialBaseline(intEvt, tAxis, -200, -150);
+                Ep = subtractTrialBaseline(Ep, tAxis, -200, -150);
+                Ei = subtractTrialBaseline(Ei, tAxis, -200, -150);
             end
 
-            pyrPool = [pyrPool; pyrEvt]; %#ok<AGROW>
-            intPool = [intPool; intEvt]; %#ok<AGROW>
+            pyrPool = [pyrPool; Ep]; %#ok<AGROW>
+            intPool = [intPool; Ei]; %#ok<AGROW>
 
-            % ---------- shifted controls ----------
-            % first shift (full events x neurons x time)
-            if ~isempty(S.pyrCxWinShiftedCell{ch})
-                pyrShift1_3D = S.pyrCxWinShiftedCell{ch}(mask,:,:);
-                intShift1_3D = S.intCxWinShiftedCell{ch}(mask,:,:);
+            % ----- shifted controls: first full shift -----
+            pyrShiftFull = S.pyrCxWinShiftedCell{ch};
+            intShiftFull = S.intCxWinShiftedCell{ch};
+            if ~isempty(pyrShiftFull) && ~isempty(intShiftFull)
+                nEvtShift = size(pyrShiftFull,1);
+                mask1 = mask;
+                if numel(mask1) > nEvtShift
+                    mask1 = mask1(1:nEvtShift);
+                end
+                pyrShiftSel = pyrShiftFull(mask1,:,:);
+                intShiftSel = intShiftFull(mask1,:,:);
 
-                pyrShift1_evt = meanEvt(pyrShift1_3D);
-                intShift1_evt = meanEvt(intShift1_3D);
+                Ep1 = meanEvt(pyrShiftSel);
+                Ei1 = meanEvt(intShiftSel);
 
                 if doBaselineNorm
-                    pyrShift1_evt = subtractTrialBaseline(pyrShift1_evt, tAxis, -200, -150);
-                    intShift1_evt = subtractTrialBaseline(intShift1_evt, tAxis, -200, -150);
+                    Ep1 = subtractTrialBaseline(Ep1, tAxis, -200, -150);
+                    Ei1 = subtractTrialBaseline(Ei1, tAxis, -200, -150);
                 end
 
-                if ~isempty(pyrShift1_evt)
-                    rowPyr1 = mean(pyrShift1_evt, 1, 'omitnan');
-                else
-                    rowPyr1 = [];
-                end
-                if ~isempty(intShift1_evt)
-                    rowInt1 = mean(intShift1_evt, 1, 'omitnan');
-                else
-                    rowInt1 = [];
-                end
-            else
-                rowPyr1 = [];
-                rowInt1 = [];
+                shiftPyr = [shiftPyr; mean(Ep1,1,'omitnan')]; %#ok<AGROW>
+                shiftInt = [shiftInt; mean(Ei1,1,'omitnan')]; %#ok<AGROW>
             end
 
-            % remaining 99 shifts: each cell = events x time
-            pyrShiftCells = S.pyrCxWinShiftedMeanCell(ch, :);
-            intShiftCells = S.intCxWinShiftedMeanCell(ch, :);
-
-            rowsPyr = [];
-            rowsInt = [];
+            % ----- shifted controls: remaining 99 mean-only shifts -----
+            pyrShiftCells = S.pyrCxWinShiftedMeanCell(ch,:); % 1x99 cells
+            intShiftCells = S.intCxWinShiftedMeanCell(ch,:);
 
             for k = 1:numel(pyrShiftCells)
-                Ep = pyrShiftCells{k};
-                Ei = intShiftCells{k};
-                if isempty(Ep) || isempty(Ei)
+                EpAll = pyrShiftCells{k};
+                EiAll = intShiftCells{k};
+                if isempty(EpAll) || isempty(EiAll)
                     continue;
                 end
 
-                Ep = Ep(mask, :);
-                Ei = Ei(mask, :);
-                if isempty(Ep) || isempty(Ei)
+                nEvtK = size(EpAll,1);
+                maskK = mask;
+                if numel(maskK) > nEvtK
+                    maskK = maskK(1:nEvtK);
+                end
+
+                EpK = EpAll(maskK,:);
+                EiK = EiAll(maskK,:);
+                if isempty(EpK) || isempty(EiK)
                     continue;
                 end
 
                 if doBaselineNorm
-                    Ep = subtractTrialBaseline(Ep, tAxis, -200, -150);
-                    Ei = subtractTrialBaseline(Ei, tAxis, -200, -150);
+                    EpK = subtractTrialBaseline(EpK, tAxis, -200, -150);
+                    EiK = subtractTrialBaseline(EiK, tAxis, -200, -150);
                 end
 
-                rowsPyr = [rowsPyr; mean(Ep, 1, 'omitnan')]; %#ok<AGROW>
-                rowsInt = [rowsInt; mean(Ei, 1, 'omitnan')]; %#ok<AGROW>
+                shiftPyr = [shiftPyr; mean(EpK,1,'omitnan')]; %#ok<AGROW>
+                shiftInt = [shiftInt; mean(EiK,1,'omitnan')]; %#ok<AGROW>
             end
-
-            chanPyrRows = [rowPyr1; rowsPyr];
-            chanIntRows = [rowInt1; rowsInt];
-
-            shiftPyr = [shiftPyr; chanPyrRows]; %#ok<AGROW>
-            shiftInt = [shiftInt; chanIntRows]; %#ok<AGROW>
         end
 
-        % if no trials for this behavior, return nans
+        % if nothing pooled, return empties so caller can skip plot
         if isempty(pyrPool) || isempty(intPool)
-            mPyr = nan(1, numel(tAxis)); sePyr = mPyr;
-            mInt = mPyr;                 seInt = mPyr;
-            pctPyr = nan(2, numel(tAxis));
-            pctInt = nan(2, numel(tAxis));
+            mPyr = []; sePyr = [];
+            mInt = []; seInt = [];
+            pctPyr = []; pctInt = [];
             return;
         end
 
+        % unshifted mean ± sem
         [mPyr, sePyr] = grandMS(pyrPool);
         [mInt, seInt] = grandMS(intPool);
 
-        if isempty(shiftPyr)
-            pctPyr = nan(2, numel(tAxis));
-        else
-            pctPyr = prctile(shiftPyr, [2.5 97.5], 1);
-        end
-
-        if isempty(shiftInt)
-            pctInt = nan(2, numel(tAxis));
-        else
-            pctInt = prctile(shiftInt, [2.5 97.5], 1);
-        end
+        % 2.5 / 97.5 percentiles for shifted controls
+        pctPyr = prctile(shiftPyr, [2.5 97.5], 1);
+        pctInt = prctile(shiftInt, [2.5 97.5], 1);
     end
 
-    % ---------- umap behavior plots (1–7) ----------
+    % ============================================================
+    % 1) umap regions 1–7
+    % ============================================================
     umapVals = 1:7;
 
-    figure('Name','cortex neural by umap region','Color','w');
+    figure('Name','cortex neural by umap behavior','Color','w');
     tiledlayout(2,4,'TileSpacing','tight','Padding','compact');
 
     for b = umapVals
         [mPyr, sePyr, mInt, seInt, pctPyr, pctInt] = ...
-            doOneBehavior(b, L.regionLabelsPerTransition);
+            doOneBehavior(L.regionLabelsPerTransition, b);
 
         nexttile(b); hold on;
+
+        if isempty(mPyr) || isempty(mInt)
+            axis off;
+            title(sprintf('umap %d (no events)', b));
+            continue;
+        end
+
         yyaxis left
         shadedErrorBar(tAxis, mPyr, sePyr, 'lineProps', {'b','LineWidth',1.5});
         plot(tAxis, pctPyr(1,:), 'b--');
@@ -225,14 +219,16 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
         plot(tAxis, pctInt(2,:), 'r--');
         ylabel('interneuron');
 
-        title(sprintf('umap %d', b));
         xlabel('time (ms)');
+        title(sprintf('umap %d', b));
     end
 
     sgtitle(sprintf('cortex neural activity by umap behavior (1–7)%s', ...
         tern(doBaselineNorm,' – baseline-subtracted','')));
 
-    % ---------- manual behavior plots (0–10) ----------
+    % ============================================================
+    % 2) manual labels 0–10
+    % ============================================================
     manualVals = 0:10;
 
     figure('Name','cortex neural by manual label','Color','w');
@@ -240,9 +236,17 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
 
     for b = manualVals
         [mPyr, sePyr, mInt, seInt, pctPyr, pctInt] = ...
-            doOneBehavior(b, L.manualLabelsPerTransition);
+            doOneBehavior(L.manualLabelsPerTransition, b);
 
-        nexttile(b+1); hold on;
+        tileIdx = b + 1;
+        nexttile(tileIdx); hold on;
+
+        if isempty(mPyr) || isempty(mInt)
+            axis off;
+            title(sprintf('manual %d (no events)', b));
+            continue;
+        end
+
         yyaxis left
         shadedErrorBar(tAxis, mPyr, sePyr, 'lineProps', {'b','LineWidth',1.5});
         plot(tAxis, pctPyr(1,:), 'b--');
@@ -255,24 +259,34 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
         plot(tAxis, pctInt(2,:), 'r--');
         ylabel('interneuron');
 
-        title(sprintf('manual %d', b));
         xlabel('time (ms)');
+        title(sprintf('manual %d', b));
     end
 
     sgtitle(sprintf('cortex neural activity by manual behavior (0–10)%s', ...
         tern(doBaselineNorm,' – baseline-subtracted','')));
 
-    % ---------- classifier behavior plots (1–10; skip 0) ----------
-    classifierVals = 1:10;
+    % ============================================================
+    % 3) classifier labels 0–10 (0 = unlabeled)
+    % ============================================================
+    classVals = 0:10;
 
     figure('Name','cortex neural by classifier label','Color','w');
     tiledlayout(3,4,'TileSpacing','tight','Padding','compact');
 
-    for b = classifierVals
+    for b = classVals
         [mPyr, sePyr, mInt, seInt, pctPyr, pctInt] = ...
-            doOneBehavior(b, L.classifierLabelsPerTransition);
+            doOneBehavior(L.classifierLabelsPerTransition, b);
 
-        nexttile(b); hold on;
+        tileIdx = b + 1;
+        nexttile(tileIdx); hold on;
+
+        if isempty(mPyr) || isempty(mInt)
+            axis off;
+            title(sprintf('classifier %d (no events)', b));
+            continue;
+        end
+
         yyaxis left
         shadedErrorBar(tAxis, mPyr, sePyr, 'lineProps', {'b','LineWidth',1.5});
         plot(tAxis, pctPyr(1,:), 'b--');
@@ -285,16 +299,16 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
         plot(tAxis, pctInt(2,:), 'r--');
         ylabel('interneuron');
 
-        title(sprintf('classifier %d', b));
         xlabel('time (ms)');
+        title(sprintf('classifier %d', b));
     end
 
-    sgtitle(sprintf('cortex neural activity by classifier behavior (1–10)%s', ...
+    sgtitle(sprintf('cortex neural activity by classifier behavior (0–10)%s', ...
         tern(doBaselineNorm,' – baseline-subtracted','')));
 
 end
 
-% tiny helper for title string
+% tiny ternary helper for title string
 function out = tern(cond, a, b)
     if cond, out = a; else, out = b; end
 end
