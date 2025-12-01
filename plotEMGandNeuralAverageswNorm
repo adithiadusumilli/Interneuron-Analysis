@@ -17,7 +17,9 @@ function plotEMGandNeuralAverageswNorm(dataFile, channelsToUse, doBaselineNorm)
     if exist(fcn,'file'), addpath(genpath(sep)); end
 
     % load variables saved by extractEMGandNeuralWindows
-    S = load(dataFile, 'emgWindowsCell','pyrCxWinCell','intCxWinCell','pyrStrWinCell','intStrWinCell','tAxis', 'pyrCxWinShiftedCell','intCxWinShiftedCell','pyrStrWinShiftedCell','intStrWinShiftedCell', 'pyrCxWinShiftedMeanCell','intCxWinShiftedMeanCell','pyrStrWinShiftedMeanCell','intStrWinShiftedMeanCell');
+    S = load(dataFile, 'emgWindowsCell','pyrCxWinCell','intCxWinCell','pyrStrWinCell','intStrWinCell','tAxis', ...
+                        'pyrCxWinShiftedCell','intCxWinShiftedCell','pyrStrWinShiftedCell','intStrWinShiftedCell', ...
+                        'pyrCxWinShiftedMeanCell','intCxWinShiftedMeanCell','pyrStrWinShiftedMeanCell','intStrWinShiftedMeanCell');
 
     % -------- helper funcs --------
     % avg across neurons -> (events x time)
@@ -31,7 +33,9 @@ function plotEMGandNeuralAverageswNorm(dataFile, channelsToUse, doBaselineNorm)
         % ein: events x time (input matrix that needs to be normalized)
         [~, iStart] = min(abs(tAxis - tStart));
         [~, iEnd]   = min(abs(tAxis - tEnd));
-        if iEnd < iStart, tmp=iStart; iStart=iEnd; iEnd=tmp; end
+        if iEnd < iStart
+            tmp = iStart; iStart = iEnd; iEnd = tmp;
+        end
         baselines = mean(Ein(:, iStart:iEnd), 2, 'omitnan'); % events x 1
         Eout = Ein - baselines; % implicit expansion per event
     end
@@ -70,7 +74,7 @@ function plotEMGandNeuralAverageswNorm(dataFile, channelsToUse, doBaselineNorm)
         intStr_evt = subtractTrialBaseline(intStr_evt, S.tAxis, -200, -150);
     end
 
-    % compute mean ± sem across events
+    % compute mean ± sem across events (these stay SEM-based)
     [mPyrCx , sePyrCx ] = grandMS(pyrCx_evt);
     [mIntCx , seIntCx ] = grandMS(intCx_evt);
     [mPyrStr, sePyrStr] = grandMS(pyrStr_evt);
@@ -111,21 +115,16 @@ function plotEMGandNeuralAverageswNorm(dataFile, channelsToUse, doBaselineNorm)
     pyrStr_shiftMat = buildShiftMat(S.pyrStrWinShiftedCell, S.pyrStrWinShiftedMeanCell, S.tAxis);
     intStr_shiftMat = buildShiftMat(S.intStrWinShiftedCell, S.intStrWinShiftedMeanCell, S.tAxis);
 
-  % compute shifted-control mean ± SEM across shifts (rows)
-    [pyrCx_shiftMean , pyrCx_shiftSEM ] = grandMS(pyrCx_shiftMat);
-    [intCx_shiftMean , intCx_shiftSEM ] = grandMS(intCx_shiftMat);
-    [pyrStr_shiftMean, pyrStr_shiftSEM] = grandMS(pyrStr_shiftMat);
-    [intStr_shiftMean, intStr_shiftSEM] = grandMS(intStr_shiftMat);
-
-    % precompute lower/upper bounds for plotting
-    pyrCx_sem = [pyrCx_shiftMean - pyrCx_shiftSEM; pyrCx_shiftMean + pyrCx_shiftSEM];
-    intCx_sem = [intCx_shiftMean - intCx_shiftSEM; intCx_shiftMean + intCx_shiftSEM];
-    pyrStr_sem = [pyrStr_shiftMean - pyrStr_shiftSEM; pyrStr_shiftMean + pyrStr_shiftSEM];
-    intStr_sem = [intStr_shiftMean - intStr_shiftSEM; intStr_shiftMean + intStr_shiftSEM];
+    % -------- NEW: compute shifted-control 2.5 & 97.5 percentiles across shifts --------
+    % each result is 2 x time: [2.5%; 97.5%]
+    pyrCx_pct = prctile(pyrCx_shiftMat, [2.5 97.5], 1);
+    intCx_pct = prctile(intCx_shiftMat, [2.5 97.5], 1);
+    pyrStr_pct = prctile(pyrStr_shiftMat, [2.5 97.5], 1);
+    intStr_pct = prctile(intStr_shiftMat, [2.5 97.5], 1);
 
     % -------- 4) emg mean & sem (unchanged) --------
     mEMG = mean(emgPool , 1 , 'omitnan'); 
-    seEMG = std (emgPool , 0 , 1 , 'omitnan') ./ sqrt(size(emgPool,1)); 
+    seEMG = std (emgPool , 0 , 1 , 'omitnan') ./ sqrt(size(emgPool,1)); %#ok<NASGU> 
 
     % -------- 5) plot (2 x 2) with yyaxis and shifted percentile bounds --------
     figure('Name','unshifted neural (baseline-subtracted) + 95% shifted percentile bounds','Color','w');
@@ -135,14 +134,14 @@ function plotEMGandNeuralAverageswNorm(dataFile, channelsToUse, doBaselineNorm)
     nexttile(1); hold on;
     yyaxis left
     shadedErrorBar(S.tAxis, mPyrCx, sePyrCx, 'lineProps', {'b', 'LineWidth', 1.5});
-    plot(S.tAxis, pyrCx_sem(1,:), 'b--');   % mean - sem
-    plot(S.tAxis, pyrCx_sem(2,:), 'b--');   % mean + sem
+    plot(S.tAxis, pyrCx_pct(1,:), 'b--');   % 2.5th percentile
+    plot(S.tAxis, pyrCx_pct(2,:), 'b--');   % 97.5th percentile
     ylabel('pyramidal');
 
     yyaxis right
     shadedErrorBar(S.tAxis, mIntCx, seIntCx, 'lineProps', {'r', 'LineWidth', 1.5});
-    plot(S.tAxis, intCx_sem(1,:), 'r--');   % mean - sem
-    plot(S.tAxis, intCx_sem(2,:), 'r--');   % mean + sem
+    plot(S.tAxis, intCx_pct(1,:), 'r--');   % 2.5th percentile
+    plot(S.tAxis, intCx_pct(2,:), 'r--');   % 97.5th percentile
     ylabel('interneuron');
     title('cortex neural');
     xlabel('time (ms)');
@@ -151,20 +150,20 @@ function plotEMGandNeuralAverageswNorm(dataFile, channelsToUse, doBaselineNorm)
     nexttile(2); hold on;
     yyaxis left
     shadedErrorBar(S.tAxis, mPyrStr, sePyrStr, 'lineProps', {'b', 'LineWidth', 1.5});
-    plot(S.tAxis, pyrStr_sem(1,:), 'b--');  % mean - sem
-    plot(S.tAxis, pyrStr_sem(2,:), 'b--');  % mean + sem
+    plot(S.tAxis, pyrStr_pct(1,:), 'b--');  % 2.5th percentile
+    plot(S.tAxis, pyrStr_pct(2,:), 'b--');  % 97.5th percentile
     ylabel('pyramidal');
     
     yyaxis right
     shadedErrorBar(S.tAxis, mIntStr, seIntStr, 'lineProps', {'r', 'LineWidth', 1.5});
-    plot(S.tAxis, intStr_sem(1,:), 'r--');  % mean - sem
-    plot(S.tAxis, intStr_sem(2,:), 'r--');  % mean + sem
+    plot(S.tAxis, intStr_pct(1,:), 'r--');  % 2.5th percentile
+    plot(S.tAxis, intStr_pct(2,:), 'r--');  % 97.5th percentile
     ylabel('interneuron');
     title('striatum neural');
     xlabel('time (ms)');
 
-
-    sgtitle(sprintf('unshifted neural%s + 95%% shifted percentile bounds', tern(doBaselineNorm,' (baseline-subtracted)','')));
+    sgtitle(sprintf('unshifted neural%s + 95%% shifted percentile bounds', ...
+        tern(doBaselineNorm,' (baseline-subtracted)','')));
 
 end
 
