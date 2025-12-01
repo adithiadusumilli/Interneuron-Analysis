@@ -1,10 +1,10 @@
 function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselineNorm)
 % plots average cortex activity per behavior type with 95% shifted controls
 % uses emg-triggered neural windows and transition-behavior label mapping
-
+%
 % inputs:
-%   folderpath      - path to folder with emg_neural_allchannels.mat
-%                     and transitionbehaviorlabels.mat
+%   folderpath      - path to folder with EMG_Neural_AllChannels.mat
+%                     and transitionBehaviorLabels.mat
 %   channelstouse   - vector of emg channels to include (default = 1:4)
 %   doBaselineNorm  - logical, per-trial baseline subtract (-200 to -150 ms)
 %                     before averaging across trials (default = true)
@@ -37,15 +37,28 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
 
     % mean ± sem across events
     grandMS = @(E) deal(mean(E,1,'omitnan'), ...
-                        std(E,0,1,'omitnan') ./ sqrt(size(E,1)));
+                        std(E,0,1,'omitnan') ./ max(1, sqrt(size(E,1))));
 
     % per-trial baseline subtraction using -200 to -150 ms window
     function Eout = subtractTrialBaseline(Ein, tAxisLoc, tStart, tEnd)
+        % ein: events x time
+        if isempty(Ein)
+            Eout = Ein;
+            return;
+        end
+
         [~, iStart] = min(abs(tAxisLoc - tStart));
         [~, iEnd]   = min(abs(tAxisLoc - tEnd));
         if iEnd < iStart
             tmp = iStart; iStart = iEnd; iEnd = tmp;
         end
+
+        % safety check against size(ein,2)
+        if iStart < 1 || iEnd > size(Ein, 2) || iStart > iEnd
+            Eout = Ein;   % invalid baseline window -> skip
+            return;
+        end
+
         baselines = mean(Ein(:, iStart:iEnd), 2, 'omitnan'); % events x 1
         Eout = Ein - baselines; % implicit expansion per event
     end
@@ -60,7 +73,6 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
         shiftInt = [];
 
         for ch = channelsToUse
-            % labels for this channel's transitions
             if ch > numel(labelsPerTransition) || isempty(labelsPerTransition{ch})
                 continue;
             end
@@ -79,24 +91,19 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
 
             pyr3D = S.pyrCxWinCell{ch};
             int3D = S.intCxWinCell{ch};
-
             if isempty(pyr3D) || isempty(int3D)
                 continue;
             end
 
-            % select events for this behavior
             pyrSel = pyr3D(mask,:,:);  % events x neurons x time
             intSel = int3D(mask,:,:);
 
-            % avg across neurons -> events x time
-            pyrEvt = meanEvt(pyrSel);
+            pyrEvt = meanEvt(pyrSel);  % events x time
             intEvt = meanEvt(intSel);
 
-            % ensure 2d
             if isvector(pyrEvt), pyrEvt = reshape(pyrEvt, 1, []); end
             if isvector(intEvt), intEvt = reshape(intEvt, 1, []); end
 
-            % per-trial baseline
             if doBaselineNorm
                 pyrEvt = subtractTrialBaseline(pyrEvt, tAxis, -200, -150);
                 intEvt = subtractTrialBaseline(intEvt, tAxis, -200, -150);
@@ -108,10 +115,10 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
             % ---------- shifted controls ----------
             % first shift (full events x neurons x time)
             if ~isempty(S.pyrCxWinShiftedCell{ch})
-                pyrShift1_3D = S.pyrCxWinShiftedCell{ch}(mask,:,:); % events x neurons x time
+                pyrShift1_3D = S.pyrCxWinShiftedCell{ch}(mask,:,:);
                 intShift1_3D = S.intCxWinShiftedCell{ch}(mask,:,:);
 
-                pyrShift1_evt = meanEvt(pyrShift1_3D); % events x time
+                pyrShift1_evt = meanEvt(pyrShift1_3D);
                 intShift1_evt = meanEvt(intShift1_3D);
 
                 if doBaselineNorm
@@ -119,15 +126,23 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
                     intShift1_evt = subtractTrialBaseline(intShift1_evt, tAxis, -200, -150);
                 end
 
-                rowPyr1 = mean(pyrShift1_evt, 1, 'omitnan');
-                rowInt1 = mean(intShift1_evt, 1, 'omitnan');
+                if ~isempty(pyrShift1_evt)
+                    rowPyr1 = mean(pyrShift1_evt, 1, 'omitnan');
+                else
+                    rowPyr1 = [];
+                end
+                if ~isempty(intShift1_evt)
+                    rowInt1 = mean(intShift1_evt, 1, 'omitnan');
+                else
+                    rowInt1 = [];
+                end
             else
                 rowPyr1 = [];
                 rowInt1 = [];
             end
 
-            % remaining 99 shifts: each cell = events x time (already neuron-averaged)
-            pyrShiftCells = S.pyrCxWinShiftedMeanCell(ch, :);  % 1x99 cells
+            % remaining 99 shifts: each cell = events x time
+            pyrShiftCells = S.pyrCxWinShiftedMeanCell(ch, :);
             intShiftCells = S.intCxWinShiftedMeanCell(ch, :);
 
             rowsPyr = [];
@@ -140,7 +155,7 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
                     continue;
                 end
 
-                Ep = Ep(mask, :);   % select behavior events
+                Ep = Ep(mask, :);
                 Ei = Ei(mask, :);
                 if isempty(Ep) || isempty(Ei)
                     continue;
@@ -155,11 +170,9 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
                 rowsInt = [rowsInt; mean(Ei, 1, 'omitnan')]; %#ok<AGROW>
             end
 
-            % concatenate first shift + remaining shifts for this channel
             chanPyrRows = [rowPyr1; rowsPyr];
             chanIntRows = [rowInt1; rowsInt];
 
-            % accumulate across channels
             shiftPyr = [shiftPyr; chanPyrRows]; %#ok<AGROW>
             shiftInt = [shiftInt; chanIntRows]; %#ok<AGROW>
         end
@@ -173,13 +186,20 @@ function plotBehaviorAveragedNeuralActivity(folderPath, channelsToUse, doBaselin
             return;
         end
 
-        % unshifted mean ± sem
         [mPyr, sePyr] = grandMS(pyrPool);
         [mInt, seInt] = grandMS(intPool);
 
-        % 2.5 / 97.5 percentiles from shifted controls
-        pctPyr = prctile(shiftPyr, [2.5 97.5], 1);
-        pctInt = prctile(shiftInt, [2.5 97.5], 1);
+        if isempty(shiftPyr)
+            pctPyr = nan(2, numel(tAxis));
+        else
+            pctPyr = prctile(shiftPyr, [2.5 97.5], 1);
+        end
+
+        if isempty(shiftInt)
+            pctInt = nan(2, numel(tAxis));
+        else
+            pctInt = prctile(shiftInt, [2.5 97.5], 1);
+        end
     end
 
     % ---------- umap behavior plots (1–7) ----------
