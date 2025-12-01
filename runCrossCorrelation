@@ -9,6 +9,9 @@ regionName = 'Cortex'; % cortex only now
 peakLags   = nan(length(baseDirs), 1);
 peakCorrs  = nan(length(baseDirs), 1);
 
+% new: store permutation-based lag CIs (2.5 and 97.5 percentiles)
+lagCI = nan(length(baseDirs), 2);
+
 % set up tiled plot (one row: sessions)
 figure('Name', 'Cross-Correlation Summary (Cortex only)', 'Color', 'w');
 tile_lay = tiledlayout(1, length(baseDirs), 'TileSpacing', 'compact', 'Padding', 'compact');
@@ -36,7 +39,7 @@ for iDir = 1:length(baseDirs)
         continue;
     end
 
-    load(neuronFile, 'neuronDataStruct'); 
+    load(neuronFile, 'neuronDataStruct'); %#ok<NASGU>
     load(frFile, 'cortexFRs', 'cortexInds');  % cortex only
 
     % cortex-specific data
@@ -60,7 +63,7 @@ for iDir = 1:length(baseDirs)
 
     regionClass = neuronType(regionInds);
     interneuronFRs = frMatrix(regionClass == 1, :);
-    pyramidalFRs = frMatrix(regionClass == 0, :);
+    pyramidalFRs   = frMatrix(regionClass == 0, :);
 
     if isempty(interneuronFRs) || isempty(pyramidalFRs)
         warning('No valid interneuron or pyramidal data in session %d (%s). Skipping.', iDir, regionName);
@@ -73,18 +76,18 @@ for iDir = 1:length(baseDirs)
 
     % ===== manual xc (using helper) =====
     [lagsSec, xc, peakLag, peakCorr] = computeManualXCorr(meanIntRaw, meanPyrRaw, binSize, maxLagSecs);
-    peakLags(iDir) = peakLag;
+    peakLags(iDir)  = peakLag;
     peakCorrs(iDir) = peakCorr;
 
     % control: 100 shifts — single full-trace corr per shift
     numShifts = 100;
-    minShiftBins = round(30 / binSize);
+    minShiftBins   = round(30 / binSize);
     maxShiftBinsOk = length(meanIntRaw) - minShiftBins;
 
     controlCorrs = nan(1, numShifts);  % store 1 value per shift
 
     for s = 1:numShifts
-        shiftAmt = randi([minShiftBins, maxShiftBinsOk]);
+        shiftAmt   = randi([minShiftBins, maxShiftBinsOk]);
         intShifted = circshift(meanIntRaw, shiftAmt);
 
         % remove nans after shifting
@@ -95,14 +98,14 @@ for iDir = 1:length(baseDirs)
         end
     end
 
-    % get control bounds
-    prc25 = prctile(controlCorrs, 2.5);
+    % get control bounds (for correlation)
+    prc25  = prctile(controlCorrs, 2.5);
     prc975 = prctile(controlCorrs, 97.5);
 
     % ===== permutation test (100 shuffles of int/pyr labels) =====
-    numPerms = 100;
+    numPerms      = 100;
     permPeakCorrs = nan(1, numPerms);
-    permPeakLags = nan(1, numPerms);
+    permPeakLags  = nan(1, numPerms);
 
     for p = 1:numPerms
         % shuffle labels within cortex (preserve group sizes)
@@ -123,45 +126,101 @@ for iDir = 1:length(baseDirs)
         [~, ~, permPeakLag, permPeakCorr] = computeManualXCorr(permMeanInt, permMeanPyr, binSize, maxLagSecs);
 
         permPeakCorrs(p) = permPeakCorr;
-        permPeakLags(p) = permPeakLag;
+        permPeakLags(p)  = permPeakLag;
     end
 
-    % quick console summary of permutations
+    % quick console summary of permutations + lag CI
     goodPerms = ~isnan(permPeakCorrs);
     if any(goodPerms)
-        fprintf('permutation (n=%d) peak corr median=%.3f | 2.5–97.5%%=[%.3f, %.3f]\n', sum(goodPerms), median(permPeakCorrs(goodPerms)), prctile(permPeakCorrs(goodPerms), 2.5), prctile(permPeakCorrs(goodPerms), 97.5));
-        fprintf('permutation peak lag (s) median=%.3f | 2.5–97.5%%=[%.3f, %.3f]\n', median(permPeakLags(goodPerms)), prctile(permPeakLags(goodPerms), 2.5), prctile(permPeakLags(goodPerms), 97.5));
+        lagCI(iDir, :) = prctile(permPeakLags(goodPerms), [2.5 97.5]);
+        fprintf('permutation (n=%d) peak corr median=%.3f | 2.5–97.5%%=[%.3f, %.3f]\n', ...
+            sum(goodPerms), ...
+            median(permPeakCorrs(goodPerms)), ...
+            prctile(permPeakCorrs(goodPerms), 2.5), ...
+            prctile(permPeakCorrs(goodPerms), 97.5));
+        fprintf('permutation peak lag (s) median=%.3f | 2.5–97.5%%=[%.3f, %.3f]\n', ...
+            median(permPeakLags(goodPerms)), ...
+            lagCI(iDir,1), lagCI(iDir,2));
+    else
+        lagCI(iDir, :) = [NaN NaN];
     end
 
     % tiled layout code
     tileNum = iDir;  % cortex only (aka one row)
     nexttile(tile_lay, tileNum);
 
-    % plot
+    % plot XC with CI lines
     plot(lagsSec, xc, 'k', 'LineWidth', 2); % original
     hold on;
+
+    % horizontal CI from shift controls (corr)
     yline(prc25,  '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.2);  % 2.5% control bound
-    yline(prc975, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.2); % 97.5% control bound
-    line([peakLag peakLag], get(gca, 'ylim'), 'LineStyle', '--', 'Color', 'r'); % vertical line
+    yline(prc975, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.2);  % 97.5% control bound
+
+    % vertical red line for actual peak lag
+    line([peakLag peakLag], get(gca, 'ylim'), 'LineStyle', '--', 'Color', 'r', 'LineWidth', 1.5);
+
+    % new: vertical gray lines for permutation-based lag CI
+    if ~any(isnan(lagCI(iDir,:)))
+        xline(lagCI(iDir,1), '--', 'Color', [0.6 0.6 0.6], 'LineWidth', 1.2);
+        xline(lagCI(iDir,2), '--', 'Color', [0.6 0.6 0.6], 'LineWidth', 1.2);
+    end
+
     xlabel('Lag (seconds)');
     ylabel('Correlation');
     title(sprintf('%s — Session %d\nPeak Lag: %.3f sec', regionName, iDir, peakLag));
     box off;
-    legend('Original xcorr', '2.5% control', '97.5% control', 'Location', 'best');
+
+    legend({'Original xcorr', ...
+            '2.5% control (corr)', ...
+            '97.5% control (corr)', ...
+            'Actual peak lag', ...
+            'Lag CI (2.5%, 97.5%)'}, ...
+            'Location', 'best');
+
     drawnow;
 
     % explicit print of non-permuted peak corr and peak lag
-    fprintf('→ %s — Session %d  Peak Lag: %.3f s | Peak Corr: %.3f\n', regionName, iDir, peakLag, peakCorr);
+    fprintf('→ %s — Session %d  Peak Lag: %.3f s | Peak Corr: %.3f\n', ...
+        regionName, iDir, peakLag, peakCorr);
 end
 
 % outputting final summary
 fprintf('\n========== Summary (Cortex) ==========\n');
 fprintf('Peak Lags (s):\n'); disp(peakLags);
 fprintf('Peak Corrs   :\n'); disp(peakCorrs);
+fprintf('Lag CI (2.5%% 97.5%%):\n'); disp(lagCI);
+
+% ---------- new summary plot: peak lag per animal with CI bars ----------
+validAnimals = ~isnan(peakLags) & ~isnan(lagCI(:,1)) & ~isnan(lagCI(:,2));
+if any(validAnimals)
+    x = find(validAnimals);  % session indices for x-axis
+
+    y = peakLags(validAnimals);
+    lowerErr = y - lagCI(validAnimals,1);
+    upperErr = lagCI(validAnimals,2) - y;
+
+    figure('Name','Peak lag per session with permutation-based 95% CI', 'Color','w');
+    hold on;
+
+    errorbar(x, y, lowerErr, upperErr, 'ko', ...
+             'MarkerFaceColor','k', 'LineWidth', 1.5, 'CapSize', 10);
+
+    yline(0, 'r--', 'LineWidth', 1.5);
+
+    xlim([min(x)-0.5, max(x)+0.5]);
+    xticks(x);
+    xticklabels(arrayfun(@(k) sprintf('Session %d', k), x, 'UniformOutput', false));
+
+    ylabel('Peak lag (s)');
+    xlabel('Session');
+    title('Cortex peak lag vs. permutation-based 95% CI');
+    grid on; box off;
+end
 
 end
 
-% ================= helper (w my same logic from before) =================
+% ================= helper (same logic as before) =================
 function [lagsSec, xc, peakLagSec, peakCorr] = computeManualXCorr(meanIntRaw, meanPyrRaw, binSize, maxLagSecs)
     maxLagBins = round(maxLagSecs / binSize);
     lagsBins = -maxLagBins:maxLagBins;
@@ -191,6 +250,6 @@ function [lagsSec, xc, peakLagSec, peakCorr] = computeManualXCorr(meanIntRaw, me
     end
 
     [peakCorr, peakIdx] = max(xc);
-    lagsSec = lagsBins * binSize;
+    lagsSec   = lagsBins * binSize;
     peakLagSec = lagsSec(peakIdx);
 end
