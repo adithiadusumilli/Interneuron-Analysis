@@ -1,0 +1,161 @@
+% combine chunked per-behavior cross-correlations across animals and permutations
+
+% this script:
+%   - loops across animals in baseDirs
+%   - for each behavior code, loads:
+%       * unpermuted file: concatCrossCorrPerBehavior_unperm_behXX.mat
+%       * permuted files: concatCrossCorrPerBehavior_perm_YYY_behXX.mat (YYY = 001..100)
+%   - stacks permuted xc into array: [nAnimals x nPerm x nLags]
+%   - stacks unpermuted xc into array: [nAnimals x nLags]
+%   - saves one combined .mat file per behavior, containing all animals
+
+% base dirs for animals (same as in quest scripts)
+baseDirs = {
+    '/home/asa7288/Transfer/D026', ...
+    '/home/asa7288/Transfer/D020', ...
+    '/home/asa7288/Transfer/D024' ...
+};
+
+nAnimals = numel(baseDirs);
+nPerm    = 100;  % jobs 1..100
+
+% choose which behavior label scheme this combined file corresponds to
+% (this is just metadata; the actual files on disk are already generated)
+labelsToUse = 'umap';  % 'umap', 'manual', or 'classifier'
+
+% choose which behaviors to combine, consistent with how you ran the jobs
+switch lower(labelsToUse)
+    case 'umap'
+        behaviors = 1:7;
+    case 'manual'
+        behaviors = 1:10;   % skipping label 0 (unlabeled)
+    case 'classifier'
+        behaviors = 1:10;   % skipping label 0 (unlabeled)
+    otherwise
+        error('unknown labelsToUse: %s', labelsToUse);
+end
+
+% output folder (you can change this if you want a specific directory)
+outCombinedDir = pwd;  % current working directory
+
+for bIdx = 1:numel(behaviors)
+    beh = behaviors(bIdx);
+    fprintf('\ncombining behavior %d across animals and permutations\n', beh);
+
+    % placeholders to be filled after first successful load
+    lagsTemplate = [];
+    binSizeTemplate = [];
+    nLags = [];
+    
+    % prealloc containers once we know nLags
+    xcPerm_all = [];  % [nAnimals x nPerm x nLags]
+    peakLagSecPerm_all = [];  % [nAnimals x nPerm]
+    nTrialsPerm_all = [];  % [nAnimals x nPerm]
+
+    xcUnperm_all = [];  % [nAnimals x nLags]
+    peakLagSecUnperm = nan(nAnimals, 1);
+    nTrialsUnperm = nan(nAnimals, 1);
+
+    for a = 1:nAnimals
+        baseDir = baseDirs{a};
+        questDir = fullfile(baseDir, 'quest_runs');
+
+        % ---------- load unpermuted file for this animal & behavior ----------
+        unpermFile = fullfile(questDir, ...
+            sprintf('concatCrossCorrPerBehavior_unperm_beh%02d.mat', beh));
+
+        if ~exist(unpermFile, 'file')
+            warning('missing unpermuted file for animal %d, behavior %d: %s', ...
+                a, beh, unpermFile);
+        else
+            S_un = load(unpermFile, 'lags','lagsSec','binSize','xc', ...
+                                   'peakLagSec','nTrials');
+            if isempty(lagsTemplate)
+                % establish template
+                lagsTemplate = S_un.lags(:)';
+                binSizeTemplate = S_un.binSize;
+                nLags = numel(lagsTemplate);
+
+                % now we can preallocate all combined arrays
+                xcPerm_all = nan(nAnimals, nPerm, nLags);
+                peakLagSecPerm_all = nan(nAnimals, nPerm);
+                nTrialsPerm_all = nan(nAnimals, nPerm);
+
+                xcUnperm_all = nan(nAnimals, nLags);
+            else
+                % sanity check on lags
+                if numel(S_un.lags) ~= nLags || any(S_un.lags(:)' ~= lagsTemplate)
+                    warning('lags mismatch in unperm file for animal %d, behavior %d', a, beh);
+                end
+            end
+
+            xcUnperm_all(a, :) = S_un.xc(:)';
+            peakLagSecUnperm(a) = S_un.peakLagSec;
+            if isfield(S_un, 'nTrials')
+                nTrialsUnperm(a) = S_un.nTrials;
+            end
+        end
+
+        % ---------- load permuted files for this animal & behavior ----------
+        for p = 1:nPerm
+            permFile = fullfile(questDir, ...
+                sprintf('concatCrossCorrPerBehavior_perm_%03d_beh%02d.mat', p, beh));
+
+            if ~exist(permFile, 'file')
+                warning('missing perm file: animal %d, perm %d, beh %d: %s', ...
+                    a, p, beh, permFile);
+                continue;
+            end
+
+            S_p = load(permFile, 'lags','xc','peakLagSec','nTrials');
+
+            % verify lags match template
+            if isempty(lagsTemplate)
+                % should not happen if unperm was loaded, but handle just in case
+                lagsTemplate = S_p.lags(:)';
+                binSizeTemplate = S_p.binSize;
+                nLags = numel(lagsTemplate);
+
+                xcPerm_all = nan(nAnimals, nPerm, nLags);
+                peakLagSecPerm_all = nan(nAnimals, nPerm);
+                nTrialsPerm_all = nan(nAnimals, nPerm);
+
+                xcUnperm_all = nan(nAnimals, nLags);
+            else
+                if numel(S_p.lags) ~= nLags || any(S_p.lags(:)' ~= lagsTemplate)
+                    warning('lags mismatch in perm file for animal %d, perm %d, behavior %d', ...
+                        a, p, beh);
+                end
+            end
+
+            xcPerm_all(a, p, :) = S_p.xc(:)';
+            peakLagSecPerm_all(a, p) = S_p.peakLagSec;
+            if isfield(S_p, 'nTrials')
+                nTrialsPerm_all(a, p) = S_p.nTrials;
+            end
+        end
+    end
+
+    % if we never successfully loaded anything, skip saving
+    if isempty(lagsTemplate)
+        warning('no valid data found for behavior %d across animals; skipping save.', beh);
+        continue;
+    end
+
+    % ---------- save combined output for this behavior ----------
+    outFile = fullfile(outCombinedDir, ...
+        sprintf('combinedChunkedXCorrPerBehavior_beh%02d_labels_%s.mat', beh, labelsToUse));
+
+    lags    = lagsTemplate; % integer-bin lags
+    binSize = binSizeTemplate; % should be 0.001
+
+    save(outFile, ...
+        'labelsToUse', 'beh', 'lags', 'binSize', ...
+        'xcPerm_all', 'peakLagSecPerm_all', 'nTrialsPerm_all', ...
+        'xcUnperm_all', 'peakLagSecUnperm', 'nTrialsUnperm', ...
+        'baseDirs');
+
+    fprintf('saved combined file for behavior %d: %s\n', beh, outFile);
+end
+
+fprintf('\nall done combining per-behavior cross-correlations.\n');
