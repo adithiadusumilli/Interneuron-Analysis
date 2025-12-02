@@ -9,17 +9,24 @@ function runCrossCorrelation(baseDirs)
 % - makes:
 %     (1) tiled XC figure: one panel per session, with corr- and lag-CIs
 %     (2) summary figure: one point per session (peak lag) with 95% perm lag CI
+% - added:
+%     (3) per-animal histograms of permutation peak lags
+%     (4) combined histogram of permutation peak lags across animals
 
-binSize    = 0.01;   % 10 ms bins
+binSize = 0.01;   % 10 ms bins
 maxLagSecs = 0.2;
 maxLagBins = round(maxLagSecs / binSize);
 
 regionName = 'Cortex';        % cortex only
-nSess      = numel(baseDirs);
+nSess = numel(baseDirs);
 
-peakLags  = nan(nSess, 1);
+peakLags = nan(nSess, 1);
 peakCorrs = nan(nSess, 1);
-lagCIAll  = nan(nSess, 2);    % 95% CI for peak lag from permutations
+lagCIAll = nan(nSess, 2);    % 95% CI for peak lag from permutations
+
+% new: store permutation lags per session + simple labels for plotting
+permLagCell   = cell(nSess, 1);
+animalLabels  = cell(nSess, 1);
 
 % set up tiled plot (one row: sessions)
 figure('Name', 'Cross-Correlation Summary (Cortex only)', 'Color', 'w');
@@ -28,6 +35,16 @@ tile_lay = tiledlayout(1, nSess, 'TileSpacing', 'compact', 'Padding', 'compact')
 for iDir = 1:nSess
     baseDir = baseDirs{iDir};
     fprintf('\nProcessing %s — Session %d: %s\n', regionName, iDir, baseDir);
+
+    % make a short label from the folder name (e.g., "D026-032923-...")
+    [~, folderName] = fileparts(baseDir);
+    % try to pull just the D0xx tag if it exists
+    tag = regexp(folderName, 'D\d+', 'match', 'once');
+    if isempty(tag)
+        animalLabels{iDir} = folderName;
+    else
+        animalLabels{iDir} = tag;
+    end
 
     % load centralized classifications file
     conslidatedDataFoler = 'X:\David\AnalysesData';
@@ -41,7 +58,7 @@ for iDir = 1:nSess
     };
 
     neuronFile = fullfile(baseDir, 'neuronDataStruct.mat');
-    frFile     = fullfile(baseDir, 'NeuralFiringRates1msBins10msGauss.mat');
+    frFile = fullfile(baseDir, 'NeuralFiringRates1msBins10msGauss.mat');
 
     if ~isfile(neuronFile) || ~isfile(frFile)
         warning('Missing files in %s. Skipping.', baseDir);
@@ -52,7 +69,7 @@ for iDir = 1:nSess
     load(frFile, 'cortexFRs', 'cortexInds');  % cortex only
 
     % cortex-specific data
-    frMatrix   = cortexFRs;
+    frMatrix = cortexFRs;
     regionInds = cortexInds;
 
     % match this baseDir to the correct row in classifications
@@ -63,7 +80,7 @@ for iDir = 1:nSess
     end
 
     % iRegion = 1 corresponds to Cortex in your classifications
-    iRegion   = 1;
+    iRegion = 1;
     neuronType = classifications{matchRow, iRegion};
 
     if isempty(neuronType)
@@ -71,9 +88,9 @@ for iDir = 1:nSess
         continue;
     end
 
-    regionClass    = neuronType(regionInds);
+    regionClass = neuronType(regionInds);
     interneuronFRs = frMatrix(regionClass == 1, :);
-    pyramidalFRs   = frMatrix(regionClass == 0, :);
+    pyramidalFRs = frMatrix(regionClass == 0, :);
 
     if isempty(interneuronFRs) || isempty(pyramidalFRs)
         warning('No valid interneuron or pyramidal data in session %d (%s). Skipping.', iDir, regionName);
@@ -90,14 +107,14 @@ for iDir = 1:nSess
     peakCorrs(iDir) = peakCorr;
 
     % ===== control (circular shift) distribution for correlation =====
-    numShifts      = 100;
-    minShiftBins   = round(30 / binSize);
+    numShifts = 100;
+    minShiftBins = round(30 / binSize);
     maxShiftBinsOk = length(meanIntRaw) - minShiftBins;
 
     controlCorrs = nan(1, numShifts);  % store 1 value per shift
 
     for s = 1:numShifts
-        shiftAmt   = randi([minShiftBins, maxShiftBinsOk]);
+        shiftAmt = randi([minShiftBins, maxShiftBinsOk]);
         intShifted = circshift(meanIntRaw, shiftAmt);
 
         % remove nans after shifting
@@ -108,11 +125,11 @@ for iDir = 1:nSess
     end
 
     % get control bounds for correlation
-    prc25  = prctile(controlCorrs, 2.5);
+    prc25 = prctile(controlCorrs, 2.5);
     prc975 = prctile(controlCorrs, 97.5);
 
     % ===== permutation test for lag (100 shuffles of int/pyr labels) =====
-    numPerms      = 100;
+    numPerms = 100;
     permPeakCorrs = nan(1, numPerms);
     permPeakLags  = nan(1, numPerms);
 
@@ -149,9 +166,13 @@ for iDir = 1:nSess
             prctile(permPeakLags(goodPerms), 2.5), prctile(permPeakLags(goodPerms), 97.5));
 
         lagCI = prctile(permPeakLags(goodPerms), [2.5 97.5]);
+
+        % new: store these permutation lags for later histograms
+        permLagCell{iDir} = permPeakLags(goodPerms);
     else
         warning('No valid permutations for session %d; lag CI not computed.', iDir);
         lagCI = [NaN NaN];
+        permLagCell{iDir} = [];   % keep cell but empty
     end
 
     lagCIAll(iDir, :) = lagCI;
@@ -224,13 +245,86 @@ fprintf('Peak Lags (s):\n');  disp(peakLags);
 fprintf('Peak Corrs   :\n');  disp(peakCorrs);
 fprintf('Lag CIs (s)  :\n');  disp(lagCIAll);
 
+% =====================================================================
+% NEW PLOTS: permutation peak-lag histograms (per animal + combined)
+% =====================================================================
+
+% ---------- per-animal histograms ----------
+figure('Name','Cortex chunked XC peak lag permutation distributions (per animal)', ...
+       'Color','w');
+tiledlayout(1, nSess, 'TileSpacing','compact','Padding','compact');
+
+for s = 1:nSess
+    nexttile; hold on;
+
+    permLags = permLagCell{s};
+    if isempty(permLags)
+        title(sprintf('%s (no perms)', animalLabels{s}));
+        axis off;
+        continue;
+    end
+
+    % histogram of permuted peak lags
+    histogram(permLags, 'FaceColor',[0.3 0.6 0.8], 'EdgeColor','none');
+    xlabel('peak lag (s)');
+    ylabel('count');
+
+    % 2.5 / 97.5 percentiles for this animal
+    prcLag = prctile(permLags, [2.5 97.5]);
+    xline(prcLag(1), '--', 'Color',[0.2 0.2 0.2], 'LineWidth',1.5);
+    xline(prcLag(2), '--', 'Color',[0.2 0.2 0.2], 'LineWidth',1.5);
+
+    % actual lag for this animal
+    xline(peakLags(s), 'r-', 'LineWidth',1.5);
+
+    title(sprintf('%s', animalLabels{s}));
+    box off;
+end
+
+% ---------- combined histogram across animals ----------
+allPermLags = cat(2, permLagCell{:});
+validAll = ~isnan(allPermLags);
+allPermLags = allPermLags(validAll);
+
+figure('Name','Cortex chunked XC peak lag permutations (all animals combined)', ...
+       'Color','w'); hold on;
+
+histogram(allPermLags, 'FaceColor',[0.3 0.6 0.8], 'EdgeColor','none');
+xlabel('peak lag (s)');
+ylabel('count');
+
+% 2.5 / 97.5 % bounds for all animals combined
+prcAll = prctile(allPermLags, [2.5 97.5]);
+h2_5  = xline(prcAll(1), '--', 'Color',[0.2 0.2 0.2], 'LineWidth',1.5);
+h97_5 = xline(prcAll(2), '--', 'Color',[0.2 0.2 0.2], 'LineWidth',1.5);
+
+% actual lags per animal as colored vertical lines
+co = lines(nSess);
+actualLines = gobjects(nSess,1);
+for s = 1:nSess
+    actualLines(s) = xline(peakLags(s), '-', 'Color',co(s,:), 'LineWidth',1.5);
+end
+
+title('combined permutation distribution (all animals)');
+box off;
+
+% build legend text: perm lags, CI, then each animal
+legEntries = [{'permuted lags', ...
+               sprintf('2.5%% (all) = %.3g s', prcAll(1)), ...
+               sprintf('97.5%% (all) = %.3g s', prcAll(2))} ...
+               arrayfun(@(s) sprintf('actual %s = %.3g s', ...
+                          animalLabels{s}, peakLags(s)), ...
+                          1:nSess, 'UniformOutput', false)];
+
+legend([NaN h2_5 h97_5 actualLines(:)'], legEntries, 'Location','best');
+
 end
 
 % ================= helper (same logic as before) =================
 function [lagsSec, xc, peakLagSec, peakCorr] = computeManualXCorr(meanIntRaw, meanPyrRaw, binSize, maxLagSecs)
     maxLagBins = round(maxLagSecs / binSize);
-    lagsBins   = -maxLagBins:maxLagBins;
-    xc         = nan(size(lagsBins));
+    lagsBins = -maxLagBins:maxLagBins;
+    xc = nan(size(lagsBins));
 
     for li = 1:length(lagsBins)
         lag = lagsBins(li);
@@ -256,6 +350,6 @@ function [lagsSec, xc, peakLagSec, peakCorr] = computeManualXCorr(meanIntRaw, me
     end
 
     [peakCorr, peakIdx] = max(xc);
-    lagsSec   = lagsBins * binSize;
+    lagsSec    = lagsBins * binSize;
     peakLagSec = lagsSec(peakIdx);
 end
