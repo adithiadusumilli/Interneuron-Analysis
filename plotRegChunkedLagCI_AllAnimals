@@ -2,16 +2,12 @@ function plotRegChunkedLagCI_AllAnimals(baseRoot)
 % plots cortical chunked XC peak lag permutation distributions
 % using the combined Quest output:
 %   allAnimals_concatCrossCorr_chunked_perms.mat
-
-% expected variables inside that .mat:
-%   allPermPeakLagSec : nAnimals x 1 cell, each 1 x nPerm double
-%   allUnpermPeakLag  : nAnimals x 1 cell, each scalar double
-%   baseDirs          : 1 x nAnimals cell of char paths
-%   nPerm             : scalar (number of permutations)
-
-% inputs:
-%   baseRoot (optional): folder containing allAnimals_concatCrossCorr_chunked_perms.mat
-%       default: 'C:\Users\mirilab\Documents\GlobusTransfer'
+%
+% now makes 4 figures total:
+%   fig 1: per-animal permutation histograms (same as before)
+%   fig 2: combined permutation histogram (same as before)
+%   fig 3: peak lag per animal with 95% CI (per-animal perms)
+%   fig 4: peak lag per animal with global 95% CI (all perms pooled)
 
     if nargin < 1 || isempty(baseRoot)
         baseRoot = 'C:\Users\mirilab\Documents\GlobusTransfer';
@@ -25,9 +21,9 @@ function plotRegChunkedLagCI_AllAnimals(baseRoot)
     S = load(matFile, 'allPermPeakLagSec', 'allUnpermPeakLag', 'baseDirs', 'nPerm');
 
     allPermPeakLagSec = S.allPermPeakLagSec; % cell: {animal}(1 x nPerm)
-    allUnpermPeakLag = S.allUnpermPeakLag; % cell: {animal}(1 x 1)
-    baseDirs = S.baseDirs; % cell: 1 x nAnimals
-    nPerm = S.nPerm; %#ok<NASGU> % not strictly needed, but nice to keep
+    allUnpermPeakLag  = S.allUnpermPeakLag;  % cell: {animal}(1 x 1)
+    baseDirs          = S.baseDirs;          % cell: 1 x nAnimals
+    % nPerm           = S.nPerm;            % not needed directly
 
     nAnimals = numel(baseDirs);
 
@@ -37,11 +33,12 @@ function plotRegChunkedLagCI_AllAnimals(baseRoot)
         [~, animalLabels{iA}] = fileparts(baseDirs{iA});
     end
 
-    % holders for combined summary
-    allPermLags   = []; % concatenated permuted lags across animals
-    allActualLags = nan(1, nAnimals); % actual lag per animal
+    % holders for combined summary + per-animal CI
+    allPermLags    = [];                 % concatenated permuted lags
+    allActualLags  = nan(1, nAnimals);   % actual lag per animal
+    lagCI_perAnimal = nan(nAnimals, 2);  % 95% CI per animal
 
-    % ---------- per-animal figure ----------
+    % ---------- fig 1: per-animal histograms ----------
     figure('Name','Cortex chunked XC peak lag permutation distributions (per animal)', ...
            'Color','w');
     tiledlayout(1, nAnimals, 'TileSpacing','compact', 'Padding','compact');
@@ -49,8 +46,8 @@ function plotRegChunkedLagCI_AllAnimals(baseRoot)
     for iA = 1:nAnimals
         nexttile; hold on;
 
-        label = animalLabels{iA};
-        permCell = allPermPeakLagSec{iA};
+        label      = animalLabels{iA};
+        permCell   = allPermPeakLagSec{iA};
         unpermCell = allUnpermPeakLag{iA};
 
         if isempty(permCell) || all(isnan(permCell))
@@ -59,8 +56,8 @@ function plotRegChunkedLagCI_AllAnimals(baseRoot)
             continue;
         end
 
-        permLags = permCell(:)'; % ensure row
-        actualLag = unpermCell; % scalar
+        permLags   = permCell(:)';   % row
+        actualLag  = unpermCell;     % scalar
 
         validPerm = ~isnan(permLags);
         if ~any(validPerm)
@@ -72,11 +69,12 @@ function plotRegChunkedLagCI_AllAnimals(baseRoot)
         permLagsValid = permLags(validPerm);
 
         % add to combined arrays
-        allPermLags = [allPermLags, permLagsValid]; %#ok<AGROW>
+        allPermLags      = [allPermLags, permLagsValid]; %#ok<AGROW>
         allActualLags(iA) = actualLag;
 
         % 95% CI for this animal
         lagCI = prctile(permLagsValid, [2.5 97.5]);
+        lagCI_perAnimal(iA, :) = lagCI;
 
         % histogram of permuted lags
         histogram(permLagsValid, 'BinMethod','fd'); hold on;
@@ -102,7 +100,7 @@ function plotRegChunkedLagCI_AllAnimals(baseRoot)
         grid on; box off;
     end
 
-    % ---------- combined summary plot ----------
+    % ---------- fig 2: combined permutation histogram ----------
     if ~isempty(allPermLags)
         lagCI_all = prctile(allPermLags, [2.5 97.5]);
 
@@ -134,6 +132,54 @@ function plotRegChunkedLagCI_AllAnimals(baseRoot)
         grid on; box off;
     else
         warning('no valid permuted lags found across animals for combined plot.');
+        lagCI_all = [NaN NaN];
     end
 
+    % ---------- fig 3: per-animal lag summary (dots + individual CI) ----------
+    figure('Name','Cortex chunked peak lags with 95% permutation CI (per animal)', ...
+           'Color','w'); hold on;
+
+    xPos = 1:nAnimals;
+
+    for iA = 1:nAnimals
+        if ~any(isnan(lagCI_perAnimal(iA,:)))
+            line([xPos(iA) xPos(iA)], lagCI_perAnimal(iA,:), ...
+                 'Color',[0.6 0.6 0.6], 'LineWidth',2);
+        end
+    end
+
+    scatter(xPos, allActualLags, 70, 'k', 'filled');
+
+    yline(0, 'k:');
+
+    xlim([0.5 nAnimals+0.5]);
+    xticks(xPos);
+    xticklabels(animalLabels);
+    xlabel('animal');
+    ylabel('peak lag (seconds)');
+    title('cortex chunked peak lags with 95% permutation CI (per animal)');
+    box off; grid on;
+
+    % ---------- fig 4: per-animal lags vs global combined CI ----------
+    figure('Name','Cortex chunked peak lags vs global permutation CI', ...
+           'Color','w'); hold on;
+
+    scatter(xPos, allActualLags, 70, 'k', 'filled'); hold on;
+
+    % global CI as horizontal dashed lines
+    if ~any(isnan(lagCI_all))
+        yline(lagCI_all(1), 'k--', 'LineWidth', 1.5);
+        yline(lagCI_all(2), 'k--', 'LineWidth', 1.5);
+    end
+    yline(0, 'k:');
+
+    xlim([0.5 nAnimals+0.5]);
+    xticks(xPos);
+    xticklabels(animalLabels);
+    xlabel('animal');
+    ylabel('peak lag (seconds)');
+    title('cortex chunked peak lags with global 95% permutation CI (all animals)');
+    legend({'actual peak lag', '2.5% (all perms)', '97.5% (all perms)', '0 lag reference'}, ...
+           'Location','best');
+    box off; grid on;
 end
