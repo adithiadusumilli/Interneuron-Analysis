@@ -2,9 +2,9 @@ function plotBehChunkedLagCI_AllAnimals(baseRoot, beh)
 % plotBehChunkedLagCI_AllAnimals
 % plots behavior-specific chunked xc peak lag permutation distributions using
 % the combined quest output files: combinedChunkedXCorrPerBehavior_behXX_labels_classifier.mat
-
+%
 % note: this function is specific to classifier-derived behaviors (i.e., the "labels_classifier" outputs)
-
+%
 % figures (per behavior file):
 %   1) per-session histogram of permuted peak lags + 2.5/97.5% bounds + actual lag
 %   2) combined histogram of permuted peak lags across sessions + 2.5/97.5% bounds + each session actual lag
@@ -31,13 +31,17 @@ function plotBehChunkedLagCI_AllAnimals(baseRoot, beh)
 %   baseRoot (optional): folder containing the combined behavior .mat files
 %       default: 'C:\Users\mirilab\Documents\GlobusTransfer'
 %   beh (optional): behavior number to plot (e.g., 9 for beh09). if omitted,
-%       the function will plot all matching behavior files in baseRoot.
+%       the function will plot a selected subset of behaviors (see behaviorsToPlot below).
 
     if nargin < 1 || isempty(baseRoot)
         baseRoot = 'C:\Users\mirilab\Documents\GlobusTransfer';
     end
 
+    % only plot these classifier behaviors (option a)
+    behaviorsToPlot = [0 2 4 10];
+
     % if beh is not provided, loop through all classifier behavior files in the folder
+    % but only plot the whitelisted behaviors above
     if nargin < 2 || isempty(beh)
         files = dir(fullfile(baseRoot, 'combinedChunkedXCorrPerBehavior_beh*_labels_classifier.mat'));
         if isempty(files)
@@ -45,7 +49,22 @@ function plotBehChunkedLagCI_AllAnimals(baseRoot, beh)
         end
 
         for iF = 1:numel(files)
-            matFile = fullfile(baseRoot, files(iF).name);
+            fname = files(iF).name;
+
+            % extract behavior number from filename
+            tok = regexp(fname, 'beh(\d+)_labels_classifier', 'tokens', 'once');
+            if isempty(tok)
+                continue;
+            end
+
+            behVal = str2double(tok{1});
+
+            % skip behaviors not in whitelist
+            if ~ismember(behVal, behaviorsToPlot)
+                continue;
+            end
+
+            matFile = fullfile(baseRoot, fname);
             plot_one_behavior_file(matFile);
         end
         return;
@@ -268,8 +287,8 @@ function plot_one_behavior_file(matFile)
         end
 
         % vertical ci for lag from permuted peak lags
-        lagCI   = lagCIAll(iS, :);
-        peakLag = actualPeakLags(iS);
+        lagCI    = lagCIAll(iS, :);
+        peakLag  = actualPeakLags(iS);
         peakCorr = actualPeakCorr(iS);
 
         hX = plot(lagsSec, xc, 'k', 'LineWidth', 2);
@@ -293,16 +312,23 @@ function plot_one_behavior_file(matFile)
         title(sprintf('beh%02d — %s\npeak lag: %.3f sec', behVal, sessionLabels{iS}, peakLag));
         box off;
 
+        % build legend only from valid handles (prevents "ignoring extra legend entries" warnings)
         legH = [hX];
         legT = {'original xcorr'};
 
         if isgraphics(hY1), legH(end+1) = hY1; legT{end+1} = '2.5% corr control'; end %#ok<AGROW>
         if isgraphics(hY2), legH(end+1) = hY2; legT{end+1} = '97.5% corr control'; end %#ok<AGROW>
 
-        legH(end+1) = hA;  legT{end+1} = 'actual peak lag'; %#ok<AGROW>
+        if isgraphics(hA),  legH(end+1) = hA;  legT{end+1} = 'actual peak lag'; end %#ok<AGROW>
 
-        if isgraphics(hL), legH(end+1) = hL; legT{end+1} = 'lag 95% ci (perm)'; end %#ok<AGROW>
-        if isgraphics(hU), legH(end+1) = hU; end %#ok<AGROW>
+        if isgraphics(hL)
+            legH(end+1) = hL; %#ok<AGROW>
+            legT{end+1} = 'lag 95% ci (perm)'; %#ok<AGROW>
+        end
+        if isgraphics(hU)
+            legH(end+1) = hU; %#ok<AGROW>
+            % no extra legend label for upper ci line (matches your example figure style)
+        end
 
         legend(legH, legT, 'Location', 'best');
 
