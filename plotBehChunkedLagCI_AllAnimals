@@ -102,6 +102,16 @@ function plot_one_behavior_file(matFile)
     xcPerm_all = S.xcPerm_all; % nSess x nPerm x nLags
     xcUnperm_all = S.xcUnperm_all; % nSess x nLags
 
+    % new: pull trial counts if present
+    nTrialsUnperm = [];
+    if isfield(S, 'nTrialsUnperm')
+        nTrialsUnperm = S.nTrialsUnperm;
+    end
+    nTrialsPerm_all = [];
+    if isfield(S, 'nTrialsPerm_all')
+        nTrialsPerm_all = S.nTrialsPerm_all;
+    end %#ok<NASGU>
+
     nSess = numel(baseDirs);
 
     % make session labels: "session 1", "session 2", etc
@@ -155,7 +165,11 @@ function plot_one_behavior_file(matFile)
         permLags = permLags(~isnan(permLags));
 
         if isempty(permLags)
-            title(sprintf('%s (no perm data)', sessionLabels{iS}));
+            if ~isempty(nTrialsUnperm)
+                title(sprintf('%s (no perm data; n = %d)', sessionLabels{iS}, nTrialsUnperm(iS)));
+            else
+                title(sprintf('%s (no perm data)', sessionLabels{iS}));
+            end
             axis off;
             continue;
         end
@@ -176,7 +190,14 @@ function plot_one_behavior_file(matFile)
 
         xlabel('peak lag (s)');
         ylabel('count');
-        title(sprintf('%s', sessionLabels{iS}));
+
+        % new: add trial count to title if available
+        if ~isempty(nTrialsUnperm)
+            title(sprintf('%s (n = %d trials)', sessionLabels{iS}, nTrialsUnperm(iS)));
+        else
+            title(sprintf('%s', sessionLabels{iS}));
+        end
+
         grid on; box off;
 
         legend([hHist hL hU hA], { ...
@@ -270,7 +291,11 @@ function plot_one_behavior_file(matFile)
 
         xc = xcUnperm_all(iS, :);
         if all(isnan(xc)) || isempty(xc)
-            title(sprintf('beh%02d — %s (no xc)', behVal, sessionLabels{iS}));
+            if ~isempty(nTrialsUnperm)
+                title(sprintf('beh%02d — %s (no xc; n = %d)', behVal, sessionLabels{iS}, nTrialsUnperm(iS)));
+            else
+                title(sprintf('beh%02d — %s (no xc)', behVal, sessionLabels{iS}));
+            end
             axis off;
             continue;
         end
@@ -309,7 +334,15 @@ function plot_one_behavior_file(matFile)
 
         xlabel('lag (seconds)');
         ylabel('correlation');
-        title(sprintf('beh%02d — %s\npeak lag: %.3f sec', behVal, sessionLabels{iS}, peakLag));
+
+        % new: add nTrials to the panel title if available
+        if ~isempty(nTrialsUnperm)
+            title(sprintf('beh%02d — %s (n = %d)\npeak lag: %.3f sec', ...
+                behVal, sessionLabels{iS}, nTrialsUnperm(iS), peakLag));
+        else
+            title(sprintf('beh%02d — %s\npeak lag: %.3f sec', behVal, sessionLabels{iS}, peakLag));
+        end
+
         box off;
 
         % build legend only from valid handles (prevents "ignoring extra legend entries" warnings)
@@ -334,8 +367,14 @@ function plot_one_behavior_file(matFile)
 
         drawnow;
 
-        fprintf('→ beh%02d — %s  peak lag: %.3f s | peak corr: %.3f\n', ...
-            behVal, sessionLabels{iS}, peakLag, peakCorr);
+        % new: include nTrials in print if available
+        if ~isempty(nTrialsUnperm)
+            fprintf('→ beh%02d — %s  peak lag: %.3f s | peak corr: %.3f | n = %d trials\n', ...
+                behVal, sessionLabels{iS}, peakLag, peakCorr, nTrialsUnperm(iS));
+        else
+            fprintf('→ beh%02d — %s  peak lag: %.3f s | peak corr: %.3f\n', ...
+                behVal, sessionLabels{iS}, peakLag, peakCorr);
+        end
     end
 
 end
