@@ -1,0 +1,381 @@
+function plotUMAPChunkedLagCI_AllAnimals(baseRoot, beh)
+% plotBehChunkedLagCI_AllAnimals
+% FOR UMAP BEHAVIORS
+% plots behavior-specific chunked xc peak lag permutation distributions using
+% the combined quest output files: combinedChunkedXCorrPerBehavior_umap_behXX_labels.mat
+%
+% note: this function is specific to umap-derived behaviors (i.e., the "umap_behXX_labels" outputs)
+%
+% figures (per behavior file):
+%   1) per-session histogram of permuted peak lags + 2.5/97.5% bounds + actual lag
+%   2) combined histogram of permuted peak lags across sessions + 2.5/97.5% bounds + each session actual lag
+%   3) summary plot: actual peak lag per session with 95% permutation ci
+%   4) tiled xc plot: actual xc curve per session with:
+%        - horizontal ci lines from permutation peak-corr distribution
+%        - vertical line at actual peak lag
+%        - vertical ci lines from permutation peak-lag distribution
+%
+% expected variables inside each .mat:
+%   baseDirs : 1 x nSessions cell
+%   beh : 1 x 1 double
+%   binSize : 1 x 1 double
+%   labelsToUse : char
+%   lags : 1 x nLags double
+%   peakLagSecPerm_all : nSessions x nPerm double
+%   peakLagSecUnperm : nSessions x 1 double
+%   xcPerm_all : nSessions x nPerm x nLags double
+%   xcUnperm_all : nSessions x nLags double
+%   nTrialsPerm_all : nSessions x nPerm double (optional for plotting)
+%   nTrialsUnperm : nSessions x 1 double (optional for plotting)
+%
+% inputs:
+%   baseRoot (optional): folder containing the combined behavior .mat files
+%       default: 'C:\Users\mirilab\Documents\GlobusTransfer'
+%   beh (optional): behavior number to plot (e.g., 1 for beh01). if omitted,
+%       the function will plot a selected subset of behaviors (see behaviorsToPlot below).
+
+    if nargin < 1 || isempty(baseRoot)
+        baseRoot = 'C:\Users\mirilab\Documents\GlobusTransfer';
+    end
+
+    % only plot these umap behaviors (option a)
+    behaviorsToPlot = 1:7;
+
+    % if beh is not provided, loop through all umap behavior files in the folder
+    % but only plot the whitelisted behaviors above
+    if nargin < 2 || isempty(beh)
+        files = dir(fullfile(baseRoot, 'combinedChunkedXCorrPerBehavior_umap_beh*_labels.mat'));
+        if isempty(files)
+            error('no umap behavior combined files found in: %s', baseRoot);
+        end
+
+        for iF = 1:numel(files)
+            fname = files(iF).name;
+
+            % extract behavior number from filename
+            tok = regexp(fname, 'umap_beh(\d+)_labels', 'tokens', 'once');
+            if isempty(tok)
+                continue;
+            end
+
+            behVal = str2double(tok{1});
+
+            % skip behaviors not in whitelist
+            if ~ismember(behVal, behaviorsToPlot)
+                continue;
+            end
+
+            matFile = fullfile(baseRoot, fname);
+            plot_one_behavior_file(matFile);
+        end
+        return;
+    end
+
+    % otherwise, load a single umap behavior file
+    matFile = fullfile(baseRoot, sprintf('combinedChunkedXCorrPerBehavior_umap_beh%02d_labels.mat', beh));
+    if ~exist(matFile, 'file')
+        error('umap behavior file not found: %s', matFile);
+    end
+
+    plot_one_behavior_file(matFile);
+
+end
+
+% =====================================================================
+% helper: does all plotting for one behavior file
+% =====================================================================
+function plot_one_behavior_file(matFile)
+
+    % load required variables (silently ignore extra fields)
+    S = load(matFile, ...
+        'baseDirs', 'beh', 'binSize', 'labelsToUse', 'lags', ...
+        'peakLagSecPerm_all', 'peakLagSecUnperm', 'xcPerm_all', 'xcUnperm_all', ...
+        'nTrialsPerm_all', 'nTrialsUnperm');
+
+    % pull out core variables
+    baseDirs = S.baseDirs;
+    behVal = S.beh;
+    binSize = S.binSize; %#ok<NASGU>
+    labelsToUse = S.labelsToUse; %#ok<NASGU>
+    lagsSec = S.lags(:)'; % 1 x nLags
+    permPeakLags_all = S.peakLagSecPerm_all; % nSess x nPerm
+    actualPeakLags = S.peakLagSecUnperm; % nSess x 1
+    xcPerm_all = S.xcPerm_all; % nSess x nPerm x nLags
+    xcUnperm_all = S.xcUnperm_all; % nSess x nLags
+
+    % new: pull trial counts if present
+    nTrialsUnperm = [];
+    if isfield(S, 'nTrialsUnperm')
+        nTrialsUnperm = S.nTrialsUnperm;
+    end
+    nTrialsPerm_all = [];
+    if isfield(S, 'nTrialsPerm_all')
+        nTrialsPerm_all = S.nTrialsPerm_all;
+    end %#ok<NASGU>
+
+    nSess = numel(baseDirs);
+
+    % make session labels: "session 1", "session 2", etc
+    sessionLabels = arrayfun(@(k) sprintf('session %d', k), 1:nSess, 'UniformOutput', false);
+
+    % compute permutation peak-corr distribution per session (for horizontal ci lines)
+    % also compute actual peak corr per session (for printing / optional use)
+    nPerm = size(permPeakLags_all, 2);
+    permPeakCorr_all = nan(nSess, nPerm);
+    actualPeakCorr   = nan(nSess, 1);
+
+    for iS = 1:nSess
+        % actual peak corr from the actual xc curve
+        xcu = xcUnperm_all(iS, :);
+        if any(~isnan(xcu))
+            actualPeakCorr(iS) = max(xcu, [], 'omitnan');
+        end
+
+        % permutation peak corr: max over lags for each perm
+        if ndims(xcPerm_all) == 3
+            xcp = squeeze(xcPerm_all(iS, :, :)); % nPerm x nLags
+            if ~isempty(xcp)
+                permPeakCorr_all(iS, :) = max(xcp, [], 2, 'omitnan')';
+            end
+        end
+    end
+
+    % compute lag cis per session from permuted peak lags
+    lagCIAll = nan(nSess, 2);
+    for iS = 1:nSess
+        permLags = permPeakLags_all(iS, :);
+        permLags = permLags(~isnan(permLags));
+        if ~isempty(permLags)
+            lagCIAll(iS, :) = prctile(permLags, [2.5 97.5]);
+        end
+    end
+
+    % =================================================================
+    % 1) per-session permutation histograms
+    % =================================================================
+    figure('Name', sprintf('umap beh%02d: peak lag permutation distributions (per session)', behVal), ...
+           'Color', 'w');
+    tiledlayout(1, nSess, 'TileSpacing', 'compact', 'Padding', 'compact');
+
+    allPermLags_concat = [];
+
+    for iS = 1:nSess
+        nexttile; hold on;
+
+        permLags = permPeakLags_all(iS, :);
+        permLags = permLags(~isnan(permLags));
+
+        if isempty(permLags)
+            if ~isempty(nTrialsUnperm)
+                title(sprintf('%s (no perm data; n = %d)', sessionLabels{iS}, nTrialsUnperm(iS)));
+            else
+                title(sprintf('%s (no perm data)', sessionLabels{iS}));
+            end
+            axis off;
+            continue;
+        end
+
+        allPermLags_concat = [allPermLags_concat, permLags]; %#ok<AGROW>
+
+        % histogram
+        hHist = histogram(permLags, 'BinMethod', 'fd', ...
+                          'FaceColor', [0.6 0.8 1], 'EdgeColor', 'none');
+
+        % ci lines
+        lagCI = prctile(permLags, [2.5 97.5]);
+        hL = xline(lagCI(1), 'k--', 'LineWidth', 1.5);
+        hU = xline(lagCI(2), 'k--', 'LineWidth', 1.5);
+
+        % actual lag
+        hA = xline(actualPeakLags(iS), 'r-', 'LineWidth', 2);
+
+        xlabel('peak lag (s)');
+        ylabel('count');
+
+        % new: add trial count to title if available
+        if ~isempty(nTrialsUnperm)
+            title(sprintf('%s (n = %d trials)', sessionLabels{iS}, nTrialsUnperm(iS)));
+        else
+            title(sprintf('%s', sessionLabels{iS}));
+        end
+
+        grid on; box off;
+
+        legend([hHist hL hU hA], { ...
+            'permuted lags', ...
+            sprintf('2.5%% = %.3f s', lagCI(1)), ...
+            sprintf('97.5%% = %.3f s', lagCI(2)), ...
+            sprintf('actual %s lag = %.3f s', sessionLabels{iS}, actualPeakLags(iS))}, ...
+            'Location', 'best');
+    end
+
+    % =================================================================
+    % 2) combined permutation histogram across sessions
+    % =================================================================
+    if ~isempty(allPermLags_concat)
+        figure('Name', sprintf('umap beh%02d: peak lag permutations (all sessions combined)', behVal), ...
+               'Color', 'w');
+        hold on;
+
+        hHistAll = histogram(allPermLags_concat, 'BinMethod', 'fd', ...
+                             'FaceColor', [0.6 0.8 1], 'EdgeColor', 'none');
+
+        lagCI_all = prctile(allPermLags_concat, [2.5 97.5]);
+        h2_5  = xline(lagCI_all(1), 'k--', 'LineWidth', 1.5);
+        h97_5 = xline(lagCI_all(2), 'k--', 'LineWidth', 1.5);
+
+        % actual lag per session (colored lines)
+        co = lines(nSess);
+        actualLines = gobjects(nSess, 1);
+        validActual = ~isnan(actualPeakLags);
+
+        for iS = 1:nSess
+            if ~validActual(iS), continue; end
+            actualLines(iS) = xline(actualPeakLags(iS), '-', 'Color', co(iS, :), 'LineWidth', 2);
+        end
+
+        xlabel('peak lag (s)');
+        ylabel('count');
+        title('combined permutation distribution (all sessions)');
+        box off; grid on;
+
+        legEntries = [{ ...
+            'permuted lags', ...
+            sprintf('2.5%% (all) = %.3f s', lagCI_all(1)), ...
+            sprintf('97.5%% (all) = %.3f s', lagCI_all(2))} ...
+            arrayfun(@(k) sprintf('actual %s lag = %.3f s', sessionLabels{k}, actualPeakLags(k)), ...
+                     find(validActual)', 'UniformOutput', false)];
+
+        legendHandles = [hHistAll, h2_5, h97_5, actualLines(validActual)'];
+        legend(legendHandles, legEntries, 'Location', 'best');
+    else
+        warning('umap beh%02d: no valid permuted lags found for combined histogram.', behVal);
+    end
+
+    % =================================================================
+    % 3) summary plot: actual peak lag per session with 95% permutation ci
+    % =================================================================
+    figure('Name', sprintf('umap beh%02d: peak lag summary with permutation ci', behVal), ...
+           'Color', 'w');
+    hold on;
+
+    xPos = 1:nSess;
+
+    for iS = 1:nSess
+        if ~any(isnan(lagCIAll(iS, :)))
+            line([xPos(iS) xPos(iS)], lagCIAll(iS, :), ...
+                 'Color', [0.6 0.6 0.6], 'LineWidth', 2);
+        end
+    end
+
+    scatter(xPos, actualPeakLags, 70, 'k', 'filled');
+    yline(0, 'k:');
+
+    xlim([0.5 nSess + 0.5]);
+    xlabel('session');
+    ylabel('peak lag (seconds)');
+    xticks(xPos);
+    xticklabels(sessionLabels);
+
+    title(sprintf('umap beh%02d peak lags with 95%% permutation ci', behVal));
+    box off; grid on;
+
+    % =================================================================
+    % 4) tiled xc curves per session (like runCrossCorrelation panels)
+    % =================================================================
+    figure('Name', sprintf('umap beh%02d: cross-correlation panels (per session)', behVal), ...
+           'Color', 'w');
+    tile_lay = tiledlayout(1, nSess, 'TileSpacing', 'compact', 'Padding', 'compact');
+
+    for iS = 1:nSess
+        nexttile(tile_lay, iS); hold on;
+
+        xc = xcUnperm_all(iS, :);
+        if all(isnan(xc)) || isempty(xc)
+            if ~isempty(nTrialsUnperm)
+                title(sprintf('umap beh%02d — %s (no xc; n = %d)', behVal, sessionLabels{iS}, nTrialsUnperm(iS)));
+            else
+                title(sprintf('umap beh%02d — %s (no xc)', behVal, sessionLabels{iS}));
+            end
+            axis off;
+            continue;
+        end
+
+        % horizontal ci for correlation from permutation peak-corr distribution
+        permPeakCorr = permPeakCorr_all(iS, :);
+        permPeakCorr = permPeakCorr(~isnan(permPeakCorr));
+        if ~isempty(permPeakCorr)
+            prc25  = prctile(permPeakCorr, 2.5);
+            prc975 = prctile(permPeakCorr, 97.5);
+        else
+            prc25  = NaN;
+            prc975 = NaN;
+        end
+
+        % vertical ci for lag from permuted peak lags
+        lagCI    = lagCIAll(iS, :);
+        peakLag  = actualPeakLags(iS);
+        peakCorr = actualPeakCorr(iS);
+
+        hX = plot(lagsSec, xc, 'k', 'LineWidth', 2);
+
+        hY1 = gobjects(1);
+        hY2 = gobjects(1);
+        if ~isnan(prc25),  hY1 = yline(prc25,  '--', 'Color', [0.7 0.7 0.7], 'LineWidth', 1.2); end
+        if ~isnan(prc975), hY2 = yline(prc975, '--', 'Color', [0.7 0.7 0.7], 'LineWidth', 1.2); end
+
+        hA = xline(peakLag, 'r--', 'LineWidth', 1.5);
+
+        hL = gobjects(1);
+        hU = gobjects(1);
+        if ~any(isnan(lagCI))
+            hL = xline(lagCI(1), 'Color', [0.4 0.4 0.4], 'LineStyle', '--', 'LineWidth', 1.2);
+            hU = xline(lagCI(2), 'Color', [0.4 0.4 0.4], 'LineStyle', '--', 'LineWidth', 1.2);
+        end
+
+        xlabel('lag (seconds)');
+        ylabel('correlation');
+
+        % new: add nTrials to the panel title if available
+        if ~isempty(nTrialsUnperm)
+            title(sprintf('umap beh%02d — %s (n = %d)\npeak lag: %.3f sec', ...
+                behVal, sessionLabels{iS}, nTrialsUnperm(iS), peakLag));
+        else
+            title(sprintf('umap beh%02d — %s\npeak lag: %.3f sec', behVal, sessionLabels{iS}, peakLag));
+        end
+
+        box off;
+
+        % build legend only from valid handles (prevents "ignoring extra legend entries" warnings)
+        legH = [hX];
+        legT = {'original xcorr'};
+
+        if isgraphics(hY1), legH(end+1) = hY1; legT{end+1} = '2.5% corr control'; end %#ok<AGROW>
+        if isgraphics(hY2), legH(end+1) = hY2; legT{end+1} = '97.5% corr control'; end %#ok<AGROW>
+
+        if isgraphics(hA),  legH(end+1) = hA;  legT{end+1} = 'actual peak lag'; end %#ok<AGROW>
+
+        if isgraphics(hL)
+            legH(end+1) = hL; %#ok<AGROW>
+            legT{end+1} = 'lag 95% ci (perm)'; %#ok<AGROW>
+        end
+        if isgraphics(hU)
+            legH(end+1) = hU; %#ok<AGROW>
+            % no extra legend label for upper ci line (matches your example figure style)
+        end
+
+        legend(legH, legT, 'Location', 'best');
+
+        drawnow;
+
+        % new: include nTrials in print if available
+        if ~isempty(nTrialsUnperm)
+            fprintf('→ umap beh%02d — %s  peak lag: %.3f s | peak corr: %.3f | n = %d trials\n', ...
+                behVal, sessionLabels{iS}, peakLag, peakCorr, nTrialsUnperm(iS));
+        else
+            fprintf('→ umap beh%02d — %s  peak lag: %.3f s | peak corr: %.3f\n', ...
+                behVal, sessionLabels{iS}, peakLag, peakCorr);
+        end
+    end
+
+end
