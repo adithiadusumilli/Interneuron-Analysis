@@ -1,0 +1,249 @@
+% chunked pairwise cross-correlation (loop across animals, with permutation option, no plotting/controls)
+% computes lag-swept correlation curve for each (interneuron, pyramidal) pair, pooling events across muscles
+
+% base dirs for animals
+baseDirs = {
+    '/home/asa7288/Transfer/D026', ...
+    '/home/asa7288/Transfer/D020', ...
+    '/home/asa7288/Transfer/D024' ...
+};
+
+% manually set jobInd before running this script
+% example: jobInd = 0;  % unpermuted
+%          jobInd = 1;  % first permutation, etc.
+
+if jobInd == 0
+    isPermuted = false;
+    permInd = 0;
+else
+    isPermuted = true;
+    permInd = jobInd;
+end
+
+channelsToUse = 1:4;
+chunkHalf = 200;
+maxLagSecs = 0.5;
+doBaselineNorm = true;
+
+for iDir = 1:numel(baseDirs)
+    baseDir = baseDirs{iDir};
+    fprintf('\nprocessing cortex session %d: %s (job %d)\n', iDir, baseDir, jobInd);
+
+    % load emg-triggered neural activity windows
+    S = load(fullfile(baseDir, 'EMG_Neural_AllChannels.mat'), 'pyrCxWinCell', 'intCxWinCell', 'tAxis');
+
+    % sampling and sizes
+    tAxis = S.tAxis(:)';
+    binSize = 0.001;
+    T = numel(tAxis); % 1001 for -500:500
+
+    % center index where t=0
+    [~, cIdx] = min(abs(tAxis - 0));
+
+    % base subchunk in pyr is [cIdx-chunkHalf : cIdx+chunkHalf]
+    pyrStart = cIdx - chunkHalf;
+    pyrEnd   = cIdx + chunkHalf;
+
+    % clip max lag in bins so int shifted subchunk stays inside window
+    reqMaxLagBins = round(maxLagSecs / binSize);
+    maxLagLeft = pyrStart - 1;
+    maxLagRight = T - pyrEnd;
+    maxLagBins = min([reqMaxLagBins, maxLagLeft, maxLagRight]);
+    lags = -maxLagBins:maxLagBins;
+    nL = numel(lags);
+
+    % gather per-channel 3d windows (events x neurons x time), with permutation option
+    pyr3_byCh = cell(1, numel(channelsToUse));
+    int3_byCh = cell(1, numel(channelsToUse));
+
+    nPyr_ref = nan;
+    nInt_ref = nan;
+
+    for ci = 1:numel(channelsToUse)
+        ch = channelsToUse(ci);
+        pyrWin = S.pyrCxWinCell{ch};
+        intWin = S.intCxWinCell{ch};
+        if isempty(pyrWin) || isempty(intWin)
+            continue;
+        end
+
+        % enforce same #events across types for this channel
+        nEvt = min(size(pyrWin, 1), size(intWin, 1));
+        pyrWin = pyrWin(1:nEvt, :, :);
+        intWin = intWin(1:nEvt, :, :);
+
+        if isPermuted
+            % permute neuron identities across pooled set, then split back into pyr/int counts
+            [~, nPyr, ~] = size(pyrWin);
+            [~, nInt, ~] = size(intWin);
+            totN = nPyr + nInt;
+
+            if totN < 2 || nEvt < 1
+                continue;
+            end
+
+            pooledWin = cat(2, pyrWin, intWin);
+            idx = randperm(totN);
+            idxP = idx(1:nPyr);
+            idxI = idx(nPyr+1:end);
+
+            pyrWin = pooledWin(:, idxP, :);
+            intWin = pooledWin(:, idxI, :);
+        end
+
+        if doBaselineNorm
+            pyrWin = subtractTrialBaseline3d(pyrWin, tAxis, -0.2, -0.15);
+            intWin = subtractTrialBaseline3d(intWin, tAxis, -0.2, -0.15);
+        end
+
+        pyr3_byCh{ci} = pyrWin;
+        int3_byCh{ci} = intWin;
+
+        % set reference neuron counts from first valid channel (assumes consistent across channels)
+        if isnan(nPyr_ref)
+            nPyr_ref = size(pyrWin, 2);
+        end
+        if isnan(nInt_ref)
+            nInt_ref = size(intWin, 2);
+        end
+    end
+
+    if isnan(nPyr_ref) || isnan(nInt_ref) || nPyr_ref < 1 || nInt_ref < 1
+        fprintf('no valid channels found for session %d, skipping\n', iDir);
+        continue;
+    end
+
+    % compute full xc curves + peaks
+    tic
+    [xcMat, peakCorrMat, peakLagSecMat] = lagSweepPairwiseAcrossChannels_fullxc( ...
+        pyr3_byCh, int3_byCh, lags, pyrStart, pyrEnd, T, binSize, nPyr_ref, nInt_ref);
+    disp(['pairwise cross-correlation analysis done, time: ' num2str(toc) ' s'])
+
+    % save results
+    outDir = fullfile(baseDir, 'quest_runs');
+    if ~exist(outDir, 'dir'), mkdir(outDir); end
+
+    if isPermuted
+        outFile = fullfile(outDir, sprintf('pairwiseConcatCrossCorr_chunked_perm_%03d.mat', permInd));
+    else
+        outFile = fullfile(outDir, 'pairwiseConcatCrossCorr_chunked_unperm.mat');
+    end
+
+    save(outFile, 'lags', 'binSize', 'xcMat', 'peakCorrMat', 'peakLagSecMat', 'chunkHalf', 'channelsToUse', ...
+        'doBaselineNorm', 'isPermuted', 'jobInd', 'permInd', 'baseDir', '-v7.3');
+end
+
+% ===================== helpers =====================
+
+% helper: per-trial baseline subtraction for 3d array (events x neurons x time)
+function Wout = subtractTrialBaseline3d(Win, tAxisSec, tStartSec, tEndSec)
+    [~, iStart] = min(abs(tAxisSec - tStartSec));
+    [~, iEnd]   = min(abs(tAxisSec - tEndSec));
+    if iEnd < iStart, tmp = iStart; iStart = iEnd; iEnd = tmp; end
+
+    % baseline per (event, neuron)
+    base = mean(Win(:, :, iStart:iEnd), 3, 'omitnan');
+    Wout = Win - base;
+end
+
+% helper: pairwise lag sweep pooling across channels and events
+% outputs:
+%   xcMat: (nInt x nPyr x nLags)
+%   peakCorrMat: (nInt x nPyr)
+%   peakLagSecMat: (nInt x nPyr)
+function [xcMat, peakCorrMat, peakLagSecMat] = lagSweepPairwiseAcrossChannels_fullxc( ...
+    pyr3_byCh, int3_byCh, lags, pyrStart, pyrEnd, T, binSize, nPyr_ref, nInt_ref)
+
+    nL = numel(lags);
+    segLen = pyrEnd - pyrStart + 1;
+
+    xcMat = nan(nInt_ref, nPyr_ref, nL);
+    peakCorrMat = nan(nInt_ref, nPyr_ref);
+    peakLagSecMat = nan(nInt_ref, nPyr_ref);
+
+    nCh = numel(pyr3_byCh);
+
+    for iInt = 1:nInt_ref
+        for iPyr = 1:nPyr_ref
+
+            bestR = -inf;
+            bestLag = nan;
+
+            for iL = 1:nL
+                L = lags(iL);
+                intStart = pyrStart - L;
+                intEnd   = pyrEnd   - L;
+
+                if intStart < 1 || intEnd > T
+                    continue;
+                end
+
+                % compute an upper bound on concat length, then fill and trim
+                maxNEvt = 0;
+                for ci = 1:nCh
+                    pWin = pyr3_byCh{ci};
+                    iWin = int3_byCh{ci};
+                    if isempty(pWin) || isempty(iWin), continue; end
+
+                    % skip channel if it doesn't contain this neuron index
+                    if size(pWin, 2) < iPyr || size(iWin, 2) < iInt
+                        continue;
+                    end
+
+                    maxNEvt = maxNEvt + min(size(pWin, 1), size(iWin, 1));
+                end
+
+                maxLen = maxNEvt * segLen;
+                if maxLen < 11
+                    continue;
+                end
+
+                pvec = nan(1, maxLen);
+                ivec = nan(1, maxLen);
+                w = 0;
+
+                for ci = 1:nCh
+                    pWin = pyr3_byCh{ci};
+                    iWin = int3_byCh{ci};
+                    if isempty(pWin) || isempty(iWin), continue; end
+                    if size(pWin, 2) < iPyr || size(iWin, 2) < iInt, continue; end
+
+                    nEvt = min(size(pWin, 1), size(iWin, 1));
+
+                    for e = 1:nEvt
+                        pseg = squeeze(pWin(e, iPyr, pyrStart:pyrEnd));
+                        iseg = squeeze(iWin(e, iInt, intStart:intEnd));
+
+                        idx = (w + 1):(w + segLen);
+                        pvec(idx) = pseg(:)';
+                        ivec(idx) = iseg(:)';
+                        w = w + segLen;
+                    end
+                end
+
+                if w < 11
+                    continue;
+                end
+
+                pvec = pvec(1:w);
+                ivec = ivec(1:w);
+
+                valid = ~isnan(pvec) & ~isnan(ivec);
+                if nnz(valid) > 10
+                    r = corr(pvec(valid)', ivec(valid)');
+                    xcMat(iInt, iPyr, iL) = r;
+
+                    if ~isnan(r) && r > bestR
+                        bestR = r;
+                        bestLag = L * binSize;
+                    end
+                end
+            end
+
+            if isfinite(bestR)
+                peakCorrMat(iInt, iPyr) = bestR;
+                peakLagSecMat(iInt, iPyr) = bestLag;
+            end
+        end
+    end
+end
