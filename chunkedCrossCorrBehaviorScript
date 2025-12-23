@@ -90,7 +90,24 @@ for iDir = 1:numel(baseDirs)
     nCh = numel(S.pyrCxWinCell);
 
     % helper: events×neurons×time -> events×time
-    meanEvt = @(M) squeeze(mean(M, 2, 'omitnan'));
+    meanEvt = @(M) meanEvt_keepEvents(M);
+
+    function E = meanEvt_keepEvents(M)
+        % averages over neurons (dim 2) and guarantees output is events×time
+        % even when events == 1 (avoids squeeze collapsing dimensions)
+        % input:  M is events×neurons×time
+        % output: E is events×time
+
+        if isempty(M)
+            E = [];
+            return;
+        end
+
+        E = mean(M, 2, 'omitnan'); % events×1×time
+        E = permute(E, [1 3 2]); % events×time×1
+        E = reshape(E, size(E,1), size(E,2)); % events×time
+    end
+
 
     % main loop over behaviors
     for bIdx = 1:numel(behaviors)
@@ -167,8 +184,9 @@ for iDir = 1:numel(baseDirs)
                 idxP = idxAll(1:nPyr);
                 idxI = idxAll(nPyr+1:end);
 
-                pyrEvt = squeeze(mean(pooledWin(:, idxP, :), 2, 'omitnan')); % events×time
-                intEvt = squeeze(mean(pooledWin(:, idxI, :), 2, 'omitnan')); % events×time
+                pyrEvt = meanEvt_keepEvents(pooledWin(:, idxP, :)); % events×time
+                intEvt = meanEvt_keepEvents(pooledWin(:, idxI, :)); % events×time
+
             else
                 % avg across neurons -> events×time
                 pyrEvt = meanEvt(pyrWin_sel);
