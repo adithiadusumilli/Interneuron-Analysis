@@ -1,7 +1,8 @@
 function plotBehChunkedLagCI_AllAnimals(baseRoot, beh)
 % plotBehChunkedLagCI_AllAnimals
+% FOR CLASSIFIER BEHAVIORS
 % plots behavior-specific chunked xc peak lag permutation distributions using
-% the combined quest output files: combinedChunkedXCorrPerBehavior_behXX_labels_classifier.mat
+% the combined quest output files: combinedChunkedXCorrPerConcatBehavior_behXX_labels_classifier.mat
 %
 % note: this function is specific to classifier-derived behaviors (i.e., the "labels_classifier" outputs)
 %
@@ -43,7 +44,7 @@ function plotBehChunkedLagCI_AllAnimals(baseRoot, beh)
     % if beh is not provided, loop through all classifier behavior files in the folder
     % but only plot the whitelisted behaviors above
     if nargin < 2 || isempty(beh)
-        files = dir(fullfile(baseRoot, 'combinedChunkedXCorrPerBehavior_beh*_labels_classifier.mat'));
+        files = dir(fullfile(baseRoot, 'combinedChunkedXCorrPerCanonicalBehavior_classifier_beh*_labels.mat'));
         if isempty(files)
             error('no classifier behavior combined files found in: %s', baseRoot);
         end
@@ -52,7 +53,7 @@ function plotBehChunkedLagCI_AllAnimals(baseRoot, beh)
             fname = files(iF).name;
 
             % extract behavior number from filename
-            tok = regexp(fname, 'beh(\d+)_labels_classifier', 'tokens', 'once');
+            tok = regexp(fname, 'classifier_beh(\d+)_labels', 'tokens', 'once');
             if isempty(tok)
                 continue;
             end
@@ -71,7 +72,7 @@ function plotBehChunkedLagCI_AllAnimals(baseRoot, beh)
     end
 
     % otherwise, load a single classifier behavior file
-    matFile = fullfile(baseRoot, sprintf('combinedChunkedXCorrPerBehavior_beh%02d_labels_classifier.mat', beh));
+    matFile = fullfile(baseRoot, sprintf('combinedChunkedXCorrPerCanonicalBehavior_classifier_beh%02d_labels.mat', beh));
     if ~exist(matFile, 'file')
         error('classifier behavior file not found: %s', matFile);
     end
@@ -89,7 +90,8 @@ function plot_one_behavior_file(matFile)
     S = load(matFile, ...
         'baseDirs', 'beh', 'binSize', 'labelsToUse', 'lags', ...
         'peakLagSecPerm_all', 'peakLagSecUnperm', 'xcPerm_all', 'xcUnperm_all', ...
-        'nTrialsPerm_all', 'nTrialsUnperm');
+        'nTrialsPerm_all', 'nTrialsUnperm', ...
+        'classifierBehvs'); % NEW: optional, if present in the combined .mat
 
     % pull out core variables
     baseDirs = S.baseDirs;
@@ -101,6 +103,22 @@ function plot_one_behavior_file(matFile)
     actualPeakLags = S.peakLagSecUnperm; % nSess x 1
     xcPerm_all = S.xcPerm_all; % nSess x nPerm x nLags
     xcUnperm_all = S.xcUnperm_all; % nSess x nLags
+
+    % NEW: behavior label for titles (classifier labels: 0–10, 0 = unlabeled)
+    behLabel = '';
+    if isfield(S, 'classifierBehvs') && iscell(S.classifierBehvs) && ~isempty(S.classifierBehvs)
+        idx = behVal + 1; % assumes classifierBehvs includes label 0 in position 1
+        if idx >= 1 && idx <= numel(S.classifierBehvs) && ~isempty(S.classifierBehvs{idx})
+            behLabel = S.classifierBehvs{idx};
+        end
+    end
+    if isempty(behLabel)
+        if behVal == 0
+            behLabel = 'unlabeled';
+        else
+            behLabel = sprintf('classifier %02d', behVal);
+        end
+    end
 
     % new: pull trial counts if present
     nTrialsUnperm = [];
@@ -152,9 +170,10 @@ function plot_one_behavior_file(matFile)
     % =================================================================
     % 1) per-session permutation histograms
     % =================================================================
-    figure('Name', sprintf('beh%02d (classifier): peak lag permutation distributions (per session)', behVal), ...
+    figure('Name', sprintf('beh%02d (%s) (classifier): peak lag permutation distributions (per session)', behVal, behLabel), ...
            'Color', 'w');
-    tiledlayout(1, nSess, 'TileSpacing', 'compact', 'Padding', 'compact');
+    t1 = tiledlayout(1, nSess, 'TileSpacing', 'compact', 'Padding', 'compact'); % NEW: capture handle
+    title(t1, sprintf('beh%02d (%s)', behVal, behLabel)); % NEW
 
     allPermLags_concat = [];
 
@@ -212,7 +231,7 @@ function plot_one_behavior_file(matFile)
     % 2) combined permutation histogram across sessions
     % =================================================================
     if ~isempty(allPermLags_concat)
-        figure('Name', sprintf('beh%02d (classifier): peak lag permutations (all sessions combined)', behVal), ...
+        figure('Name', sprintf('beh%02d (%s) (classifier): peak lag permutations (all sessions combined)', behVal, behLabel), ...
                'Color', 'w');
         hold on;
 
@@ -235,7 +254,7 @@ function plot_one_behavior_file(matFile)
 
         xlabel('peak lag (s)');
         ylabel('count');
-        title('combined permutation distribution (all sessions)');
+        title(sprintf('combined permutation distribution (all sessions): beh%02d (%s)', behVal, behLabel)); % NEW
         box off; grid on;
 
         legEntries = [{ ...
@@ -254,7 +273,7 @@ function plot_one_behavior_file(matFile)
     % =================================================================
     % 3) summary plot: actual peak lag per session with 95% permutation ci
     % =================================================================
-    figure('Name', sprintf('beh%02d (classifier): peak lag summary with permutation ci', behVal), ...
+    figure('Name', sprintf('beh%02d (%s) (classifier): peak lag summary with permutation ci', behVal, behLabel), ...
            'Color', 'w');
     hold on;
 
@@ -276,15 +295,16 @@ function plot_one_behavior_file(matFile)
     xticks(xPos);
     xticklabels(sessionLabels);
 
-    title(sprintf('beh%02d peak lags with 95%% permutation ci', behVal));
+    title(sprintf('beh%02d (%s) peak lags with 95%% permutation ci', behVal, behLabel)); % NEW
     box off; grid on;
 
     % =================================================================
     % 4) tiled xc curves per session (like runCrossCorrelation panels)
     % =================================================================
-    figure('Name', sprintf('beh%02d (classifier): cross-correlation panels (per session)', behVal), ...
+    figure('Name', sprintf('beh%02d (%s) (classifier): cross-correlation panels (per session)', behVal, behLabel), ...
            'Color', 'w');
     tile_lay = tiledlayout(1, nSess, 'TileSpacing', 'compact', 'Padding', 'compact');
+    title(tile_lay, sprintf('beh%02d (%s)', behVal, behLabel)); % NEW
 
     for iS = 1:nSess
         nexttile(tile_lay, iS); hold on;
@@ -292,9 +312,9 @@ function plot_one_behavior_file(matFile)
         xc = xcUnperm_all(iS, :);
         if all(isnan(xc)) || isempty(xc)
             if ~isempty(nTrialsUnperm)
-                title(sprintf('beh%02d — %s (no xc; n = %d)', behVal, sessionLabels{iS}, nTrialsUnperm(iS)));
+                title(sprintf('beh%02d (%s) — %s (no xc; n = %d)', behVal, behLabel, sessionLabels{iS}, nTrialsUnperm(iS))); % NEW
             else
-                title(sprintf('beh%02d — %s (no xc)', behVal, sessionLabels{iS}));
+                title(sprintf('beh%02d (%s) — %s (no xc)', behVal, behLabel, sessionLabels{iS})); % NEW
             end
             axis off;
             continue;
@@ -337,10 +357,11 @@ function plot_one_behavior_file(matFile)
 
         % new: add nTrials to the panel title if available
         if ~isempty(nTrialsUnperm)
-            title(sprintf('beh%02d — %s (n = %d)\npeak lag: %.3f sec', ...
-                behVal, sessionLabels{iS}, nTrialsUnperm(iS), peakLag));
+            title(sprintf('beh%02d (%s) — %s (n = %d)\npeak lag: %.3f sec', ...
+                behVal, behLabel, sessionLabels{iS}, nTrialsUnperm(iS), peakLag)); % NEW
         else
-            title(sprintf('beh%02d — %s\npeak lag: %.3f sec', behVal, sessionLabels{iS}, peakLag));
+            title(sprintf('beh%02d (%s) — %s\npeak lag: %.3f sec', ...
+                behVal, behLabel, sessionLabels{iS}, peakLag)); % NEW
         end
 
         box off;
@@ -369,11 +390,11 @@ function plot_one_behavior_file(matFile)
 
         % new: include nTrials in print if available
         if ~isempty(nTrialsUnperm)
-            fprintf('→ beh%02d — %s  peak lag: %.3f s | peak corr: %.3f | n = %d trials\n', ...
-                behVal, sessionLabels{iS}, peakLag, peakCorr, nTrialsUnperm(iS));
+            fprintf('→ beh%02d (%s) — %s  peak lag: %.3f s | peak corr: %.3f | n = %d trials\n', ...
+                behVal, behLabel, sessionLabels{iS}, peakLag, peakCorr, nTrialsUnperm(iS)); % NEW
         else
-            fprintf('→ beh%02d — %s  peak lag: %.3f s | peak corr: %.3f\n', ...
-                behVal, sessionLabels{iS}, peakLag, peakCorr);
+            fprintf('→ beh%02d (%s) — %s  peak lag: %.3f s | peak corr: %.3f\n', ...
+                behVal, behLabel, sessionLabels{iS}, peakLag, peakCorr); % NEW
         end
     end
 
