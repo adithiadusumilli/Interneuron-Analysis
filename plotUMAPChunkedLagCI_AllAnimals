@@ -1,10 +1,9 @@
 function plotUMAPChunkedLagCI_AllAnimals(baseRoot, beh)
 % plotBehChunkedLagCI_AllAnimals
 % FOR UMAP BEHAVIORS
-% plots behavior-specific chunked xc peak lag permutation distributions using
-% the combined quest output files: combinedChunkedXCorrPerBehavior_umap_behXX_labels.mat
+% plots behavior-specific chunked xc peak lag permutation distributions using the combined quest output files: combinedChunkedXCorrPerBehavior_umap_behXX_labels.mat
 %
-% note: this function is specific to umap-derived behaviors (i.e., the "umap_behXX_labels" outputs)
+% rememberrr: this func specific to umap-derived behaviors (the "umap_behXX_labels" outputs)
 %
 % figures (per behavior file):
 %   1) per-session histogram of permuted peak lags + 2.5/97.5% bounds + actual lag
@@ -66,7 +65,7 @@ function plotUMAPChunkedLagCI_AllAnimals(baseRoot, beh)
             end
 
             matFile = fullfile(baseRoot, fname);
-            plot_one_behavior_file(matFile);
+            plot_one_behavior_file(matFile, baseRoot);
         end
         return;
     end
@@ -77,14 +76,14 @@ function plotUMAPChunkedLagCI_AllAnimals(baseRoot, beh)
         error('umap behavior file not found: %s', matFile);
     end
 
-    plot_one_behavior_file(matFile);
+    plot_one_behavior_file(matFile, baseRoot);
 
 end
 
 % =====================================================================
 % helper: does all plotting for one behavior file
 % =====================================================================
-function plot_one_behavior_file(matFile)
+function plot_one_behavior_file(matFile, baseRoot)
 
     % load required variables (silently ignore extra fields)
     S = load(matFile, ...
@@ -112,6 +111,55 @@ function plot_one_behavior_file(matFile)
     if isfield(S, 'nTrialsPerm_all')
         nTrialsPerm_all = S.nTrialsPerm_all;
     end %#ok<NASGU>
+
+    % -----------------------------------------------------------------
+    % new: load umap region names for titles
+    % files live under baseRoot\D0xx\transitionCanonicalBehaviorLabels.mat or UMAP.mat
+    % so do a recursive search under baseRoot and use the first hit
+    % -----------------------------------------------------------------
+    umapBehvNames = [];
+    labelHits = dir(fullfile(baseRoot, '**', 'transitionCanonicalBehaviorLabels.mat'));
+    if ~isempty(labelHits)
+        try
+            T = load(fullfile(labelHits(1).folder, labelHits(1).name), 'umapBehvNames');
+            if isfield(T, 'umapBehvNames')
+                umapBehvNames = T.umapBehvNames;
+            end
+        catch
+            umapBehvNames = [];
+        end
+    end
+
+    % fallback: try grabbing region names from UMAP.mat if needed
+    if isempty(umapBehvNames)
+        umapHits = dir(fullfile(baseRoot, '**', 'UMAP.mat'));
+        if ~isempty(umapHits)
+            try
+                U = load(fullfile(umapHits(1).folder, umapHits(1).name), 'umapBehvNames');
+                if isfield(U, 'umapBehvNames')
+                    umapBehvNames = U.umapBehvNames;
+                end
+            catch
+                umapBehvNames = [];
+            end
+        end
+    end
+
+    if isstring(umapBehvNames)
+        umapBehvNames = cellstr(umapBehvNames);
+    end
+
+    behLabel = '';
+    if ~isempty(umapBehvNames) && iscell(umapBehvNames)
+        if behVal >= 1 && behVal <= numel(umapBehvNames) && ~isempty(umapBehvNames{behVal})
+            behLabel = umapBehvNames{behVal};
+        end
+    end
+
+    if isempty(behLabel)
+        behLabel = sprintf('umap %02d', behVal);
+    end
+    % -----------------------------------------------------------------
 
     nSess = numel(baseDirs);
 
@@ -153,9 +201,10 @@ function plot_one_behavior_file(matFile)
     % =================================================================
     % 1) per-session permutation histograms
     % =================================================================
-    figure('Name', sprintf('umap beh%02d: peak lag permutation distributions (per session)', behVal), ...
+    figure('Name', sprintf('umap beh%02d (%s): peak lag permutation distributions (per session)', behVal, behLabel), ...
            'Color', 'w');
-    tiledlayout(1, nSess, 'TileSpacing', 'compact', 'Padding', 'compact');
+    t1 = tiledlayout(1, nSess, 'TileSpacing', 'compact', 'Padding', 'compact');
+    title(t1, sprintf('umap beh%02d (%s)', behVal, behLabel));
 
     allPermLags_concat = [];
 
@@ -213,7 +262,7 @@ function plot_one_behavior_file(matFile)
     % 2) combined permutation histogram across sessions
     % =================================================================
     if ~isempty(allPermLags_concat)
-        figure('Name', sprintf('umap beh%02d: peak lag permutations (all sessions combined)', behVal), ...
+        figure('Name', sprintf('umap beh%02d (%s): peak lag permutations (all sessions combined)', behVal, behLabel), ...
                'Color', 'w');
         hold on;
 
@@ -236,7 +285,7 @@ function plot_one_behavior_file(matFile)
 
         xlabel('peak lag (s)');
         ylabel('count');
-        title('combined permutation distribution (all sessions)');
+        title(sprintf('combined permutation distribution (all sessions): umap beh%02d (%s)', behVal, behLabel));
         box off; grid on;
 
         legEntries = [{ ...
@@ -255,7 +304,7 @@ function plot_one_behavior_file(matFile)
     % =================================================================
     % 3) summary plot: actual peak lag per session with 95% permutation ci
     % =================================================================
-    figure('Name', sprintf('umap beh%02d: peak lag summary with permutation ci', behVal), ...
+    figure('Name', sprintf('umap beh%02d (%s): peak lag summary with permutation ci', behVal, behLabel), ...
            'Color', 'w');
     hold on;
 
@@ -277,15 +326,16 @@ function plot_one_behavior_file(matFile)
     xticks(xPos);
     xticklabels(sessionLabels);
 
-    title(sprintf('umap beh%02d peak lags with 95%% permutation ci', behVal));
+    title(sprintf('umap beh%02d (%s) peak lags with 95%% permutation ci', behVal, behLabel));
     box off; grid on;
 
     % =================================================================
     % 4) tiled xc curves per session (like runCrossCorrelation panels)
     % =================================================================
-    figure('Name', sprintf('umap beh%02d: cross-correlation panels (per session)', behVal), ...
+    figure('Name', sprintf('umap beh%02d (%s): cross-correlation panels (per session)', behVal, behLabel), ...
            'Color', 'w');
     tile_lay = tiledlayout(1, nSess, 'TileSpacing', 'compact', 'Padding', 'compact');
+    title(tile_lay, sprintf('umap beh%02d (%s)', behVal, behLabel));
 
     for iS = 1:nSess
         nexttile(tile_lay, iS); hold on;
@@ -293,9 +343,9 @@ function plot_one_behavior_file(matFile)
         xc = xcUnperm_all(iS, :);
         if all(isnan(xc)) || isempty(xc)
             if ~isempty(nTrialsUnperm)
-                title(sprintf('umap beh%02d — %s (no xc; n = %d)', behVal, sessionLabels{iS}, nTrialsUnperm(iS)));
+                title(sprintf('umap beh%02d (%s) — %s (no xc; n = %d)', behVal, behLabel, sessionLabels{iS}, nTrialsUnperm(iS)));
             else
-                title(sprintf('umap beh%02d — %s (no xc)', behVal, sessionLabels{iS}));
+                title(sprintf('umap beh%02d (%s) — %s (no xc)', behVal, behLabel, sessionLabels{iS}));
             end
             axis off;
             continue;
@@ -338,10 +388,11 @@ function plot_one_behavior_file(matFile)
 
         % new: add nTrials to the panel title if available
         if ~isempty(nTrialsUnperm)
-            title(sprintf('umap beh%02d — %s (n = %d)\npeak lag: %.3f sec', ...
-                behVal, sessionLabels{iS}, nTrialsUnperm(iS), peakLag));
+            title(sprintf('umap beh%02d (%s) — %s (n = %d)\npeak lag: %.3f sec', ...
+                behVal, behLabel, sessionLabels{iS}, nTrialsUnperm(iS), peakLag));
         else
-            title(sprintf('umap beh%02d — %s\npeak lag: %.3f sec', behVal, sessionLabels{iS}, peakLag));
+            title(sprintf('umap beh%02d (%s) — %s\npeak lag: %.3f sec', ...
+                behVal, behLabel, sessionLabels{iS}, peakLag));
         end
 
         box off;
@@ -370,11 +421,11 @@ function plot_one_behavior_file(matFile)
 
         % new: include nTrials in print if available
         if ~isempty(nTrialsUnperm)
-            fprintf('→ umap beh%02d — %s  peak lag: %.3f s | peak corr: %.3f | n = %d trials\n', ...
-                behVal, sessionLabels{iS}, peakLag, peakCorr, nTrialsUnperm(iS));
+            fprintf('→ umap beh%02d (%s) — %s  peak lag: %.3f s | peak corr: %.3f | n = %d trials\n', ...
+                behVal, behLabel, sessionLabels{iS}, peakLag, peakCorr, nTrialsUnperm(iS));
         else
-            fprintf('→ umap beh%02d — %s  peak lag: %.3f s | peak corr: %.3f\n', ...
-                behVal, sessionLabels{iS}, peakLag, peakCorr);
+            fprintf('→ umap beh%02d (%s) — %s  peak lag: %.3f s | peak corr: %.3f\n', ...
+                behVal, behLabel, sessionLabels{iS}, peakLag, peakCorr);
         end
     end
 
