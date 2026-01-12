@@ -112,32 +112,29 @@ function plot_one_behavior_file(matFile, baseRoot)
         nTrialsPerm_all = S.nTrialsPerm_all;
     end %#ok<NASGU>
 
-    % -----------------------------------------------------------------
-    % new: load umap region behavior names from the canonical label file
-    % saved by mapTransitionsToCanonicalBehaviors:
-    %   transitionCanonicalBehaviorLabels.mat contains regionBehvAssignments
-    % -----------------------------------------------------------------
+    % -------------------------------------------------------------
+    % new: correct umap behavior label lookup (canonical mapping)
+    % uses transitionCanonicalBehaviorLabels.mat saved per session:
+    %   regionBehvAssignments: 1x7 cell, each entry holds canonical indices (1..10)
+    %   manBehvNames:          1x10 cell, canonical behavior names
+    % label = manBehvNames(regionBehvAssignments{behVal})
+    % -------------------------------------------------------------
     behLabel = '';
 
     labelHits = dir(fullfile(baseRoot, '**', 'transitionCanonicalBehaviorLabels.mat'));
     if ~isempty(labelHits)
         try
-            T = load(fullfile(labelHits(1).folder, labelHits(1).name), 'regionBehvAssignments');
-            if isfield(T, 'regionBehvAssignments') && ~isempty(T.regionBehvAssignments)
-                regionBehvAssignments = T.regionBehvAssignments;
+            T = load(fullfile(labelHits(1).folder, labelHits(1).name), ...
+                'regionBehvAssignments', 'manBehvNames');
 
-                % normalize to cellstr if needed
-                if isstring(regionBehvAssignments)
-                    regionBehvAssignments = cellstr(regionBehvAssignments);
-                elseif iscategorical(regionBehvAssignments)
-                    regionBehvAssignments = cellstr(regionBehvAssignments);
-                end
+            if isfield(T, 'regionBehvAssignments') && isfield(T, 'manBehvNames') ...
+                    && ~isempty(T.regionBehvAssignments) && ~isempty(T.manBehvNames) ...
+                    && behVal >= 1 && behVal <= numel(T.regionBehvAssignments)
 
-                % regionBehvAssignments should be indexable by 1..7
-                if iscell(regionBehvAssignments) ...
-                        && behVal >= 1 && behVal <= numel(regionBehvAssignments) ...
-                        && ~isempty(regionBehvAssignments{behVal})
-                    behLabel = regionBehvAssignments{behVal};
+                canonIdx = T.regionBehvAssignments{behVal}; % e.g. [9 10]
+
+                if ~isempty(canonIdx)
+                    behLabel = strjoin(T.manBehvNames(canonIdx), '/');
                 end
             end
         catch
@@ -148,7 +145,7 @@ function plot_one_behavior_file(matFile, baseRoot)
     if isempty(behLabel)
         behLabel = sprintf('umap region %02d', behVal);
     end
-    % -----------------------------------------------------------------
+    % -------------------------------------------------------------
 
     nSess = numel(baseDirs);
 
@@ -352,70 +349,4 @@ function plot_one_behavior_file(matFile, baseRoot)
         end
 
         % vertical ci for lag from permuted peak lags
-        lagCI    = lagCIAll(iS, :);
-        peakLag  = actualPeakLags(iS);
-        peakCorr = actualPeakCorr(iS);
-
-        hX = plot(lagsSec, xc, 'k', 'LineWidth', 2);
-
-        hY1 = gobjects(1);
-        hY2 = gobjects(1);
-        if ~isnan(prc25),  hY1 = yline(prc25,  '--', 'Color', [0.7 0.7 0.7], 'LineWidth', 1.2); end
-        if ~isnan(prc975), hY2 = yline(prc975, '--', 'Color', [0.7 0.7 0.7], 'LineWidth', 1.2); end
-
-        hA = xline(peakLag, 'r--', 'LineWidth', 1.5);
-
-        hL = gobjects(1);
-        hU = gobjects(1);
-        if ~any(isnan(lagCI))
-            hL = xline(lagCI(1), 'Color', [0.4 0.4 0.4], 'LineStyle', '--', 'LineWidth', 1.2);
-            hU = xline(lagCI(2), 'Color', [0.4 0.4 0.4], 'LineStyle', '--', 'LineWidth', 1.2);
-        end
-
-        xlabel('lag (seconds)');
-        ylabel('correlation');
-
-        % new: add nTrials to the panel title if available
-        if ~isempty(nTrialsUnperm)
-            title(sprintf('umap beh%02d (%s) — %s (n = %d)\npeak lag: %.3f sec', ...
-                behVal, behLabel, sessionLabels{iS}, nTrialsUnperm(iS), peakLag));
-        else
-            title(sprintf('umap beh%02d (%s) — %s\npeak lag: %.3f sec', ...
-                behVal, behLabel, sessionLabels{iS}, peakLag));
-        end
-
-        box off;
-
-        % build legend only from valid handles (prevents "ignoring extra legend entries" warnings)
-        legH = [hX];
-        legT = {'original xcorr'};
-
-        if isgraphics(hY1), legH(end+1) = hY1; legT{end+1} = '2.5% corr control'; end %#ok<AGROW>
-        if isgraphics(hY2), legH(end+1) = hY2; legT{end+1} = '97.5% corr control'; end %#ok<AGROW>
-
-        if isgraphics(hA),  legH(end+1) = hA;  legT{end+1} = 'actual peak lag'; end %#ok<AGROW>
-
-        if isgraphics(hL)
-            legH(end+1) = hL; %#ok<AGROW>
-            legT{end+1} = 'lag 95% ci (perm)'; %#ok<AGROW>
-        end
-        if isgraphics(hU)
-            legH(end+1) = hU; %#ok<AGROW>
-            % no extra legend label for upper ci line (matches your example figure style)
-        end
-
-        legend(legH, legT, 'Location', 'best');
-
-        drawnow;
-
-        % new: include nTrials in print if available
-        if ~isempty(nTrialsUnperm)
-            fprintf('→ umap beh%02d (%s) — %s  peak lag: %.3f s | peak corr: %.3f | n = %d trials\n', ...
-                behVal, behLabel, sessionLabels{iS}, peakLag, peakCorr, nTrialsUnperm(iS));
-        else
-            fprintf('→ umap beh%02d (%s) — %s  peak lag: %.3f s | peak corr: %.3f\n', ...
-                behVal, behLabel, sessionLabels{iS}, peakLag, peakCorr);
-        end
-    end
-
-end
+        lagCI
