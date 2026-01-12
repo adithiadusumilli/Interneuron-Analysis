@@ -3,9 +3,9 @@ function plotBehChunkedLagCI_AllAnimals(baseRoot, beh)
 % FOR CLASSIFIER BEHAVIORS
 % plots behavior-specific chunked xc peak lag permutation distributions using
 % the combined quest output files: combinedChunkedXCorrPerCanonicalBehavior_classifier_behXX_labels.mat
-%
+
 % note: this function is specific to classifier-derived behaviors (i.e., the "labels_classifier" outputs)
-%
+
 % figures (per behavior file):
 %   1) per-session histogram of permuted peak lags + 2.5/97.5% bounds + actual lag
 %   2) combined histogram of permuted peak lags across sessions + 2.5/97.5% bounds + each session actual lag
@@ -14,7 +14,7 @@ function plotBehChunkedLagCI_AllAnimals(baseRoot, beh)
 %        - horizontal ci lines from permutation peak-corr distribution
 %        - vertical line at actual peak lag
 %        - vertical ci lines from permutation peak-lag distribution
-%
+
 % expected variables inside each .mat:
 %   baseDirs : 1 x nSessions cell
 %   beh : 1 x 1 double
@@ -27,12 +27,12 @@ function plotBehChunkedLagCI_AllAnimals(baseRoot, beh)
 %   xcUnperm_all : nSessions x nLags double
 %   nTrialsPerm_all : nSessions x nPerm double (optional for plotting)
 %   nTrialsUnperm : nSessions x 1 double (optional for plotting)
-%
+
 % inputs:
 %   baseRoot (optional): folder containing the combined behavior .mat files
 %       default: 'C:\Users\mirilab\Documents\GlobusTransfer'
 %   beh (optional): behavior number to plot (e.g., 9 for beh09). if omitted,
-%       the function will plot a selected subset of behaviors (see behaviorsToPlot below).
+%       the function will plot a selected subset of behaviors (see behaviorsToPlot below)
 
     if nargin < 1 || isempty(baseRoot)
         baseRoot = 'C:\Users\mirilab\Documents\GlobusTransfer';
