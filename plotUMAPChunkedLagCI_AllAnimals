@@ -113,51 +113,40 @@ function plot_one_behavior_file(matFile, baseRoot)
     end %#ok<NASGU>
 
     % -----------------------------------------------------------------
-    % new: load umap region names for titles
-    % files live under baseRoot\D0xx\transitionCanonicalBehaviorLabels.mat or UMAP.mat
-    % so do a recursive search under baseRoot and use the first hit
+    % new: load umap region behavior names from the canonical label file
+    % saved by mapTransitionsToCanonicalBehaviors:
+    %   transitionCanonicalBehaviorLabels.mat contains regionBehvAssignments
     % -----------------------------------------------------------------
-    umapBehvNames = [];
+    behLabel = '';
+
     labelHits = dir(fullfile(baseRoot, '**', 'transitionCanonicalBehaviorLabels.mat'));
     if ~isempty(labelHits)
         try
-            T = load(fullfile(labelHits(1).folder, labelHits(1).name), 'umapBehvNames');
-            if isfield(T, 'umapBehvNames')
-                umapBehvNames = T.umapBehvNames;
+            T = load(fullfile(labelHits(1).folder, labelHits(1).name), 'regionBehvAssignments');
+            if isfield(T, 'regionBehvAssignments') && ~isempty(T.regionBehvAssignments)
+                regionBehvAssignments = T.regionBehvAssignments;
+
+                % normalize to cellstr if needed
+                if isstring(regionBehvAssignments)
+                    regionBehvAssignments = cellstr(regionBehvAssignments);
+                elseif iscategorical(regionBehvAssignments)
+                    regionBehvAssignments = cellstr(regionBehvAssignments);
+                end
+
+                % regionBehvAssignments should be indexable by 1..7
+                if iscell(regionBehvAssignments) ...
+                        && behVal >= 1 && behVal <= numel(regionBehvAssignments) ...
+                        && ~isempty(regionBehvAssignments{behVal})
+                    behLabel = regionBehvAssignments{behVal};
+                end
             end
         catch
-            umapBehvNames = [];
-        end
-    end
-
-    % fallback: try grabbing region names from UMAP.mat if needed
-    if isempty(umapBehvNames)
-        umapHits = dir(fullfile(baseRoot, '**', 'UMAP.mat'));
-        if ~isempty(umapHits)
-            try
-                U = load(fullfile(umapHits(1).folder, umapHits(1).name), 'umapBehvNames');
-                if isfield(U, 'umapBehvNames')
-                    umapBehvNames = U.umapBehvNames;
-                end
-            catch
-                umapBehvNames = [];
-            end
-        end
-    end
-
-    if isstring(umapBehvNames)
-        umapBehvNames = cellstr(umapBehvNames);
-    end
-
-    behLabel = '';
-    if ~isempty(umapBehvNames) && iscell(umapBehvNames)
-        if behVal >= 1 && behVal <= numel(umapBehvNames) && ~isempty(umapBehvNames{behVal})
-            behLabel = umapBehvNames{behVal};
+            behLabel = '';
         end
     end
 
     if isempty(behLabel)
-        behLabel = sprintf('umap %02d', behVal);
+        behLabel = sprintf('umap region %02d', behVal);
     end
     % -----------------------------------------------------------------
 
