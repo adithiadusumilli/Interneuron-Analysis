@@ -349,4 +349,70 @@ function plot_one_behavior_file(matFile, baseRoot)
         end
 
         % vertical ci for lag from permuted peak lags
-        lagCI
+        lagCI    = lagCIAll(iS, :);
+        peakLag  = actualPeakLags(iS);
+        peakCorr = actualPeakCorr(iS);
+
+        hX = plot(lagsSec, xc, 'k', 'LineWidth', 2);
+
+        hY1 = gobjects(1);
+        hY2 = gobjects(1);
+        if ~isnan(prc25),  hY1 = yline(prc25,  '--', 'Color', [0.7 0.7 0.7], 'LineWidth', 1.2); end
+        if ~isnan(prc975), hY2 = yline(prc975, '--', 'Color', [0.7 0.7 0.7], 'LineWidth', 1.2); end
+
+        hA = xline(peakLag, 'r--', 'LineWidth', 1.5);
+
+        hL = gobjects(1);
+        hU = gobjects(1);
+        if ~any(isnan(lagCI))
+            hL = xline(lagCI(1), 'Color', [0.4 0.4 0.4], 'LineStyle', '--', 'LineWidth', 1.2);
+            hU = xline(lagCI(2), 'Color', [0.4 0.4 0.4], 'LineStyle', '--', 'LineWidth', 1.2);
+        end
+
+        xlabel('lag (seconds)');
+        ylabel('correlation');
+
+        % new: add nTrials to the panel title if available
+        if ~isempty(nTrialsUnperm)
+            title(sprintf('umap beh%02d (%s) — %s (n = %d)\npeak lag: %.3f sec', ...
+                behVal, behLabel, sessionLabels{iS}, nTrialsUnperm(iS), peakLag));
+        else
+            title(sprintf('umap beh%02d (%s) — %s\npeak lag: %.3f sec', ...
+                behVal, behLabel, sessionLabels{iS}, peakLag));
+        end
+
+        box off;
+
+        % build legend only from valid handles (prevents "ignoring extra legend entries" warnings)
+        legH = [hX];
+        legT = {'original xcorr'};
+
+        if isgraphics(hY1), legH(end+1) = hY1; legT{end+1} = '2.5% corr control'; end %#ok<AGROW>
+        if isgraphics(hY2), legH(end+1) = hY2; legT{end+1} = '97.5% corr control'; end %#ok<AGROW>
+
+        if isgraphics(hA),  legH(end+1) = hA;  legT{end+1} = 'actual peak lag'; end %#ok<AGROW>
+
+        if isgraphics(hL)
+            legH(end+1) = hL; %#ok<AGROW>
+            legT{end+1} = 'lag 95% ci (perm)'; %#ok<AGROW>
+        end
+        if isgraphics(hU)
+            legH(end+1) = hU; %#ok<AGROW>
+            % no extra legend label for upper ci line (matches your example figure style)
+        end
+
+        legend(legH, legT, 'Location', 'best');
+
+        drawnow;
+
+        % new: include nTrials in print if available
+        if ~isempty(nTrialsUnperm)
+            fprintf('→ umap beh%02d (%s) — %s  peak lag: %.3f s | peak corr: %.3f | n = %d trials\n', ...
+                behVal, behLabel, sessionLabels{iS}, peakLag, peakCorr, nTrialsUnperm(iS));
+        else
+            fprintf('→ umap beh%02d (%s) — %s  peak lag: %.3f s | peak corr: %.3f\n', ...
+                behVal, behLabel, sessionLabels{iS}, peakLag, peakCorr);
+        end
+    end
+
+end
