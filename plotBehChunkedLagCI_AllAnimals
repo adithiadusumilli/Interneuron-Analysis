@@ -2,7 +2,7 @@ function plotBehChunkedLagCI_AllAnimals(baseRoot, beh)
 % plotBehChunkedLagCI_AllAnimals
 % FOR CLASSIFIER BEHAVIORS
 % plots behavior-specific chunked xc peak lag permutation distributions using
-% the combined quest output files: combinedChunkedXCorrPerConcatBehavior_behXX_labels_classifier.mat
+% the combined quest output files: combinedChunkedXCorrPerCanonicalBehavior_classifier_behXX_labels.mat
 %
 % note: this function is specific to classifier-derived behaviors (i.e., the "labels_classifier" outputs)
 %
@@ -66,7 +66,7 @@ function plotBehChunkedLagCI_AllAnimals(baseRoot, beh)
             end
 
             matFile = fullfile(baseRoot, fname);
-            plot_one_behavior_file(matFile);
+            plot_one_behavior_file(matFile, baseRoot);
         end
         return;
     end
@@ -77,14 +77,14 @@ function plotBehChunkedLagCI_AllAnimals(baseRoot, beh)
         error('classifier behavior file not found: %s', matFile);
     end
 
-    plot_one_behavior_file(matFile);
+    plot_one_behavior_file(matFile, baseRoot);
 
 end
 
 % =====================================================================
 % helper: does all plotting for one behavior file
 % =====================================================================
-function plot_one_behavior_file(matFile)
+function plot_one_behavior_file(matFile, baseRoot)
 
     % load required variables (silently ignore extra fields)
     S = load(matFile, ...
@@ -114,32 +114,40 @@ function plot_one_behavior_file(matFile)
     end %#ok<NASGU>
 
     % -----------------------------------------------------------------
-    % new: load classifier behavior names from transitionBehaviorLabels.mat
-    % (fallback to UMAP.mat), so we can put the label in plot titles
+    % new: load classifier behavior names for titles
+    % files live under baseRoot\D0xx\transitionCanonicalBehaviorLabels.mat
+    % so do a recursive search under baseRoot and use the first hit
     % -----------------------------------------------------------------
     classifierBehvs = [];
-    try
-        T = load(fullfile(fileparts(matFile), 'transitionBehaviorLabels.mat'), 'classifierBehvs');
-        if isfield(T, 'classifierBehvs')
-            classifierBehvs = T.classifierBehvs;
-        end
-    catch
-        % if transitionBehaviorLabels.mat isn't present, try grabbing from UMAP.mat
+    labelHits = dir(fullfile(baseRoot, '**', 'transitionCanonicalBehaviorLabels.mat'));
+    if ~isempty(labelHits)
         try
-            U = load(fullfile(fileparts(matFile), 'UMAP.mat'), 'classifierBehvs');
-            if isfield(U, 'classifierBehvs')
-                classifierBehvs = U.classifierBehvs;
+            T = load(fullfile(labelHits(1).folder, labelHits(1).name), 'classifierBehvs');
+            if isfield(T, 'classifierBehvs')
+                classifierBehvs = T.classifierBehvs;
             end
         catch
             classifierBehvs = [];
         end
     end
 
+    if isstring(classifierBehvs)
+        classifierBehvs = cellstr(classifierBehvs);
+    end
+
     behLabel = '';
     if ~isempty(classifierBehvs) && iscell(classifierBehvs)
-        idx = behVal + 1; % classifier labels are 0–10, so index is +1
-        if idx >= 1 && idx <= numel(classifierBehvs) && ~isempty(classifierBehvs{idx})
-            behLabel = classifierBehvs{idx};
+        % try direct indexing (beh 1..N)
+        if behVal >= 1 && behVal <= numel(classifierBehvs) && ~isempty(classifierBehvs{behVal})
+            behLabel = classifierBehvs{behVal};
+        end
+
+        % if that failed, try +1 indexing (beh 0..N-1 stored at 1..N)
+        if isempty(behLabel)
+            idx = behVal + 1;
+            if idx >= 1 && idx <= numel(classifierBehvs) && ~isempty(classifierBehvs{idx})
+                behLabel = classifierBehvs{idx};
+            end
         end
     end
 
