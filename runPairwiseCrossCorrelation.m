@@ -3,7 +3,7 @@ function runPairwiseCrossCorrelation(baseDirs)
 % code works for both cortex and striatum + saves 3D xcorr matrix (and peak lags and peak correlations)
 
 binSize = 0.001;  % 1 ms bins
-maxLagSecs = 1;
+maxLagSecs = 0.5;
 maxLagBins = round(maxLagSecs / binSize);
 lags = -maxLagBins:maxLagBins;
 
@@ -11,9 +11,14 @@ conslidatedDataFoler = 'X:\David\AnalysesData';
 load(fullfile(conslidatedDataFoler, 'AA_classifications.mat'), 'classifications');
 
 % define known base folders (match order used when AA_classifications.mat was created)
-animalFolders = {'X:\David\ArenaRecordings\D026-032923-ArenaRecording\ProcessedData', 'Z:\David\ArenaRecordings\NeuropixelsTest\D020-062922-ArenaRecording\ProcessedData', 'Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData'};
+animalFolders = {
+    'X:\David\ArenaRecordings\D026-032923-ArenaRecording\ProcessedData', ...
+    'Z:\David\ArenaRecordings\NeuropixelsTest\D020-062922-ArenaRecording\ProcessedData', ...
+    'Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData', ...
+    'X:\David\ArenaRecordings\D043-020425-ArenaRecording\ProcessedData' ...
+    };
 
-regions = {'Cortex', 'Striatum'};
+regions = {'Cortex'};
 
 allXC = cell(length(baseDirs), length(regions));
 allPeakLags = cell(length(baseDirs), length(regions));
@@ -31,7 +36,7 @@ for iRegion = 1:length(regions)
         fprintf('\nProcessing %s — Session %d: %s\n', regionName, iDir, baseDir);
 
         neuronFile = fullfile(baseDir, 'neuronDataStruct.mat');
-        frFile = fullfile(baseDir, 'NeuralFiringRates10msBins30msGauss.mat');
+        frFile = fullfile(baseDir, 'NeuralFiringRates1msBins10msGauss.mat');
 
         if ~isfile(neuronFile) || ~isfile(frFile)
             warning('Missing required files for session %d. Skipping.', iDir);
@@ -166,7 +171,7 @@ for iRegion = 1:length(regions)
 end
 
 % save results
-save('PairwiseCrossCorrelationResults.mat', 'allXC', 'allPeakLags', 'allPeakCorrs', 'allXC_Shifted', 'allPeakLags_Shifted', 'allPeakCorrs_Shifted', 'lags');
+save('PairwiseCrossCorrelationResults.mat', 'allXC', 'allPeakLags', 'allPeakCorrs', 'allXC_Shifted', 'controlCorrs', 'allPeakLags_Shifted', 'allPeakCorrs_Shifted', 'lags');
 
 % flatten matrices into vectors
 peakLagVec = cell2mat(cellfun(@(x) x(:), allPeakLags(:), 'UniformOutput', false));
