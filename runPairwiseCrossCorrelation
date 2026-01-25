@@ -1,6 +1,6 @@
 function runPairwiseCrossCorrelation(baseDirs)
 % pairwise cross-correlation between each interneuron and pyramidal neuron
-% code works for both cortex and striatum + saves 3D xcorr matrix (and peak lags and peak correlations)
+% code works for both cortex and striatum (if i add extra region for striatum) + saves 3D xcorr matrix (and peak lags and peak correlations)
 
 binSize = 0.001;  % 1 ms bins
 maxLagSecs = 0.5;
