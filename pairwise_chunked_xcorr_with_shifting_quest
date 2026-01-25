@@ -1,0 +1,453 @@
+% pairwise_chunked_xcorr_with_shifting_quest.m
+%
+% chunked pairwise cross-correlation (loop across animals)
+% pools events across all selected emg channels (not separate by channel)
+%
+% what this script does:
+%   - jobInd = 0:
+%       * uses the already-extracted unshifted emg-triggered windows in EMG_Neural_AllChannels.mat
+%       * performs a lag sweep (xc curve across lags) for every (int, pyr) pair
+%       * saves full xc cube + peak lag + peak corr
+%
+%   - jobInd = 1..100:
+%       * builds a shifted control (null) using the same shifting logic as your extractor:
+%           - uses validTransitionsNeurShiftedCell to get shifted event centers (1 khz neural indices)
+%           - re-extracts interneuron windows per neuron from the underlying cortex interneuron fr matrix
+%             (because shifts 2:101 in the extractor were saved as neuron-averages, not per neuron)
+%       * does not lag sweep the shifted control
+%       * computes only the 0-lag correlation per (int, pyr) pair using the center chunk
+%       * saves nullCorrMat
+%
+% requirements in each animal folder:
+%   EMG_Neural_AllChannels.mat must contain:
+%       pyrCxWinCell, intCxWinCell, tAxis, validTransitionsNeurCell, validTransitionsNeurShiftedCell
+%   NeuralFiringRates1msBins10msGauss.mat must contain:
+%       cortexFRs, cortexInds
+%   AA_classifications.mat must be reachable from conslidatedDataFoler
+%
+% important notes about your extractor outputs:
+%   - validTransitionsNeurCell{ch} is the real (unshifted) event centers in 1 khz neural indices
+%   - validTransitionsNeurShiftedCell{ch,1} is also the real (unshifted) event centers (redundant copy)
+%   - validTransitionsNeurShiftedCell{ch,2:101} are shift #1..#100 event centers
+%   - therefore: for jobInd=1..100 we use shiftCol = jobInd + 1
+
+%% ---------------- user settings ----------------
+baseDirs = {
+    '/home/asa7288/Transfer/D026', ...
+    '/home/asa7288/Transfer/D020', ...
+    '/home/asa7288/Transfer/D024' ...
+    % add d043 here if you want it on linux too
+};
+
+% you must define jobInd in the workspace before running this script
+% examples:
+%   jobInd = 0;    % unshifted real
+%   jobInd = 1;    % shift #1 null
+%   jobInd = 100;  % shift #100 null
+
+channelsToUse  = 1:4;
+chunkHalf      = 200;   % chunk half-width around 0 ms (200 -> 401 samples)
+maxLagSecs     = 0.5;   % only used for unshifted lag sweep
+doBaselineNorm = true;  % baseline subtract per (event, neuron) using [-500,-450] ms
+
+%% ---------------- main loop ----------------
+assert(exist('jobInd','var')==1, 'please define jobInd before running (0=real, 1..100=shift)');
+assert(jobInd >= 0 && jobInd <= 100, 'jobInd must be in 0..100');
+
+isShiftedJob = (jobInd > 0);
+
+for iDir = 1:numel(baseDirs)
+    baseDir = baseDirs{iDir};
+    fprintf('\nprocessing cortex session %d: %s (job %d)\n', iDir, baseDir, jobInd);
+
+    % ---------------- load windowed data (unshifted windows) + indices ----------------
+    S = load(fullfile(baseDir, 'EMG_Neural_AllChannels.mat'), ...
+        'pyrCxWinCell', 'intCxWinCell', 'tAxis', 'validTransitionsNeurCell', 'validTransitionsNeurShiftedCell');
+
+    if ~isfield(S,'tAxis') || ~isfield(S,'pyrCxWinCell') || ~isfield(S,'intCxWinCell')
+        fprintf('missing required vars in %s, skipping\n', baseDir);
+        continue;
+    end
+
+    if isShiftedJob
+        if ~isfield(S,'validTransitionsNeurShiftedCell') || ~isfield(S,'validTransitionsNeurCell')
+            fprintf('missing validTransitionsNeurCell or validTransitionsNeurShiftedCell in %s, skipping shifted job\n', baseDir);
+            continue;
+        end
+        if size(S.validTransitionsNeurShiftedCell,2) < 101
+            error('expected validTransitionsNeurShiftedCell to have 101 columns (real + 100 shifts).');
+        end
+    end
+
+    % ---------------- window geometry and lag definitions ----------------
+    tAxis   = S.tAxis(:)';     % ms axis (length ~1001 for -500..+500)
+    binSize = 0.001;           % seconds per bin (for lag seconds conversion)
+    T       = numel(tAxis);
+
+    % find the index of t=0 within the window
+    [~, cIdx] = min(abs(tAxis - 0));
+
+    % define the "reference" chunk in pyramidal: [cIdx-chunkHalf : cIdx+chunkHalf]
+    pyrStart = cIdx - chunkHalf;
+    pyrEnd   = cIdx + chunkHalf;
+
+    if pyrStart < 1 || pyrEnd > T
+        error('chunkHalf=%d does not fit in window length=%d.', chunkHalf, T);
+    end
+
+    % unshifted lag sweep range (shifted jobs will ignore this and use lag=0 only)
+    reqMaxLagBins = round(maxLagSecs / binSize);
+    maxLagLeft  = pyrStart - 1;
+    maxLagRight = T - pyrEnd;
+    maxLagBins  = min([reqMaxLagBins, maxLagLeft, maxLagRight]);
+
+    lags = -maxLagBins:maxLagBins; % bins
+    nL   = numel(lags); %#ok<NASGU>
+
+    % ---------------- pool all channels together for unshifted pyr and unshifted int ----------------
+    % note: even for shifted jobs, we keep pyrAll from unshifted windows (as your control design)
+    %       and we rebuild intAll from shifted indices per neuron.
+    pyrAll = [];
+    intAll = [];
+
+    nPyr_ref = nan;
+    nInt_ref = nan;
+
+    for ci = 1:numel(channelsToUse)
+        ch = channelsToUse(ci);
+
+        pyrWin = S.pyrCxWinCell{ch};
+        intWin = S.intCxWinCell{ch};
+
+        if isempty(pyrWin) || isempty(intWin)
+            continue;
+        end
+
+        % keep matched number of events per channel across types
+        nEvt = min(size(pyrWin, 1), size(intWin, 1));
+        pyrWin = pyrWin(1:nEvt, :, :);
+        intWin = intWin(1:nEvt, :, :);
+
+        % define consistent neuron counts across channels by truncating to the minimum seen so far
+        if isnan(nPyr_ref), nPyr_ref = size(pyrWin, 2); end
+        if isnan(nInt_ref), nInt_ref = size(intWin, 2); end
+        nPyr_ref = min(nPyr_ref, size(pyrWin, 2));
+        nInt_ref = min(nInt_ref, size(intWin, 2));
+
+        pyrWin = pyrWin(:, 1:nPyr_ref, :);
+        intWin = intWin(:, 1:nInt_ref, :);
+
+        % optional baseline subtraction per (event, neuron)
+        if doBaselineNorm
+            pyrWin = subtractTrialBaseline3d(pyrWin, tAxis, -500, -450);
+            intWin = subtractTrialBaseline3d(intWin, tAxis, -500, -450);
+        end
+
+        % append events across channels (concatenate along event dimension)
+        pyrAll = cat(1, pyrAll, pyrWin);
+        intAll = cat(1, intAll, intWin);
+    end
+
+    if isempty(pyrAll) || isempty(intAll) || nPyr_ref < 1 || nInt_ref < 1
+        fprintf('no valid channels found for session %d, skipping\n', iDir);
+        continue;
+    end
+
+    % ---------------- if shifted job: rebuild intAll from shifted neural indices per neuron ----------------
+    if isShiftedJob
+        % load cortex interneuron firing rates per neuron (neurons x time)
+        [cortexIntFR, ok] = loadCortexIntFR(baseDir);
+        if ~ok
+            fprintf('failed to load cortex interneuron fr for %s, skipping\n', baseDir);
+            continue;
+        end
+
+        % map jobInd=1..100 into validTransitionsNeurShiftedCell columns:
+        %   col 1   = real (unshifted)
+        %   col 2   = shift #1
+        %   ...
+        %   col 101 = shift #100
+        shiftCol = jobInd + 1;
+
+        % build shifted interneuron windows pooled across channels
+        intAll_shift = [];
+
+        for ci = 1:numel(channelsToUse)
+            ch = channelsToUse(ci);
+
+            % shifted neural indices (1 khz) for this channel and this shift draw
+            neuralIdx1k = S.validTransitionsNeurShiftedCell{ch, shiftCol};
+            if isempty(neuralIdx1k)
+                continue;
+            end
+
+            % extract windows per neuron from the underlying fr matrix
+            intWinShift = extractWindowsFromFR(cortexIntFR, neuralIdx1k, tAxis); % events x nIntFull x time
+
+            % match the neuron count used in unshifted intAll/pyrAll
+            if size(intWinShift, 2) < nInt_ref
+                % if shifted extraction has fewer interneurons than nInt_ref (rare), shrink nInt_ref everywhere
+                nInt_ref = size(intWinShift, 2);
+                intAll   = intAll(:, 1:nInt_ref, :);
+            end
+            intWinShift = intWinShift(:, 1:nInt_ref, :);
+
+            % optional baseline subtraction
+            if doBaselineNorm
+                intWinShift = subtractTrialBaseline3d(intWinShift, tAxis, -500, -450);
+            end
+
+            intAll_shift = cat(1, intAll_shift, intWinShift);
+        end
+
+        if isempty(intAll_shift)
+            fprintf('no shifted events found for jobInd=%d in %s, skipping\n', jobInd, baseDir);
+            continue;
+        end
+
+        % replace intAll with shifted and match event counts to pyrAll
+        intAll = intAll_shift;
+
+        nEvt = min(size(pyrAll,1), size(intAll,1));
+        pyrAll = pyrAll(1:nEvt, :, :);
+        intAll = intAll(1:nEvt, :, :);
+    else
+        % unshifted job: just ensure pyrAll/intAll have matched event counts
+        nEvt = min(size(pyrAll,1), size(intAll,1));
+        pyrAll = pyrAll(1:nEvt, :, :);
+        intAll = intAll(1:nEvt, :, :);
+    end
+
+    % ---------------- compute pairwise metrics ----------------
+    tic
+    if ~isShiftedJob
+        % unshifted: do a full lag sweep and save the entire xc curve per pair
+        [xcMat, peakCorrMat, peakLagSecMat] = lagSweepPairwise_fullxc_chunked( ...
+            pyrAll, intAll, lags, pyrStart, pyrEnd, T, binSize);
+    else
+        % shifted control: no lag sweep
+        % compute only a 0-lag correlation per pair using the same center chunk for pyr and int
+        nullCorrMat = pairwise_zeroLag_chunked(pyrAll, intAll, pyrStart, pyrEnd);
+    end
+    disp(['pairwise analysis done, time: ' num2str(toc) ' s'])
+
+    % ---------------- save results ----------------
+    outDir = fullfile(baseDir, 'quest_runs');
+    if ~exist(outDir, 'dir'), mkdir(outDir); end
+
+    if ~isShiftedJob
+        outFile = fullfile(outDir, 'pairwiseChunkedXCorr_unshifted_fullxc.mat');
+        save(outFile, 'lags', 'binSize', 'tAxis', 'xcMat', 'peakCorrMat', 'peakLagSecMat', ...
+            'chunkHalf', 'channelsToUse', 'doBaselineNorm', 'jobInd', 'baseDir', '-v7.3');
+    else
+        outFile = fullfile(outDir, sprintf('pairwiseChunkedXCorr_shift_%03d_zerolag.mat', jobInd));
+        save(outFile, 'binSize', 'tAxis', 'nullCorrMat', ...
+            'chunkHalf', 'channelsToUse', 'doBaselineNorm', 'jobInd', 'baseDir', '-v7.3');
+    end
+
+    fprintf('saved: %s\n', outFile);
+end
+
+%% ===================== helpers =====================
+
+function Wout = subtractTrialBaseline3d(Win, tAxis, tStart, tEnd)
+% per-trial baseline subtraction for 3d array (events x neurons x time)
+% assumes tAxis and tStart/tEnd are same units (your tAxis is ms)
+    [~, iStart] = min(abs(tAxis - tStart));
+    [~, iEnd]   = min(abs(tAxis - tEnd));
+    if iEnd < iStart, tmp = iStart; iStart = iEnd; iEnd = tmp; end
+
+    % compute baseline per (event, neuron)
+    base = mean(Win(:, :, iStart:iEnd), 3, 'omitnan');  % events x neurons
+    Wout = Win - base; % implicit expansion
+end
+
+function [xcMat, peakCorrMat, peakLagSecMat] = lagSweepPairwise_fullxc_chunked( ...
+    pyrAll, intAll, lags, pyrStart, pyrEnd, T, binSize)
+% computes lag-swept correlation per (int, pyr) pair using:
+%   - pyr chunk fixed at [pyrStart:pyrEnd]
+%   - int chunk shifted by lag: [pyrStart-L : pyrEnd-L]
+% concatenates across all events before corr (your "concat across events" style)
+
+    nEvt = min(size(pyrAll,1), size(intAll,1));
+    nPyr = size(pyrAll,2);
+    nInt = size(intAll,2);
+
+    nL = numel(lags);
+    segLen = pyrEnd - pyrStart + 1;
+
+    xcMat = nan(nInt, nPyr, nL);
+    peakCorrMat = nan(nInt, nPyr);
+    peakLagSecMat = nan(nInt, nPyr);
+
+    for iInt = 1:nInt
+        for iPyr = 1:nPyr
+
+            bestR = -inf;
+            bestLagSec = nan;
+
+            for iL = 1:nL
+                L = lags(iL);
+
+                intStart = pyrStart - L;
+                intEnd   = pyrEnd   - L;
+
+                % skip lags that would index outside the window
+                if intStart < 1 || intEnd > T
+                    continue;
+                end
+
+                % build concatenated vectors across events
+                pvec = nan(1, nEvt * segLen);
+                ivec = nan(1, nEvt * segLen);
+
+                w = 0;
+                for e = 1:nEvt
+                    pseg = squeeze(pyrAll(e, iPyr, pyrStart:pyrEnd));
+                    iseg = squeeze(intAll(e, iInt, intStart:intEnd));
+
+                    idx = (w+1):(w+segLen);
+                    pvec(idx) = pseg(:)';
+                    ivec(idx) = iseg(:)';
+                    w = w + segLen;
+                end
+
+                valid = ~isnan(pvec) & ~isnan(ivec);
+                if nnz(valid) > 10
+                    r = corr(pvec(valid)', ivec(valid)');
+                    xcMat(iInt, iPyr, iL) = r;
+
+                    if ~isnan(r) && r > bestR
+                        bestR = r;
+                        bestLagSec = L * binSize;
+                    end
+                end
+            end
+
+            if isfinite(bestR)
+                peakCorrMat(iInt, iPyr) = bestR;
+                peakLagSecMat(iInt, iPyr) = bestLagSec;
+            end
+        end
+    end
+end
+
+function nullCorrMat = pairwise_zeroLag_chunked(pyrAll, intAll, pyrStart, pyrEnd)
+% shifted control metric with no lag sweep:
+%   - takes the same center chunk for pyr and int: [pyrStart:pyrEnd]
+%   - concatenates across all events
+%   - computes a single 0-lag correlation per (int, pyr) pair
+%
+% output:
+%   nullCorrMat (nInt x nPyr)
+
+    nEvt = min(size(pyrAll,1), size(intAll,1));
+    nPyr = size(pyrAll,2);
+    nInt = size(intAll,2);
+
+    segLen = pyrEnd - pyrStart + 1;
+    nullCorrMat = nan(nInt, nPyr);
+
+    for iInt = 1:nInt
+        for iPyr = 1:nPyr
+
+            pvec = nan(1, nEvt * segLen);
+            ivec = nan(1, nEvt * segLen);
+
+            w = 0;
+            for e = 1:nEvt
+                pseg = squeeze(pyrAll(e, iPyr, pyrStart:pyrEnd));
+                iseg = squeeze(intAll(e, iInt, pyrStart:pyrEnd)); % same chunk, no shift
+
+                idx = (w+1):(w+segLen);
+                pvec(idx) = pseg(:)';
+                ivec(idx) = iseg(:)';
+                w = w + segLen;
+            end
+
+            valid = ~isnan(pvec) & ~isnan(ivec);
+            if nnz(valid) > 10
+                nullCorrMat(iInt, iPyr) = corr(pvec(valid)', ivec(valid)');
+            end
+        end
+    end
+end
+
+function W = extractWindowsFromFR(frMat, neuralIdx1k, tAxis)
+% extracts event windows from an underlying firing rate matrix
+% frMat: neurons x time
+% neuralIdx1k: vector of event centers (1 khz indices)
+% tAxis: window offsets in ms bins (e.g., -500:500)
+% output:
+%   W: events x neurons x time
+
+    nEvt  = numel(neuralIdx1k);
+    nNeur = size(frMat,1);
+    nTime = numel(tAxis);
+    Ttot  = size(frMat,2);
+
+    W = nan(nEvt, nNeur, nTime);
+
+    for e = 1:nEvt
+        t0 = neuralIdx1k(e);
+        if isnan(t0), continue; end
+
+        rng = t0 + tAxis; % because tAxis is already in 1 ms bins
+        if any(rng < 1) || any(rng > Ttot)
+            continue;
+        end
+
+        W(e,:,:) = frMat(:, rng);
+    end
+end
+
+function [cortexIntFR, ok] = loadCortexIntFR(folderPath)
+% loads cortex interneuron firing rate matrix (neurons x time) using:
+%   - cortexFRs and cortexInds from NeuralFiringRates1msBins10msGauss.mat
+%   - AA_classifications.mat to select interneurons within cortexInds
+%
+% this matches what your extractor does:
+%   cortexInt = cortexFRs(classifications{1,1}(cortexInds)==1, :)
+
+    ok = false;
+    cortexIntFR = [];
+
+    try
+        load(fullfile(folderPath,'NeuralFiringRates1msBins10msGauss.mat'), 'cortexFRs', 'cortexInds');
+
+        conslidatedDataFoler = 'X:\David\AnalysesData';
+        load(fullfile(conslidatedDataFoler, 'AA_classifications.mat'), 'classifications');
+
+        % update this list if you added sessions (d043 etc.)
+        animalFolders = {
+            'X:\David\ArenaRecordings\D026-032923-ArenaRecording\ProcessedData', ...
+            'Z:\David\ArenaRecordings\NeuropixelsTest\D020-062922-ArenaRecording\ProcessedData', ...
+            'Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData', ...
+            'X:\David\ArenaRecordings\D043-020425-ArenaRecording\ProcessedData'
+        };
+
+        matchRow = find(contains(animalFolders, folderPath), 1);
+
+        % fallback: match by animal id token if the full windows path differs on linux
+        if isempty(matchRow)
+            if contains(folderPath,'D026'), matchRow = 1; end
+            if contains(folderPath,'D020'), matchRow = 2; end
+            if contains(folderPath,'D024'), matchRow = 3; end
+            if contains(folderPath,'D043'), matchRow = 4; end
+        end
+
+        if isempty(matchRow)
+            warning('could not match folderPath to animalFolders for AA_classifications selection');
+            return;
+        end
+
+        cls = classifications(matchRow, :);
+
+        cortexIntFR = cortexFRs(cls{1,1}(cortexInds) == 1, :);
+
+        ok = true;
+    catch ME
+        warning('loadCortexIntFR failed: %s', ME.message);
+        ok = false;
+    end
+end
