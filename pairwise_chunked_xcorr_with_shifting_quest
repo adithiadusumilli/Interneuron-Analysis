@@ -1,14 +1,14 @@
 % pairwise_chunked_xcorr_with_shifting_quest.m
-%
+
 % chunked pairwise cross-correlation (loop across animals)
 % pools events across all selected emg channels (not separate by channel)
-%
+
 % what this script does:
 %   - jobInd = 0:
 %       * uses the already-extracted unshifted emg-triggered windows in EMG_Neural_AllChannels.mat
 %       * performs a lag sweep (xc curve across lags) for every (int, pyr) pair
 %       * saves full xc cube + peak lag + peak corr
-%
+
 %   - jobInd = 1..100:
 %       * builds a shifted control (null) using the same shifting logic as your extractor:
 %           - uses validTransitionsNeurShiftedCell to get shifted event centers (1 khz neural indices)
@@ -17,21 +17,20 @@
 %       * does not lag sweep the shifted control
 %       * computes only the 0-lag correlation per (int, pyr) pair using the center chunk
 %       * saves nullCorrMat
-%
+
 % requirements in each animal folder:
 %   EMG_Neural_AllChannels.mat must contain:
 %       pyrCxWinCell, intCxWinCell, tAxis, validTransitionsNeurCell, validTransitionsNeurShiftedCell
-%   NeuralFiringRates1msBins10msGauss.mat must contain:
-%       cortexFRs, cortexInds
-%   AA_classifications.mat must be reachable from conslidatedDataFoler
-%
-% important notes about your extractor outputs:
+%   NeuralFiringRates1msBins10msGauss.mat must contain: cortexFRs, cortexInds
+%   AA_classifications.mat must be reachable
+
+% important notes about extractor outputs:
 %   - validTransitionsNeurCell{ch} is the real (unshifted) event centers in 1 khz neural indices
 %   - validTransitionsNeurShiftedCell{ch,1} is also the real (unshifted) event centers (redundant copy)
 %   - validTransitionsNeurShiftedCell{ch,2:101} are shift #1..#100 event centers
 %   - therefore: for jobInd=1..100 we use shiftCol = jobInd + 1
 
-%% ---------------- user settings ----------------
+%% ---------------- settings ----------------
 baseDirs = {
     '/home/asa7288/Transfer/D026', ...
     '/home/asa7288/Transfer/D020', ...
@@ -39,16 +38,16 @@ baseDirs = {
     % add d043 here if you want it on linux too
 };
 
-% you must define jobInd in the workspace before running this script
+% must define jobInd in workspace before running this script
 % examples:
-%   jobInd = 0;    % unshifted real
-%   jobInd = 1;    % shift #1 null
-%   jobInd = 100;  % shift #100 null
+%   jobInd = 0; % unshifted real
+%   jobInd = 1; % shift #1 null
+%   jobInd = 100; % shift #100 null
 
 channelsToUse  = 1:4;
-chunkHalf      = 200;   % chunk half-width around 0 ms (200 -> 401 samples)
-maxLagSecs     = 0.5;   % only used for unshifted lag sweep
-doBaselineNorm = true;  % baseline subtract per (event, neuron) using [-500,-450] ms
+chunkHalf = 200; % chunk half-width around 0 ms (200 -> 401 samples)
+maxLagSecs = 0.5; % only used for unshifted lag sweep
+doBaselineNorm = true; % baseline subtract per (event, neuron) using [-500,-450] ms
 
 %% ---------------- main loop ----------------
 assert(exist('jobInd','var')==1, 'please define jobInd before running (0=real, 1..100=shift)');
@@ -80,16 +79,16 @@ for iDir = 1:numel(baseDirs)
     end
 
     % ---------------- window geometry and lag definitions ----------------
-    tAxis   = S.tAxis(:)';     % ms axis (length ~1001 for -500..+500)
-    binSize = 0.001;           % seconds per bin (for lag seconds conversion)
-    T       = numel(tAxis);
+    tAxis = S.tAxis(:)'; % ms axis (length ~1001 for -500..+500)
+    binSize = 0.001; % seconds per bin (for lag seconds conversion)
+    T = numel(tAxis);
 
     % find the index of t=0 within the window
     [~, cIdx] = min(abs(tAxis - 0));
 
     % define the "reference" chunk in pyramidal: [cIdx-chunkHalf : cIdx+chunkHalf]
     pyrStart = cIdx - chunkHalf;
-    pyrEnd   = cIdx + chunkHalf;
+    pyrEnd = cIdx + chunkHalf;
 
     if pyrStart < 1 || pyrEnd > T
         error('chunkHalf=%d does not fit in window length=%d.', chunkHalf, T);
@@ -97,16 +96,15 @@ for iDir = 1:numel(baseDirs)
 
     % unshifted lag sweep range (shifted jobs will ignore this and use lag=0 only)
     reqMaxLagBins = round(maxLagSecs / binSize);
-    maxLagLeft  = pyrStart - 1;
+    maxLagLeft = pyrStart - 1;
     maxLagRight = T - pyrEnd;
     maxLagBins  = min([reqMaxLagBins, maxLagLeft, maxLagRight]);
 
     lags = -maxLagBins:maxLagBins; % bins
-    nL   = numel(lags); %#ok<NASGU>
+    nL = numel(lags); %#ok<NASGU>
 
     % ---------------- pool all channels together for unshifted pyr and unshifted int ----------------
-    % note: even for shifted jobs, we keep pyrAll from unshifted windows (as your control design)
-    %       and we rebuild intAll from shifted indices per neuron.
+    % note: even for shifted jobs, we keep pyrAll from unshifted windows (as your control design) and we rebuild intAll from shifted indices per neuron.
     pyrAll = [];
     intAll = [];
 
@@ -163,8 +161,8 @@ for iDir = 1:numel(baseDirs)
         end
 
         % map jobInd=1..100 into validTransitionsNeurShiftedCell columns:
-        %   col 1   = real (unshifted)
-        %   col 2   = shift #1
+        %   col 1 = real (unshifted)
+        %   col 2 = shift #1
         %   ...
         %   col 101 = shift #100
         shiftCol = jobInd + 1;
@@ -262,8 +260,7 @@ function Wout = subtractTrialBaseline3d(Win, tAxis, tStart, tEnd)
     Wout = Win - base; % implicit expansion
 end
 
-function [xcMat, peakCorrMat, peakLagSecMat] = lagSweepPairwise_fullxc_chunked( ...
-    pyrAll, intAll, lags, pyrStart, pyrEnd, T, binSize)
+function [xcMat, peakCorrMat, peakLagSecMat] = lagSweepPairwise_fullxc_chunked(pyrAll, intAll, lags, pyrStart, pyrEnd, T, binSize)
 % computes lag-swept correlation per (int, pyr) pair using:
 %   - pyr chunk fixed at [pyrStart:pyrEnd]
 %   - int chunk shifted by lag: [pyrStart-L : pyrEnd-L]
@@ -403,32 +400,46 @@ end
 
 function [cortexIntFR, ok] = loadCortexIntFR(folderPath)
 % loads cortex interneuron firing rate matrix (neurons x time) using:
-%   - cortexFRs and cortexInds from NeuralFiringRates1msBins10msGauss.mat
-%   - AA_classifications.mat to select interneurons within cortexInds
-%
+%   - cortexFRs and cortexInds from NeuralFiringRates1msBins10msGauss.mat (located inside folderPath on quest)
+%   - AA_classifications.mat stored in /home/asa7288/Transfer on quest
+%   - selects interneurons within cortexInds
+
 % this matches what your extractor does:
-%   cortexInt = cortexFRs(classifications{1,1}(cortexInds)==1, :)
+%   cortexInt = cortexFRs(classifications{row,1}(cortexInds)==1, :)
 
     ok = false;
     cortexIntFR = [];
 
     try
-        load(fullfile(folderPath,'NeuralFiringRates1msBins10msGauss.mat'), 'cortexFRs', 'cortexInds');
+        % load cortex firing rates from the session folder (quest layout)
+        frFile = fullfile(folderPath, 'NeuralFiringRates1msBins10msGauss.mat');
+        if ~isfile(frFile)
+            warning('missing NeuralFiringRates1msBins10msGauss.mat in %s', folderPath);
+            return;
+        end
+        load(frFile, 'cortexFRs', 'cortexInds');
 
-        conslidatedDataFoler = 'X:\David\AnalysesData';
-        load(fullfile(conslidatedDataFoler, 'AA_classifications.mat'), 'classifications');
+        % load classifications from the transfer root (quest layout)
+        conslidatedDataFoler = '/home/asa7288/Transfer';
+        clsFile = fullfile(conslidatedDataFoler, 'AA_classifications.mat');
+        if ~isfile(clsFile)
+            warning('missing AA_classifications.mat at %s', clsFile);
+            return;
+        end
+        load(clsFile, 'classifications');
 
-        % update this list if you added sessions (d043 etc.)
+        % quest session folders (row order must match how AA_classifications.mat was created)
         animalFolders = {
-            'X:\David\ArenaRecordings\D026-032923-ArenaRecording\ProcessedData', ...
-            'Z:\David\ArenaRecordings\NeuropixelsTest\D020-062922-ArenaRecording\ProcessedData', ...
-            'Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData', ...
-            'X:\David\ArenaRecordings\D043-020425-ArenaRecording\ProcessedData'
+            '/home/asa7288/Transfer/D026', ...
+            '/home/asa7288/Transfer/D020', ...
+            '/home/asa7288/Transfer/D024', ...
+            '/home/asa7288/Transfer/D043'
         };
 
+        % try exact/contains match first
         matchRow = find(contains(animalFolders, folderPath), 1);
 
-        % fallback: match by animal id token if the full windows path differs on linux
+        % fallback: match by animal id token if folderPath is nested/different
         if isempty(matchRow)
             if contains(folderPath,'D026'), matchRow = 1; end
             if contains(folderPath,'D020'), matchRow = 2; end
@@ -437,15 +448,16 @@ function [cortexIntFR, ok] = loadCortexIntFR(folderPath)
         end
 
         if isempty(matchRow)
-            warning('could not match folderPath to animalFolders for AA_classifications selection');
+            warning('could not match folderPath (%s) to quest animalFolders for AA_classifications selection', folderPath);
             return;
         end
 
-        cls = classifications(matchRow, :);
-
-        cortexIntFR = cortexFRs(cls{1,1}(cortexInds) == 1, :);
+        % select interneurons (==1) within cortexInds, using the correct row of classifications
+        clsRow = classifications(matchRow, :);
+        cortexIntFR = cortexFRs(clsRow{1,1}(cortexInds) == 1, :);
 
         ok = true;
+
     catch ME
         warning('loadCortexIntFR failed: %s', ME.message);
         ok = false;
