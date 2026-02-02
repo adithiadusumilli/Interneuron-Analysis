@@ -1,9 +1,13 @@
 % pairwise_xcorr_nochunk_quest.m
-% quest version of your no-chunk pairwise cross-correlation
+% quest version of no-chunk pairwise cross-correlation
 % one job = one session × one shift condition
 
-%% ---------- job settings ----------
+% behavior:
+%   - jobInd = 0  : full lag sweep for every (int,pyr) pair (xc curve + peak lag/corr)
+%   - jobInd > 0  : shifted control, NO lag sweep (0-lag corr only per pair)
+%                  (stores 0-lag in xcMat(:,:,1); other lag bins remain NaN)
 
+%% ---------- job settings ----------
 isShifted = jobInd > 0;
 
 baseDirs = {
@@ -34,16 +38,16 @@ else, error('unknown session folder'); end
 %% ---------- load FR data ----------
 F = load(fullfile(baseDir,'NeuralFiringRates1msBins10msGauss.mat'), 'cortexFRs','cortexInds');
 
-frMatrix = F.cortexFRs;
+frMatrix  = F.cortexFRs;
 regionInds = F.cortexInds;
 
 regionClass = classifications{matchRow,1}(regionInds);
 
 interFRs = frMatrix(regionClass==1,:);
-pyrFRs = frMatrix(regionClass==0,:);
+pyrFRs   = frMatrix(regionClass==0,:);
 
 numInter = size(interFRs,1);
-numPyr = size(pyrFRs,1);
+numPyr   = size(pyrFRs,1);
 
 if numInter==0 || numPyr==0
     error('no neurons after classification');
@@ -69,39 +73,66 @@ peakLagMat = nan(numInter,numPyr);
 peakCorrMat = nan(numInter,numPyr);
 
 tic
-for i = 1:numInter
-    intTS = interFRs(i,:);
 
-    for j = 1:numPyr
-        pyrTS = pyrFRs(j,:);
-        xc = nan(1,nL);
+if ~isShifted
+    % ===========================
+    % jobInd = 0 : full lag sweep
+    % ===========================
+    for i = 1:numInter
+        intTS = interFRs(i,:);
 
-        for li = 1:nL
-            L = lags(li);
+        for j = 1:numPyr
+            pyrTS = pyrFRs(j,:);
+            xc = nan(1,nL);
 
-            if L < 0
-                intSeg = intTS(1:end+L);
-                pyrSeg = pyrTS(1-L:end);
-            elseif L > 0
-                intSeg = intTS(1+L:end);
-                pyrSeg = pyrTS(1:end-L);
-            else
-                intSeg = intTS;
-                pyrSeg = pyrTS;
+            for li = 1:nL
+                L = lags(li);
+
+                if L < 0
+                    intSeg = intTS(1:end+L);
+                    pyrSeg = pyrTS(1-L:end);
+                elseif L > 0
+                    intSeg = intTS(1+L:end);
+                    pyrSeg = pyrTS(1:end-L);
+                else
+                    intSeg = intTS;
+                    pyrSeg = pyrTS;
+                end
+
+                valid = ~isnan(intSeg) & ~isnan(pyrSeg);
+                if nnz(valid) > 2
+                    xc(li) = corr(intSeg(valid)',pyrSeg(valid)');
+                end
             end
 
-            valid = ~isnan(intSeg) & ~isnan(pyrSeg);
+            xcMat(i,j,:) = xc;
+            [pk,idx] = max(xc);
+            peakCorrMat(i,j) = pk;
+            peakLagMat(i,j)  = lags(idx)*binSize;
+        end
+    end
+
+else
+    % ===========================
+    % jobInd > 0 : 0-lag only
+    % ===========================
+    for i = 1:numInter
+        intTS = interFRs(i,:);
+
+        for j = 1:numPyr
+            pyrTS = pyrFRs(j,:);
+
+            valid = ~isnan(intTS) & ~isnan(pyrTS);
             if nnz(valid) > 2
-                xc(li) = corr(intSeg(valid)',pyrSeg(valid)');
+                r = corr(intTS(valid)', pyrTS(valid)');
+                xcMat(i,j,1)     = r;   % store as "0-lag" slice
+                peakCorrMat(i,j) = r;
+                peakLagMat(i,j)  = 0;   % by definition for 0-lag-only controls
             end
         end
-
-        xcMat(i,j,:) = xc;
-        [pk,idx] = max(xc);
-        peakCorrMat(i,j) = pk;
-        peakLagMat(i,j) = lags(idx)*binSize;
     end
 end
+
 fprintf('pairwise done in %.1f s\n', toc);
 
 %% ---------- save ----------
