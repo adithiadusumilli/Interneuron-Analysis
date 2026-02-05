@@ -75,10 +75,10 @@ end
 fprintf('shift %d done in %.1f s\n', jobInd, toc);
 
 %% ---------- save ----------
-outDir = fullfile(baseDir,'quest_runs_nochunk');
+outDir = fullfile(baseDir,'quest_runs');
 if ~exist(outDir,'dir'), mkdir(outDir); end
 
-outFile = fullfile(outDir, sprintf('pairwise_nochunk_shift_%03d.mat', jobInd));
+outFile = fullfile(outDir, sprintf('pairwise_nochunk_sess%02d_shift_%03d.mat', sessInd, jobInd));
 
 save(outFile, 'nullCorrMat', 'binSize', 'jobInd', 'sessInd', 'baseDir', 'shiftAmt', 'minShift', 'maxShift', 'numInter', 'numPyr', 'numBins', '-v7.3');
 
