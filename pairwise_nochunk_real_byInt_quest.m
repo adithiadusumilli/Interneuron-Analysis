@@ -97,7 +97,7 @@ end
 fprintf('interneuron %d done in %.1f s\n', jobInd, toc);
 
 %% ---------- save ----------
-outDir = fullfile(baseDir,'quest_runs_nochunk');
+outDir = fullfile(baseDir,'quest_runs');
 if ~exist(outDir,'dir'), mkdir(outDir); end
 
 outFile = fullfile(outDir, sprintf('pairwise_nochunk_sess%02d_real_int%03d.mat', sessInd, jobInd));
