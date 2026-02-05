@@ -100,9 +100,12 @@ fprintf('interneuron %d done in %.1f s\n', jobInd, toc);
 outDir = fullfile(baseDir,'quest_runs_nochunk');
 if ~exist(outDir,'dir'), mkdir(outDir); end
 
-outFile = fullfile(outDir, ...
-    sprintf('pairwise_nochunk_real_int%03d.mat', jobInd));
+outFile = fullfile(outDir, sprintf('pairwise_nochunk_sess%02d_real_int%03d.mat', sessInd, jobInd));
 
-save(outFile, 'xcRow','peakLagRow','peakCorrRow', 'lags','binSize','jobInd','baseDir','sessInd','numInter','numPyr','-v7.3');
+runtimeSec = toc;  % moving toc into a var instead of just fprintf
+timestamp = datestr(now,'yyyymmdd_HHMMSS');
+nCortexCells = numel(regionInds);
+
+save(outFile, 'xcRow','peakLagRow','peakCorrRow', 'lags','binSize', 'jobInd','sessInd','baseDir', 'numInter','numPyr', 'matchRow','nCortexCells', 'runtimeSec', 'timestamp', '-v7.3');
 
 fprintf('saved %s\n', outFile);
