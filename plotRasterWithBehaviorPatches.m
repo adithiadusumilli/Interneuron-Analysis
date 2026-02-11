@@ -31,7 +31,10 @@ nNeur = numel(tsSec);
 %% ---- load behavior labels + sync mapping (only required vars!) ----
 switch lower(labelType)
     case "umap"
-        U = load(fullfile(baseDir,'UMAP.mat'), 'origDownsampEMGInd', 'regionAssignmentsFiltered');
+        % try to pull region behavior names too (if they exist)
+        U = load(fullfile(baseDir,'UMAP.mat'), ...
+            'origDownsampEMGInd', 'regionAssignmentsFiltered', 'regionBehvAssignments');
+
         if ~isfield(U,'origDownsampEMGInd') || isempty(U.origDownsampEMGInd)
             error('UMAP.mat missing origDownsampEMGInd');
         end
@@ -40,8 +43,8 @@ switch lower(labelType)
         end
 
         origDownsampEMGInd = double(U.origDownsampEMGInd(:)); % reduced->full emg idx
-        regionRaw = double(U.regionAssignmentsFiltered(:)); % values 33..39
-        regionCanon = regionRaw - 32; % map 33..39 -> 1..7
+        regionRaw = double(U.regionAssignmentsFiltered(:));   % values 33..39
+        regionCanon = regionRaw - 32;                         % map 33..39 -> 1..7
 
     otherwise
         error('labelType "%s" not supported yet. use "umap".', labelType);
@@ -60,13 +63,13 @@ emgNeurSlope = (round(frameNeuropixelSamples{1}{end}(end)/30) - round(frameNeuro
                (round(frameEMGSamples{1}{end}(end)/20)     - round(frameEMGSamples{1}{1}(1)/20));
 emgNeurOffset = round(frameNeuropixelSamples{1}{1}(1)/30) - emgNeurSlope*round(frameEMGSamples{1}{1}(1)/20);
 
-neurInds_ms = origDownsampEMGInd * emgNeurSlope + emgNeurOffset;  % ms index in neural time base
-labelTimes_s = neurInds_ms / 1000;                                  % seconds
+neurInds_ms   = origDownsampEMGInd * emgNeurSlope + emgNeurOffset; % ms index in neural time base
+labelTimes_s  = neurInds_ms / 1000;                                % seconds
 
 % guard: sizes gotta agree
 n = min(numel(labelTimes_s), numel(regionCanon));
 labelTimes_s = labelTimes_s(1:n);
-regionCanon = regionCanon(1:n);
+regionCanon  = regionCanon(1:n);
 
 %% ---- IMPORTANT: restrict labels to the plotting window BEFORE block finding ----
 inWin = (labelTimes_s >= t0) & (labelTimes_s <= t1) & ~isnan(regionCanon);
@@ -74,11 +77,11 @@ if ~any(inWin)
     warning('no behavior labels found in this window. plotting raster only.');
 end
 
-tWin = labelTimes_s(inWin);
+tWin  = labelTimes_s(inWin);
 labWin = regionCanon(inWin);
 
 % ensure row vectors for easier diff/block logic
-tWin = tWin(:)';
+tWin  = tWin(:)';
 labWin = labWin(:)';
 
 %% ---- make figure ----
@@ -107,11 +110,11 @@ if ~isempty(labWin)
         end
 
         tStart = tWin(i0);
-        tStop  = tWin(i1);
+        tStop = tWin(i1);
 
         % safety clip (should already be in window)
         tStart = max(tStart, t0);
-        tStop  = min(tStop,  t1);
+        tStop = min(tStop,  t1);
 
         if tStop > tStart
             patch([tStart tStart tStop tStop], [yl(1) yl(2) yl(2) yl(1)], cmap(beh,:), ...
@@ -135,5 +138,31 @@ xlabel('time (s)');
 ylabel('neuron index');
 title(sprintf('raster snippet with umap behavior patches | %.1f–%.1f s', t0, t1));
 box off;
+
+%% ---- legend mapping patch colors -> behaviors ----
+% try to use regionBehvAssignments if available; otherwise fall back to "umap region k"
+if exist('U','var') && isfield(U,'regionBehvAssignments') && ~isempty(U.regionBehvAssignments)
+    behNames = U.regionBehvAssignments;
+
+    % handle common formats: 1x7 cell, or 1x7 cell-of-cells
+    tmp = strings(1,7);
+    for k = 1:min(7,numel(behNames))
+        b = behNames{k};
+        if iscell(b) && ~isempty(b)
+            b = b{1};
+        end
+        tmp(k) = string(b);
+    end
+    behNames = tmp;
+else
+    behNames = "umap region " + (1:7);
+end
+
+% create invisible dummy patches so legend colors match the cmap
+h = gobjects(1,7);
+for k = 1:7
+    h(k) = patch(nan, nan, cmap(k,:), 'EdgeColor','none', 'FaceAlpha',0.15);
+end
+legend(h, cellstr(behNames), 'Location', 'eastoutside');
 
 end
