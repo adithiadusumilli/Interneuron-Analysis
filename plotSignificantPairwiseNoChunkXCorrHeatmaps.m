@@ -1,19 +1,19 @@
 function plotSignificantPairwiseNoChunkXCorrHeatmaps(combinedMatFile)
 % heatmaps of significant pairwise NO-CHUNK peak correlations per session
 % uses combined output:
-%   all_peakCorrMat{sess}     (nInt x nPyr)
-%   all_nullCorrShifts{sess}  (nInt x nPyr x nShifts)
+%   all_peakCorrMat{sess}       (nInt x nPyr)
+%   all_nullCorrMatShifts{sess} (nInt x nPyr x nShifts)
 
 % significance: peakCorr > mean(null) + 3*std(null)
 % nonsignificant entries set to NaN and rendered transparent
 
-load(combinedMatFile, 'all_peakCorrMat','all_nullCorrShifts','baseDirs','nShifts');
+load(combinedMatFile, 'all_peakCorrMat','all_nullCorrMatShifts','baseDirs','all_nShifts');
 
 numSessions = numel(all_peakCorrMat);
 
 for sess = 1:numSessions
     peakCorrs = all_peakCorrMat{sess};
-    nullXC = all_nullCorrShifts{sess};
+    nullXC    = all_nullCorrMatShifts{sess};
 
     if isempty(peakCorrs) || isempty(nullXC)
         fprintf('sess %d: empty data, skipping\n', sess);
@@ -25,8 +25,11 @@ for sess = 1:numSessions
         warning('sess %d: size mismatch (peakCorrs vs nullXC), skipping', sess);
         continue;
     end
-    if exist('nShifts','var') && ~isempty(nShifts) && nS ~= nShifts
-        fprintf('sess %d: warning nShifts in file=%d but nullXC has %d\n', sess, nShifts, nS);
+
+    if exist('all_nShifts','var') && numel(all_nShifts) >= sess
+        if all_nShifts(sess) ~= nS
+            fprintf('sess %d: warning all_nShifts=%d but nullXC has %d\n', sess, all_nShifts(sess), nS);
+        end
     end
 
     sigMat = nan(nInt, nPyr);
@@ -55,7 +58,7 @@ for sess = 1:numSessions
         baseLabel = sprintf('sess %d – %s', sess, baseDirs{sess});
     end
 
-    figure('Name', sprintf('sess %d – significant pairwise NO-CHUNK peak corr', sess), 'Color', 'w');
+    figure('Name', sprintf('sess %d – NO-CHUNK significant peak corr', sess), 'Color', 'w');
 
     hImg = imagesc(sigMat);
     set(hImg, 'AlphaData', ~isnan(sigMat)); % hide nonsig pairs
