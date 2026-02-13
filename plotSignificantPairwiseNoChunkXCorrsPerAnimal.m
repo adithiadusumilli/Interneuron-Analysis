@@ -1,8 +1,8 @@
 function plotSignificantPairwiseNoChunkXCorrsPerAnimal(combinedMatFile)
-% plot significant pairwise NO-CHUNK xcorrs per animal (from quest runs) using combined output:
-%   all_peakLagMat{sess}      (nInt x nPyr)   real peak lag (sec)
-%   all_peakCorrMat{sess}     (nInt x nPyr)   real peak corr
-%   all_nullCorrShifts{sess}  (nInt x nPyr x nShifts)   null corr (0-lag) per shift
+% plot significant pairwise NO-CHUNK xcorrs per animal using combined output:
+%   all_peakLagMat{sess}        (nInt x nPyr)  in seconds
+%   all_peakCorrMat{sess}       (nInt x nPyr)
+%   all_nullCorrMatShifts{sess} (nInt x nPyr x nShifts)
 
 % significance: peakCorr > mean(null) + 3*std(null)
 
@@ -11,14 +11,16 @@ function plotSignificantPairwiseNoChunkXCorrsPerAnimal(combinedMatFile)
 %   - significant |lag| > 0.2s
 %   - scatterhist of significant pairs
 
-load(combinedMatFile, 'all_peakLagMat','all_peakCorrMat','all_nullCorrShifts','baseDirs','nShifts');
+load(combinedMatFile, ...
+    'all_peakLagMat','all_peakCorrMat','all_nullCorrMatShifts', ...
+    'baseDirs','all_nShifts');
 
 numSessions = numel(all_peakCorrMat);
 
 for sess = 1:numSessions
     peakCorrs = all_peakCorrMat{sess};
     peakLags = all_peakLagMat{sess};
-    nullXC = all_nullCorrShifts{sess}; % nInt x nPyr x nShifts
+    nullXC = all_nullCorrMatShifts{sess}; % nInt x nPyr x nShifts
 
     if isempty(peakCorrs) || isempty(nullXC)
         fprintf('sess %d: empty data, skipping\n', sess);
@@ -31,8 +33,13 @@ for sess = 1:numSessions
     end
 
     [nInt, nPyr, nS] = size(nullXC);
-    if exist('nShifts','var') && ~isempty(nShifts) && nS ~= nShifts
-        fprintf('sess %d: warning nShifts in file=%d but nullXC has %d\n', sess, nShifts, nS);
+
+    % nShifts for this session (if present)
+    if exist('all_nShifts','var') && numel(all_nShifts) >= sess && ~isempty(all_nShifts(sess))
+        nShifts_expected = all_nShifts(sess);
+        if nShifts_expected ~= nS
+            fprintf('sess %d: warning all_nShifts=%d but nullXC has %d\n', sess, nShifts_expected, nS);
+        end
     end
 
     if ~isequal(size(peakCorrs), [nInt nPyr]) || ~isequal(size(peakLags), [nInt nPyr])
@@ -40,17 +47,14 @@ for sess = 1:numSessions
         continue;
     end
 
-    allCorrVec = peakCorrs(:);
-    allLagVec  = peakLags(:);
-
+    % compute significance per pair
     sigMask = false(nInt, nPyr);
 
-    % compute significance per pair
     for i = 1:nInt
         for j = 1:nPyr
             nullVals = squeeze(nullXC(i,j,:));
             nullMean = mean(nullVals, 'omitnan');
-            nullStd = std(nullVals, 'omitnan');
+            nullStd = std(nullVals,  'omitnan');
 
             a = peakCorrs(i,j);
 
@@ -62,6 +66,9 @@ for sess = 1:numSessions
 
     sigCorrVec = peakCorrs(sigMask);
     sigLagVec = peakLags(sigMask);
+
+    allCorrVec = peakCorrs(:);
+    allLagVec = peakLags(:);
 
     totalPairs = numel(allCorrVec);
     sigPairs = numel(sigCorrVec);
@@ -106,7 +113,8 @@ for sess = 1:numSessions
     histogram(corrOverThresh, 50, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
     xlabel('peak correlation (> 0.2)');
     ylabel('count');
-    title(sprintf('sess %d – NO-CHUNK peak correlations > 0.2 (n=%d / %d)', sess, numel(corrOverThresh), totalPairs));
+    title(sprintf('sess %d – NO-CHUNK peak correlations > 0.2 (n=%d / %d)', ...
+        sess, numel(corrOverThresh), totalPairs));
     grid on;
 
     % ---- plot: significant |lag| > 0.2 s ----
