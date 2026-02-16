@@ -135,5 +135,43 @@ for sess = 1:numSessions
         ylabel('peak correlation');
         title(sprintf('sess %d – NO-CHUNK significant pairs (n=%d / %d)', sess, sigPairs, totalPairs));
     end
+
+    % ---- plot: peak correlations >= 0.2 (no significance) ----
+corrMask = (allCorrVec >= 0.2) & ~isnan(allCorrVec) & ~isnan(allLagVec);
+corrOverThresh = allCorrVec(corrMask);
+lagsForCorrOverThresh = allLagVec(corrMask);
+
+figure;
+histogram(corrOverThresh, 50, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
+xlabel('peak correlation (>= 0.2)');
+ylabel('count');
+title(sprintf('sess %d – NO-CHUNK peak correlations >= 0.2 (n=%d / %d)', ...
+    sess, numel(corrOverThresh), totalPairs));
+grid on;
+
+% new plot the peak LAGS corresponding to corr >= 0.2
+if ~isempty(lagsForCorrOverThresh)
+    % 1 ms bin edges (sec) for these lags
+    minLagSec2 = floor(min(lagsForCorrOverThresh)*1000)/1000;
+    maxLagSec2 = ceil(max(lagsForCorrOverThresh)*1000)/1000;
+    lagBinEdgesSec2 = (minLagSec2-0.001):0.001:(maxLagSec2+0.001);
+
+    figure;
+    histogram(lagsForCorrOverThresh, 'BinEdges', lagBinEdgesSec2, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
+    xlabel('peak lag (s) for pairs with corr >= 0.2');
+    ylabel('count');
+    title(sprintf('sess %d – NO-CHUNK peak lags where peak corr >= 0.2 (n=%d)', ...
+        sess, numel(lagsForCorrOverThresh)));
+    grid on;
+
+    % scatter lag vs corr for corr>=0.2
+    figure;
+    scatter(lagsForCorrOverThresh(:), corrOverThresh(:), '.');
+    xlabel('peak lag (s)');
+    ylabel('peak correlation');
+    title(sprintf('sess %d – NO-CHUNK lag vs corr for corr >= 0.2 (n=%d)', sess, numel(corrOverThresh)));
+    grid on;
+end
+
 end
 end
