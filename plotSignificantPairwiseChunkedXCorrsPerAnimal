@@ -8,18 +8,18 @@ function plotSignificantPairwiseChunkedXCorrsPerAnimal(combinedMatFile)
 
 % also plots:
 %   - peak corr > 0.2 (no significance)
+%   - NEW: peak lag distribution for pairs where peak corr >= 0.2
 %   - significant |lag| > 0.2s
 %   - scatterhist of significant pairs
 
-% load combined data across all animals (only used main 3 so far)
 load(combinedMatFile, 'all_peakLagSecMat','all_peakCorrMat','all_nullCorrShifts','baseDirs','nShifts');
 
 numSessions = numel(all_peakCorrMat);
 
 for sess = 1:numSessions
     peakCorrs = all_peakCorrMat{sess};
-    peakLags  = all_peakLagSecMat{sess};
-    nullXC    = all_nullCorrShifts{sess}; % nInt x nPyr x nShifts
+    peakLags = all_peakLagSecMat{sess};
+    nullXC = all_nullCorrShifts{sess}; % nInt x nPyr x nShifts
 
     if isempty(peakCorrs) || isempty(nullXC)
         fprintf('sess %d: empty data, skipping\n', sess);
@@ -42,19 +42,16 @@ for sess = 1:numSessions
     end
 
     % vectors for plotting
-    sigLagVec = [];
-    sigCorrVec = [];
-    allLagVec = peakLags(:);
+    allLagVec  = peakLags(:);
     allCorrVec = peakCorrs(:);
 
     % compute significance per pair
     sigMask = false(nInt, nPyr);
-
     for i = 1:nInt
         for j = 1:nPyr
             nullVals = squeeze(nullXC(i,j,:));
             nullMean = mean(nullVals, 'omitnan');
-            nullStd = std(nullVals, 'omitnan');
+            nullStd  = std(nullVals, 'omitnan');
 
             a = peakCorrs(i,j);
 
@@ -105,14 +102,39 @@ for sess = 1:numSessions
     title(sprintf('sess %d – significant peak correlations (n=%d / %d)', sess, sigPairs, totalPairs));
     grid on;
 
-    % ---- plot: peak correlations > 0.2 (no significance) ----
-    corrOverThresh = allCorrVec(allCorrVec > 0.2);
+    % ---- plot: peak correlations >= 0.2 (no significance) ----
+    corrMask = (allCorrVec >= 0.2) & ~isnan(allCorrVec) & ~isnan(allLagVec);
+    corrOverThresh = allCorrVec(corrMask);
+    lagsForCorrOverThresh = allLagVec(corrMask);
+
     figure;
     histogram(corrOverThresh, 50, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
-    xlabel('peak correlation (> 0.2)');
+    xlabel('peak correlation (>= 0.2)');
     ylabel('count');
-    title(sprintf('sess %d – peak correlations > 0.2 (n=%d / %d)', sess, numel(corrOverThresh), totalPairs));
+    title(sprintf('sess %d – peak correlations >= 0.2 (n=%d / %d)', sess, numel(corrOverThresh), totalPairs));
     grid on;
+
+    % ---- NEW: plot peak lags corresponding to corr >= 0.2 ----
+    if ~isempty(lagsForCorrOverThresh)
+        minLagSec2 = floor(min(lagsForCorrOverThresh)*1000)/1000;
+        maxLagSec2 = ceil(max(lagsForCorrOverThresh)*1000)/1000;
+        lagBinEdgesSec2 = (minLagSec2-0.001):0.001:(maxLagSec2+0.001);
+
+        figure;
+        histogram(lagsForCorrOverThresh, 'BinEdges', lagBinEdgesSec2, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
+        xlabel('peak lag (s) for pairs with peak corr >= 0.2');
+        ylabel('count');
+        title(sprintf('sess %d – peak lags where peak corr >= 0.2 (n=%d)', sess, numel(lagsForCorrOverThresh)));
+        grid on;
+
+        % optional: scatter lag vs corr for corr>=0.2
+        figure;
+        scatter(lagsForCorrOverThresh(:), corrOverThresh(:), '.');
+        xlabel('peak lag (s)');
+        ylabel('peak correlation');
+        title(sprintf('sess %d – lag vs corr for peak corr >= 0.2 (n=%d)', sess, numel(corrOverThresh)));
+        grid on;
+    end
 
     % ---- plot: significant |lag| > 0.2 s ----
     lagsOverThresh = sigLagVec(abs(sigLagVec) > 0.2);
@@ -120,8 +142,7 @@ for sess = 1:numSessions
     histogram(lagsOverThresh, 'BinEdges', lagBinEdgesSec, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
     xlabel('peak lag (s)');
     ylabel('count');
-    title(sprintf('sess %d – significant |peak lag| > 0.2 s (n=%d / %d sig)', ...
-        sess, numel(lagsOverThresh), numel(sigLagVec)));
+    title(sprintf('sess %d – significant |peak lag| > 0.2 s (n=%d / %d sig)', sess, numel(lagsOverThresh), numel(sigLagVec)));
     grid on;
 
     % ---- scatterhist: significant pairs ----
