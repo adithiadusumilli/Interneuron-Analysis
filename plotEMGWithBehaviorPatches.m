@@ -1,26 +1,30 @@
 function plotEMGWithBehaviorPatches(baseDir, t0, t1, emgChannel, labelType)
-% plotEMGWithBehaviorPatches
+% plotemgwithbehaviorpatches
 
 % plots an emg snippet with behavior labels as background patches
 
 % inputs:
-%   baseDir     : session ProcessedData folder
-%   t0, t1      : window in seconds
-%   emgChannel  : which channel to plot (if downsampEMG is multichannel). use 1 if unsure.
-%   labelType   : 'umap' (default)
-
+%   basedir : session processedddata folder
+%   t0, t1 : window in seconds
+%   emgchannel : which channel to plot (if downsampemg is multichannel). use 1 if unsure.
+%   labeltype : "classifier" (default), "manual", or "umap"
+%
 % example:
-%   plotEMGWithBehaviorPatches('Z:\David\ArenaRecordings\NeuropixelsTest\D020-062922-ArenaRecording\ProcessedData',600,675,1,'umap')
+%   plotEMGWithBehaviorPatches("Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData", 600, 675, 1, "classifier")
 
 arguments
     baseDir (1,1) string
     t0 (1,1) double
     t1 (1,1) double
     emgChannel (1,1) double = 1
-    labelType (1,1) string = "umap"
+    labelType (1,1) string = "classifier"
 end
 
-fsEmg = 1000;  % bc downsamp from 20khz
+fsEmg = 1000; % bc downsamp from 20khz
+
+if t1 <= t0
+    error('t1 must be > t0');
+end
 
 %% ---- load emg ----
 E = load(fullfile(baseDir,'EMG1ms.mat'));
@@ -36,97 +40,241 @@ end
 if isvector(emgAll)
     emg = emgAll(:);
 else
+    if emgChannel < 1 || emgChannel > size(emgAll,2)
+        error('emgChannel %d out of range (1..%d)', emgChannel, size(emgAll,2));
+    end
     emg = emgAll(:, emgChannel);
 end
 
 emgTime = (0:numel(emg)-1) / fsEmg;
 
-%% ---- load behavior + mapping (same as raster function) ----
-U = load(fullfile(baseDir,'UMAP.mat'));
-V = load(fullfile(baseDir,'VideoSyncFrames.mat'));
+%% ---- load time-resolved behavior labels from umap + build canonical labels ----
+U = load(fullfile(baseDir,'UMAP.mat'), ...
+    'origDownsampEMGInd', ...
+    'regionAssignmentsFiltered', ...
+    'behvLabelsNoArt', ...
+    'classifierLabels', ...
+    'classifierBehvs', ...
+    'analyzedBehaviors', ...
+    'regionBehvAssignments');
 
-if isfield(U,'origDownsampEMGInd')
-    origDownsampEMGInd = U.origDownsampEMGInd(:);
-else
-    error('UMAP.mat is missing origDownsampEMGInd');
+% checks
+req = {'origDownsampEMGInd','regionAssignmentsFiltered','behvLabelsNoArt','classifierLabels'};
+for i = 1:numel(req)
+    if ~isfield(U,req{i}) || isempty(U.(req{i}))
+        error('UMAP.mat missing %s', req{i});
+    end
 end
 
+origDownsampEMGInd = double(U.origDownsampEMGInd(:)); % reduced -> full emg idx
+regionRaw = double(U.regionAssignmentsFiltered(:));   % raw region codes
+manualRaw = double(U.behvLabelsNoArt(:));             % 0..nManual
+classRaw = double(U.classifierLabels(:));            % 0..nClass
+
+% canonical behavior name list and ordering (shared across animals)
+manBehvNames = {'climbdown','climbup','eating','grooming', 'jumpdown','jumping','rearing','still','walkflat','walkgrid'};
+
+%% ---- umap regions -> contiguous 1..7 ----
+regionCodes = unique(regionRaw(~isnan(regionRaw)));
+nRegions = numel(regionCodes);
+if nRegions ~= 7
+    error('expected 7 umap regions, found %d', nRegions);
+end
+
+umapCanon = nan(size(regionRaw)); % 1..7
+for r = 1:nRegions
+    umapCanon(regionRaw == regionCodes(r)) = r;
+end
+
+%% ---- manual labels -> canonical 0..10 ----
+manualCanon = zeros(size(manualRaw)); % default 0 = unlabeled
+if isfield(U,'analyzedBehaviors') && ~isempty(U.analyzedBehaviors)
+    analyzedBehaviors = U.analyzedBehaviors;
+
+    manBehvNumbers = zeros(1, numel(analyzedBehaviors)); % per-animal -> canonical (0..10)
+    for iBehv = 1:numel(analyzedBehaviors)
+        idx = find(strcmp(analyzedBehaviors{iBehv}, manBehvNames), 1);
+        if isempty(idx)
+            manBehvNumbers(iBehv) = 0;
+        else
+            manBehvNumbers(iBehv) = idx;
+        end
+    end
+
+    for i = 1:numel(manualRaw)
+        v = manualRaw(i);
+        if v == 0
+            manualCanon(i) = 0;
+        else
+            if v >= 1 && v <= numel(manBehvNumbers)
+                manualCanon(i) = manBehvNumbers(v);
+            else
+                manualCanon(i) = 0;
+            end
+        end
+    end
+else
+    warning('UMAP.mat missing analyzedBehaviors; manual canonical labels will be 0/unlabeled.');
+end
+
+%% ---- classifier labels -> canonical 0..10 ----
+classifierCanon = zeros(size(classRaw)); % default 0 = unlabeled
+if isfield(U,'classifierBehvs') && ~isempty(U.classifierBehvs)
+    classifierBehvs = U.classifierBehvs;
+
+    classBehvNumbers = zeros(1, numel(classifierBehvs)); % per-animal -> canonical (0..10)
+    for iBehv = 1:numel(classifierBehvs)
+        idx = find(strcmp(classifierBehvs{iBehv}, manBehvNames), 1);
+        if isempty(idx)
+            classBehvNumbers(iBehv) = 0;
+        else
+            classBehvNumbers(iBehv) = idx;
+        end
+    end
+
+    for i = 1:numel(classRaw)
+        v = classRaw(i);
+        if v == 0
+            classifierCanon(i) = 0;
+        else
+            if v >= 1 && v <= numel(classBehvNumbers)
+                classifierCanon(i) = classBehvNumbers(v);
+            else
+                classifierCanon(i) = 0;
+            end
+        end
+    end
+else
+    warning('UMAP.mat missing classifierBehvs; classifier canonical labels will be 0/unlabeled.');
+end
+
+%% ---- choose label stream to plot ----
 switch lower(labelType)
     case "umap"
-        if isfield(U,'regionAssignmentsFiltered')
-            labels = U.regionAssignmentsFiltered;
-        elseif isfield(U,'regionAssignmentFiltered')
-            labels = U.regionAssignmentFiltered;
-        else
-            error('UMAP.mat is missing regionAssignment(s)Filtered');
-        end
+        labelsCanon = umapCanon; % 1..7
+        nColors = 7;
+    case "manual"
+        labelsCanon = manualCanon; % 0..10
+        nColors = 11;
+    case "classifier"
+        labelsCanon = classifierCanon; % 0..10
+        nColors = 11;
     otherwise
-        error('labelType "%s" not supported yet. use "umap".', labelType);
+        error('labeltype "%s" not supported. use "classifier", "manual", or "umap".', labelType);
 end
 
+%% ---- load sync mapping ----
+V = load(fullfile(baseDir,'VideoSyncFrames.mat'), 'frameNeuropixelSamples', 'frameEMGSamples');
 if ~isfield(V,'frameNeuropixelSamples') || ~isfield(V,'frameEMGSamples')
     error('VideoSyncFrames.mat missing frameNeuropixelSamples and/or frameEMGSamples');
 end
-
 frameNeuropixelSamples = V.frameNeuropixelSamples;
-frameEMGSamples       = V.frameEMGSamples;
+frameEMGSamples = V.frameEMGSamples;
 
-% map emg indices -> neuropixels ms indices, then to seconds (same mapping)
+%% ---- map reduced umap index -> emg time (seconds) ----
+% note: we only need label times in seconds; same slope/offset logic as before
 emgNeurSlope = (round(frameNeuropixelSamples{1}{end}(end)/30) - round(frameNeuropixelSamples{1}{1}(1)/30)) / ...
-               (round(frameEMGSamples{1}{end}(end)/20)     - round(frameEMGSamples{1}{1}(1)/20));
+               (round(frameEMGSamples{1}{end}(end)/20) - round(frameEMGSamples{1}{1}(1)/20));
 emgNeurOffset = round(frameNeuropixelSamples{1}{1}(1)/30) - emgNeurSlope*round(frameEMGSamples{1}{1}(1)/20);
 
-neurInds_ms = origDownsampEMGInd * emgNeurSlope + emgNeurOffset;
-labelTimes_s = double(neurInds_ms) / 1000;
+neurInds_ms  = origDownsampEMGInd * emgNeurSlope + emgNeurOffset; % ms in neural time base
+labelTimes_s = double(neurInds_ms) / 1000; % seconds
 
-%% ---- plot ----
-figure('Color','w','Position',[100 100 1000 350]);
-ax = axes; hold on;
+% guard: sizes gotta agree
+n = min(numel(labelTimes_s), numel(labelsCanon));
+labelTimes_s = labelTimes_s(1:n);
+labelsCanon  = labelsCanon(1:n);
 
-% behavior patches
-yl = [-inf inf]; % will reset after plotting emg
-regs = unique(labels(~isnan(labels)));
-patchColors = jet(numel(regs));
+%% ---- restrict labels to plotting window before block finding ----
+inWin = (labelTimes_s >= t0) & (labelTimes_s <= t1) & ~isnan(labelsCanon);
+tWin   = labelTimes_s(inWin);
+labWin = labelsCanon(inWin);
 
-% plot emg first to get y-limits
-keep = emgTime>=t0 & emgTime<=t1;
-plot(emgTime(keep), emg(keep), 'k');
-xlim([t0 t1]);
-yl = get(gca,'YLim');
+% ensure row vectors for diff/block logic
+tWin   = tWin(:)';
+labWin = labWin(:)';
 
-for r = 1:numel(regs)
-    regVal = regs(r);
-    idx = find(labels == regVal);
+%% ---- make figure ----
+fig = figure('Color','w','Position',[100 100 1000 350]);
+ax = axes(fig);
+hold(ax,'on');
 
-    if isempty(idx), continue; end
+% plot emg first so we have y-limits
+keep = (emgTime >= t0) & (emgTime <= t1);
+plot(ax, emgTime(keep), emg(keep), 'k', 'LineWidth', 1);
 
-    starts = [1; find(diff(idx)~=1)+1];
-    stops  = [find(diff(idx)~=1); numel(idx)];
+xlim(ax, [t0 t1]);
+yl = get(ax, 'YLim');
 
-    for b = 1:numel(starts)
-        tStart = labelTimes_s(idx(starts(b)));
-        tStop  = labelTimes_s(idx(stops(b)));
+% behavior patches behind emg (same contiguous-block logic as raster)
+cmap = lines(nColors);
 
-        if tStop < t0 || tStart > t1
-            continue;
+if ~isempty(labWin)
+    changePts = [true, diff(labWin) ~= 0];
+    blockStarts = find(changePts);
+    blockStops  = [blockStarts(2:end)-1, numel(labWin)];
+
+    for b = 1:numel(blockStarts)
+        i0 = blockStarts(b);
+        i1 = blockStops(b);
+
+        beh = labWin(i0);
+
+        if nColors == 7
+            if isnan(beh) || beh < 1 || beh > 7
+                continue;
+            end
+            cInd = beh;
+        else
+            if isnan(beh) || beh < 0 || beh > 10
+                continue;
+            end
+            cInd = beh + 1; % 0..10 -> 1..11
         end
 
-        tStart = max(tStart, t0);
-        tStop  = min(tStop,  t1);
+        tStart = max(tWin(i0), t0);
+        tStop  = min(tWin(i1), t1);
 
         if tStop > tStart
-            patch([tStart tStart tStop tStop], [yl(1) yl(2) yl(2) yl(1)], patchColors(r,:), ...
-                'EdgeColor','none','FaceAlpha',0.15);
+            patch(ax, [tStart tStart tStop tStop], [yl(1) yl(2) yl(2) yl(1)], cmap(cInd,:), ...
+                'EdgeColor','none', 'FaceAlpha',0.12);
         end
     end
 end
 
 % bring emg to front
-uistack(findobj(gca,'Type','line'),'top');
+uistack(findobj(ax,'Type','line'),'top');
 
-xlabel('Time (s)');
-ylabel('EMG (a.u.)');
-title('EMG snippet with behavior labels (UMAP patches)');
-box off;
+% axes formatting (same vibe as raster)
+ax.FontSize = 14;
+ax.TickDir  = 'out';
+ax.LineWidth = 1;
+
+xlabel(ax, 'time (s)', 'FontSize', 16);
+ylabel(ax, 'emg (a.u.)', 'FontSize', 16);
+title(ax, sprintf('emg snippet with %s behavior patches | %.1f–%.1f s', labelType, t0, t1), ...
+    'FontSize', 18);
+box(ax, 'off');
+
+%% ---- legend mapping ----
+if nColors == 7
+    if isfield(U,'regionBehvAssignments') && ~isempty(U.regionBehvAssignments)
+        behNames = string(U.regionBehvAssignments(:)');
+        behNames = behNames(1:min(7,numel(behNames)));
+        if numel(behNames) < 7
+            behNames(end+1:7) = "umap region " + (numel(behNames)+1:7);
+        end
+    else
+        behNames = "umap region " + (1:7);
+    end
+else
+    behNames = ["unlabeled", string(manBehvNames)];
+end
+
+h = gobjects(1, numel(behNames));
+for k = 1:numel(behNames)
+    h(k) = patch(ax, nan, nan, cmap(k,:), 'EdgeColor','none', 'FaceAlpha',0.12);
+end
+legend(ax, h, cellstr(behNames), 'Location', 'eastoutside');
 
 end
