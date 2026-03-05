@@ -295,12 +295,12 @@ if nColors == 11
 
         0.49 0.18 0.56;  % jumpdown (purple)
         0.30 0.75 0.93;  % jumping (cyan)
-        0.64 0.08 0.18;  % rearing (dark red)
+        0.20 0.90 0.20;  % rearing (lime green)
 
         0.90 0.00 0.60;  % still (magenta)
         0.00 0.00 0.00;  % walkflat (black)
 
-        0.80 0.35 0.00   % walkgrid (bright orange)
+        0.80 0.35 0.00   % walkgrid (dark orange-red)
     ];
 else
     % UMAP case
