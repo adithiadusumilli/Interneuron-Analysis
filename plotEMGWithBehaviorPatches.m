@@ -237,7 +237,6 @@ else
         1.00 0.50 0.00
     ];
 end
-end
 
 if ~isempty(labWin)
     changePts = [true, diff(labWin) ~= 0];
