@@ -1,4 +1,4 @@
-function plotCortexDepthHistogramPyrInt(baseDir)
+function depthHistogramThesis(baseDir)
 % for fig 2!
 % plotcortexdepthhistogrampyrint
 
