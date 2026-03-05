@@ -212,7 +212,7 @@ if ~isempty(labWin)
 
         if tStop > tStart
             patch(ax, [tStart tStart tStop tStop], [yl(1) yl(2) yl(2) yl(1)], cmap(cInd,:), ...
-                'EdgeColor','none', 'FaceAlpha',0.12);
+                'EdgeColor','none', 'FaceAlpha',0.30);
         end
     end
 end
