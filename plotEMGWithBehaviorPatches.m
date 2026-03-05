@@ -6,11 +6,10 @@ function plotEMGWithBehaviorPatches(baseDir, t0, t1, emgChannel, labelType)
 % inputs:
 %   basedir : session processedddata folder
 %   t0, t1 : window in seconds
-%   emgchannel : which channel to plot (if downsampemg is multichannel). use 1 if unsure.
+%   emgchannel : which channel to plot (since multichannel) 
 %   labeltype : "classifier" (default), "manual", or "umap"
-%
-% example:
-%   plotEMGWithBehaviorPatches("Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData", 600, 675, 1, "classifier")
+
+% j run plotEMGWithBehaviorPatches("Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData", 600, 675, 1, "classifier")
 
 arguments
     baseDir (1,1) string
@@ -67,9 +66,9 @@ for i = 1:numel(req)
 end
 
 origDownsampEMGInd = double(U.origDownsampEMGInd(:)); % reduced -> full emg idx
-regionRaw = double(U.regionAssignmentsFiltered(:));   % raw region codes
-manualRaw = double(U.behvLabelsNoArt(:));             % 0..nManual
-classRaw = double(U.classifierLabels(:));            % 0..nClass
+regionRaw = double(U.regionAssignmentsFiltered(:)); % raw region codes
+manualRaw = double(U.behvLabelsNoArt(:)); % 0..nManual
+classRaw = double(U.classifierLabels(:)); % 0..nClass
 
 % canonical behavior name list and ordering (shared across animals)
 manBehvNames = {'climbdown','climbup','eating','grooming', 'jumpdown','jumping','rearing','still','walkflat','walkgrid'};
@@ -177,21 +176,21 @@ emgNeurSlope = (round(frameNeuropixelSamples{1}{end}(end)/30) - round(frameNeuro
                (round(frameEMGSamples{1}{end}(end)/20) - round(frameEMGSamples{1}{1}(1)/20));
 emgNeurOffset = round(frameNeuropixelSamples{1}{1}(1)/30) - emgNeurSlope*round(frameEMGSamples{1}{1}(1)/20);
 
-neurInds_ms  = origDownsampEMGInd * emgNeurSlope + emgNeurOffset; % ms in neural time base
+neurInds_ms = origDownsampEMGInd * emgNeurSlope + emgNeurOffset; % ms in neural time base
 labelTimes_s = double(neurInds_ms) / 1000; % seconds
 
 % guard: sizes gotta agree
 n = min(numel(labelTimes_s), numel(labelsCanon));
 labelTimes_s = labelTimes_s(1:n);
-labelsCanon  = labelsCanon(1:n);
+labelsCanon = labelsCanon(1:n);
 
 %% ---- restrict labels to plotting window before block finding ----
 inWin = (labelTimes_s >= t0) & (labelTimes_s <= t1) & ~isnan(labelsCanon);
-tWin   = labelTimes_s(inWin);
+tWin = labelTimes_s(inWin);
 labWin = labelsCanon(inWin);
 
 % ensure row vectors for diff/block logic
-tWin   = tWin(:)';
+tWin = tWin(:)';
 labWin = labWin(:)';
 
 %% ---- make figure ----
@@ -207,12 +206,39 @@ xlim(ax, [t0 t1]);
 yl = get(ax, 'YLim');
 
 % behavior patches behind emg (same contiguous-block logic as raster)
-cmap = lines(nColors);
+% use a fixed high-contrast palette (better separation than lines())
+if nColors == 11
+    % row 1 is for label 0 ("unlabeled"), rows 2..11 correspond to labels 1..10
+    cmap = [
+        0.85 0.85 0.85;  % unlabeled
+        0.00 0.45 0.70;  % climbdown
+        0.90 0.62 0.00;  % climbup
+        0.00 0.62 0.45;  % eating
+        0.80 0.47 0.65;  % grooming
+        0.34 0.71 0.91;  % jumpdown
+        0.84 0.37 0.00;  % jumping
+        0.94 0.89 0.26;  % rearing
+        0.49 0.18 0.56;  % still
+        0.20 0.29 0.37;  % walkflat
+        0.64 0.08 0.18;  % walkgrid
+    ];
+else
+    % 7 distinct colors
+    cmap = [
+        0.00 0.45 0.70;
+        0.90 0.62 0.00;
+        0.00 0.62 0.45;
+        0.80 0.47 0.65;
+        0.34 0.71 0.91;
+        0.84 0.37 0.00;
+        0.49 0.18 0.56;
+    ];
+end
 
 if ~isempty(labWin)
     changePts = [true, diff(labWin) ~= 0];
     blockStarts = find(changePts);
-    blockStops  = [blockStarts(2:end)-1, numel(labWin)];
+    blockStops = [blockStarts(2:end)-1, numel(labWin)];
 
     for b = 1:numel(blockStarts)
         i0 = blockStarts(b);
@@ -233,7 +259,7 @@ if ~isempty(labWin)
         end
 
         tStart = max(tWin(i0), t0);
-        tStop  = min(tWin(i1), t1);
+        tStop = min(tWin(i1), t1);
 
         if tStop > tStart
             patch(ax, [tStart tStart tStop tStop], [yl(1) yl(2) yl(2) yl(1)], cmap(cInd,:), ...
@@ -247,7 +273,7 @@ uistack(findobj(ax,'Type','line'),'top');
 
 % axes formatting (same vibe as raster)
 ax.FontSize = 14;
-ax.TickDir  = 'out';
+ax.TickDir = 'out';
 ax.LineWidth = 1;
 
 xlabel(ax, 'time (s)', 'FontSize', 16);
