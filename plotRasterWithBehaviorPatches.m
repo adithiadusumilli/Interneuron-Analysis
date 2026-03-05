@@ -23,7 +23,7 @@ if t1 <= t0
 end
 
 %% ---- load cortex indices from classifications ----
-C = load(fullfile(baseDir,'AA_classifications.mat'));
+C = load(fullfile(conslidatedDataFoler, 'AA_classifications.mat'), 'classifications');
 cortexInds = local_getCortexInds(C);
 
 if isempty(cortexInds)
