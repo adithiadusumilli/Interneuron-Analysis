@@ -39,10 +39,12 @@ end
 if isvector(emgAll)
     emg = emgAll(:);
 else
-    if emgChannel < 1 || emgChannel > size(emgAll,2)
-        error('emgChannel %d out of range (1..%d)', emgChannel, size(emgAll,2));
+    % your files are stored as channels x time (e.g., 8 x 3790640),
+    % so index rows by channel and transpose to a time x 1 vector
+    if emgChannel < 1 || emgChannel > size(emgAll,1)
+        error('emgChannel %d out of range (1..%d)', emgChannel, size(emgAll,1));
     end
-    emg = emgAll(:, emgChannel);
+    emg = emgAll(emgChannel, :)';
 end
 
 emgTime = (0:numel(emg)-1) / fsEmg;
@@ -263,7 +265,7 @@ if ~isempty(labWin)
 
         if tStop > tStart
             patch(ax, [tStart tStart tStop tStop], [yl(1) yl(2) yl(2) yl(1)], cmap(cInd,:), ...
-                'EdgeColor','none', 'FaceAlpha',0.12);
+                'EdgeColor','none', 'FaceAlpha',0.30);
         end
     end
 end
@@ -272,15 +274,15 @@ end
 uistack(hEmg,'top');
 
 %% ---- axes formatting ----
-ax.FontSize = 14;
+ax.FontSize = 16;
 ax.TickDir = 'out';
 ax.LineWidth = 1;
 
-xlabel(ax, 'time (s)', 'FontSize', 16);
-ylabel(ax, 'emg (a.u.)', 'FontSize', 16);
+xlabel(ax, 'Time (s)', 'FontSize', 18);
+ylabel(ax, 'EMG (a.u.)', 'FontSize', 18);
 
-title(ax, sprintf('emg snippet with %s behavior patches | %.1f–%.1f s', char(labelType), t0, t1), ...
-    'FontSize', 18);
+title(ax, sprintf('EMG with %s behavior patches | %.1f–%.1f s', char(labelType), t0, t1), ...
+    'FontSize', 20);
 
 box(ax, 'off');
 
@@ -301,7 +303,7 @@ end
 
 h = gobjects(1, numel(behNames));
 for k = 1:numel(behNames)
-    h(k) = patch(ax, nan, nan, cmap(k,:), 'EdgeColor','none', 'FaceAlpha',0.12);
+    h(k) = patch(ax, nan, nan, cmap(k,:), 'EdgeColor','none', 'FaceAlpha',0.30);
 end
 legend(ax, h, cellstr(behNames), 'Location', 'eastoutside');
 
