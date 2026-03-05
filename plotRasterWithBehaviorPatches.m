@@ -22,14 +22,12 @@ if t1 <= t0
     error('t1 must be > t0');
 end
 
-%% ---- load cortex indices from classifications ----
-conslidatedDataFoler = 'X:\David\AnalysesData';
-C = load(fullfile(conslidatedDataFoler, 'AA_classifications.mat'), 'classifications');
-cortexInds = local_getCortexInds(C);
-
-if isempty(cortexInds)
-    error('could not find cortex indices in AA_classifications.mat');
+%% ---- load cortex indices from firing rate file ----
+F = load(fullfile(baseDir,'NeuralFiringRates1msBins10msGauss.mat'),'cortexInds');
+if ~isfield(F,'cortexInds') || isempty(F.cortexInds)
+    error('could not find cortexInds in NeuralFiringRates1msBins10msGauss.mat');
 end
+cortexInds = F.cortexInds;
 
 %% ---- load spikes ----
 S = load(fullfile(baseDir,'neuronDataStruct.mat'),'neuronDataStruct');
