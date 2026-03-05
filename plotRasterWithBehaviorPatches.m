@@ -240,9 +240,9 @@ ax.FontSize  = 14;
 ax.TickDir   = 'out';
 ax.LineWidth = 1;
 
-xlabel(ax, 'time (s)', 'FontSize', 16);
-ylabel(ax, 'cortex neuron index', 'FontSize', 16);
-title(ax, sprintf('cortex raster with %s behavior patches | %.1f–%.1f s | n=%d units', ...
+xlabel(ax, 'Time (s)', 'FontSize', 16);
+ylabel(ax, 'M1 Neuron Index', 'FontSize', 16);
+title(ax, sprintf('M1 Raster with %s Behavior Patches | %.1f–%.1f s | n=%d units', ...
     labelType, t0, t1, nNeur), 'FontSize', 18);
 
 box(ax, 'off');
