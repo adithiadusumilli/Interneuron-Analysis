@@ -251,7 +251,7 @@ box(ax, 'off');
 behNames = local_behavior_names(U, manBehvNames, nColors);
 h = gobjects(1, numel(behNames));
 for k = 1:numel(behNames)
-    h(k) = patch(ax, nan, nan, cmap(k,:), 'EdgeColor','none', 'FaceAlpha',0.12);
+    h(k) = patch(ax, nan, nan, cmap(k,:), 'EdgeColor','none', 'FaceAlpha',0.30);
 end
 legend(ax, h, cellstr(behNames), 'Location', 'eastoutside');
 
