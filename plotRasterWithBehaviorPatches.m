@@ -4,8 +4,9 @@ function plotRasterWithBehaviorPatches(baseDir, t0, t1, labelType)
 %   basedir: path to session processedddata folder
 %   t0, t1: snippet window in seconds
 %   labeltype: "classifier" (default), "manual", or "umap"
-
-% run: plotRasterWithBehaviorPatches("Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData", 600, 675, "classifier")
+%
+% run:
+%   plotRasterWithBehaviorPatches("Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData", 600, 675, "classifier")
 
 arguments
     baseDir (1,1) string
@@ -52,7 +53,8 @@ classRaw = double(U.classifierLabels(:)); % 0..nClass
 
 % canonical behavior name list and ordering (shared across animals)
 % indices 1..10 in canonical space always correspond to these names
-manBehvNames = {'climbdown','climbup','eating','grooming', 'jumpdown','jumping','rearing','still','walkflat','walkgrid'};
+manBehvNames = {'climbdown','climbup','eating','grooming', ...
+                'jumpdown','jumping','rearing','still','walkflat','walkgrid'};
 
 %% ---- umap regions -> contiguous 1..7 ----
 regionCodes = unique(regionRaw(~isnan(regionRaw)));
@@ -153,16 +155,17 @@ frameEMGSamples = V.frameEMGSamples;
 
 %% ---- map reduced umap index -> neuropixels time (seconds) ----
 % this matches original mapping logic
-emgNeurSlope = (round(frameNeuropixelSamples{1}{end}(end)/30) - round(frameNeuropixelSamples{1}{1}(1)/30)) / (round(frameEMGSamples{1}{end}(end)/20)     - round(frameEMGSamples{1}{1}(1)/20));
+emgNeurSlope = (round(frameNeuropixelSamples{1}{end}(end)/30) - round(frameNeuropixelSamples{1}{1}(1)/30)) / ...
+               (round(frameEMGSamples{1}{end}(end)/20)     - round(frameEMGSamples{1}{1}(1)/20));
 emgNeurOffset = round(frameNeuropixelSamples{1}{1}(1)/30) - emgNeurSlope*round(frameEMGSamples{1}{1}(1)/20);
 
 neurInds_ms = origDownsampEMGInd * emgNeurSlope + emgNeurOffset; % ms index in neural time base
-labelTimes_s  = neurInds_ms / 1000; % seconds
+labelTimes_s = neurInds_ms / 1000; % seconds
 
 % guard: sizes gotta agree across time and labels
 n = min(numel(labelTimes_s), numel(labelsCanon));
 labelTimes_s = labelTimes_s(1:n);
-labelsCanon = labelsCanon(1:n);
+labelsCanon  = labelsCanon(1:n);
 
 %% ---- restrict labels to plotting window before block finding ----
 inWin = (labelTimes_s >= t0) & (labelTimes_s <= t1) & ~isnan(labelsCanon);
@@ -170,27 +173,30 @@ if ~any(inWin)
     warning('no behavior labels found in this window. plotting raster only.');
 end
 
-tWin = labelTimes_s(inWin);
+tWin   = labelTimes_s(inWin);
 labWin = labelsCanon(inWin);
 
 % ensure row vectors for easier diff/block logic
-tWin = tWin(:)';
+tWin   = tWin(:)';
 labWin = labWin(:)';
 
 %% ---- make figure ----
-figure('Color','w','Position',[100 100 1000 500]);
-axes; hold on;
+fig = figure('Color','w','Position',[100 100 1000 500]);
+ax = axes(fig);
+hold(ax,'on');
 
-yl = [0, nNeur+1];
+% --- publication-style tweak: use vectorized raster with line objects (much cleaner than many plot calls)
+% this makes the raster sharper + faster, and you can control spike "tick" height
+tickHalfHeight = 0.35;  % controls how tall each spike tick is
 
 % behavior patches behind raster
+yl = [0, nNeur+1];
 cmap = lines(nColors);
 
 if ~isempty(labWin)
-    % find contiguous blocks where label stays constant in the windowed vector
     changePts = [true, diff(labWin) ~= 0];
     blockStarts = find(changePts);
-    blockStops = [blockStarts(2:end)-1, numel(labWin)];
+    blockStops  = [blockStarts(2:end)-1, numel(labWin)];
 
     for b = 1:numel(blockStarts)
         i0 = blockStarts(b);
@@ -204,42 +210,52 @@ if ~isempty(labWin)
             end
             cInd = beh;
         else
-            % manual/classifier: 0..10 where 0 is unlabeled
             if isnan(beh) || beh < 0 || beh > 10
                 continue;
             end
             cInd = beh + 1; % 0..10 -> 1..11
         end
 
-        tStart = tWin(i0);
-        tStop = tWin(i1);
-
-        % safety clip
-        tStart = max(tStart, t0);
-        tStop = min(tStop,  t1);
+        tStart = max(tWin(i0), t0);
+        tStop  = min(tWin(i1), t1);
 
         if tStop > tStart
-            patch([tStart tStart tStop tStop], [yl(1) yl(2) yl(2) yl(1)], cmap(cInd,:), ...
-                'EdgeColor','none', 'FaceAlpha',0.15);
+            patch(ax, [tStart tStart tStop tStop], [yl(1) yl(2) yl(2) yl(1)], cmap(cInd,:), ...
+                'EdgeColor','none', 'FaceAlpha',0.12);
         end
     end
 end
 
-% raster on top
+% raster on top: vectorize each neuron as vertical ticks (fast + clean)
 for iNeuron = 1:nNeur
     t = tsSec{iNeuron};
     t = t(t >= t0 & t <= t1);
-    if ~isempty(t)
-        plot(t, iNeuron*ones(size(t)), 'k.', 'MarkerSize', 2);
+    if isempty(t)
+        continue;
     end
+
+    % build a 2-by-n matrix for x and y so line() draws many vertical ticks at once
+    x = [t(:)'; t(:)'];
+    y = [(iNeuron - tickHalfHeight)*ones(1,numel(t)); (iNeuron + tickHalfHeight)*ones(1,numel(t))];
+
+    line(ax, x, y, 'Color', 'k', 'LineWidth', 0.5);
 end
 
-xlim([t0 t1]);
-ylim(yl);
-xlabel('time (s)');
-ylabel('neuron index');
-title(sprintf('raster snippet with %s behavior patches | %.1f–%.1f s', labelType, t0, t1));
-box off;
+% axes formatting
+xlim(ax, [t0 t1]);
+ylim(ax, yl);
+
+ax.FontSize = 14;         % tick label size
+ax.TickDir = 'out';       % cleaner
+ax.LineWidth = 1;         % slightly thicker axes
+ax.YDir = 'reverse';      % optional: comment out if you prefer neuron 1 at bottom
+
+xlabel(ax, 'time (s)', 'FontSize', 16);
+ylabel(ax, 'neuron index', 'FontSize', 16);
+title(ax, sprintf('raster snippet with %s behavior patches | %.1f–%.1f s', labelType, t0, t1), ...
+    'FontSize', 18);
+
+box(ax, 'off');
 
 %% ---- legend mapping ----
 if nColors == 7
@@ -258,8 +274,8 @@ end
 
 h = gobjects(1, numel(behNames));
 for k = 1:numel(behNames)
-    h(k) = patch(nan, nan, cmap(k,:), 'EdgeColor','none', 'FaceAlpha',0.15);
+    h(k) = patch(ax, nan, nan, cmap(k,:), 'EdgeColor','none', 'FaceAlpha',0.12);
 end
-legend(h, cellstr(behNames), 'Location', 'eastoutside');
+legend(ax, h, cellstr(behNames), 'Location', 'eastoutside');
 
 end
