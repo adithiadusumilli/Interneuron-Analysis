@@ -6,10 +6,10 @@ function plotEMGWithBehaviorPatches(baseDir, t0, t1, emgChannel, labelType)
 % inputs:
 %   basedir : session processedddata folder
 %   t0, t1 : window in seconds
-%   emgchannel : which channel to plot (since multichannel) 
+%   emgchannel : which channel to plot (since multichannel)
 %   labeltype : "classifier" (default), "manual", or "umap"
 
-% j run plotEMGWithBehaviorPatches("Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData", 600, 675, 1, "classifier")
+% j run: plotEMGWithBehaviorPatches("Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData", 600, 675, 1, "classifier")
 
 arguments
     baseDir (1,1) string
@@ -68,7 +68,7 @@ end
 origDownsampEMGInd = double(U.origDownsampEMGInd(:)); % reduced -> full emg idx
 regionRaw = double(U.regionAssignmentsFiltered(:)); % raw region codes
 manualRaw = double(U.behvLabelsNoArt(:)); % 0..nManual
-classRaw = double(U.classifierLabels(:)); % 0..nClass
+classRaw  = double(U.classifierLabels(:)); % 0..nClass
 
 % canonical behavior name list and ordering (shared across animals)
 manBehvNames = {'climbdown','climbup','eating','grooming', 'jumpdown','jumping','rearing','still','walkflat','walkgrid'};
@@ -159,7 +159,7 @@ switch lower(labelType)
         labelsCanon = classifierCanon; % 0..10
         nColors = 11;
     otherwise
-        error('labeltype "%s" not supported. use "classifier", "manual", or "umap".', labelType);
+        error('labeltype "%s" not supported. use "classifier", "manual", or "umap".', char(labelType));
 end
 
 %% ---- load sync mapping ----
@@ -171,18 +171,17 @@ frameNeuropixelSamples = V.frameNeuropixelSamples;
 frameEMGSamples = V.frameEMGSamples;
 
 %% ---- map reduced umap index -> emg time (seconds) ----
-% note: we only need label times in seconds; same slope/offset logic as before
 emgNeurSlope = (round(frameNeuropixelSamples{1}{end}(end)/30) - round(frameNeuropixelSamples{1}{1}(1)/30)) / ...
-               (round(frameEMGSamples{1}{end}(end)/20) - round(frameEMGSamples{1}{1}(1)/20));
+               (round(frameEMGSamples{1}{end}(end)/20)     - round(frameEMGSamples{1}{1}(1)/20));
 emgNeurOffset = round(frameNeuropixelSamples{1}{1}(1)/30) - emgNeurSlope*round(frameEMGSamples{1}{1}(1)/20);
 
-neurInds_ms = origDownsampEMGInd * emgNeurSlope + emgNeurOffset; % ms in neural time base
+neurInds_ms  = origDownsampEMGInd * emgNeurSlope + emgNeurOffset; % ms in neural time base
 labelTimes_s = double(neurInds_ms) / 1000; % seconds
 
 % guard: sizes gotta agree
 n = min(numel(labelTimes_s), numel(labelsCanon));
 labelTimes_s = labelTimes_s(1:n);
-labelsCanon = labelsCanon(1:n);
+labelsCanon  = labelsCanon(1:n);
 
 %% ---- restrict labels to plotting window before block finding ----
 inWin = (labelTimes_s >= t0) & (labelTimes_s <= t1) & ~isnan(labelsCanon);
@@ -198,21 +197,20 @@ fig = figure('Color','w','Position',[100 100 1000 350]);
 ax = axes(fig);
 hold(ax,'on');
 
-% plot emg first so we have y-limits
+% plot emg first (save handle so we can force it on top later)
 keep = (emgTime >= t0) & (emgTime <= t1);
-plot(ax, emgTime(keep), emg(keep), 'k', 'LineWidth', 1);
+hEmg = plot(ax, emgTime(keep), emg(keep), 'k', 'LineWidth', 1);
 
 xlim(ax, [t0 t1]);
 yl = get(ax, 'YLim');
 
-% behavior patches behind emg (same contiguous-block logic as raster)
-% use a fixed high-contrast palette (better separation than lines())
+%% ---- behavior patches behind emg ----
 if nColors == 11
     cmap = [
         0.85 0.85 0.85;  % unlabeled (light gray)
 
         0.00 0.45 0.85;  % climbdown (blue)
-        0.60 0.00 0.00;  % climbup
+        0.60 0.00 0.00;  % climbup (dark red)
         0.00 0.62 0.45;  % eating (green)
         0.93 0.69 0.13;  % grooming (yellow)
 
@@ -223,18 +221,17 @@ if nColors == 11
         0.90 0.00 0.60;  % still (magenta)
         0.00 0.00 0.00;  % walkflat (black)
 
-        0.80 0.35 0.00   % walkgrid (dark orange-red)
+        0.80 0.35 0.00   % walkgrid (dark orange)
     ];
 else
-    % UMAP case
     cmap = [
-        0.00 0.45 0.74
-        0.85 0.33 0.10
+        0.00 0.45 0.85
+        0.60 0.00 0.00
         0.00 0.62 0.45
         0.93 0.69 0.13
         0.49 0.18 0.56
         0.30 0.75 0.93
-        1.00 0.50 0.00
+        0.90 0.00 0.60
     ];
 end
 
@@ -262,7 +259,7 @@ if ~isempty(labWin)
         end
 
         tStart = max(tWin(i0), t0);
-        tStop = min(tWin(i1), t1);
+        tStop  = min(tWin(i1), t1);
 
         if tStop > tStart
             patch(ax, [tStart tStart tStop tStop], [yl(1) yl(2) yl(2) yl(1)], cmap(cInd,:), ...
@@ -271,18 +268,20 @@ if ~isempty(labWin)
     end
 end
 
-% bring emg to front
-uistack(findobj(ax,'Type','line'),'top');
+% force emg trace above patches
+uistack(hEmg,'top');
 
-% axes formatting (same vibe as raster)
+%% ---- axes formatting ----
 ax.FontSize = 14;
 ax.TickDir = 'out';
 ax.LineWidth = 1;
 
 xlabel(ax, 'time (s)', 'FontSize', 16);
 ylabel(ax, 'emg (a.u.)', 'FontSize', 16);
-title(ax, sprintf('emg snippet with %s behavior patches | %.1f–%.1f s', labelType, t0, t1), ...
+
+title(ax, sprintf('emg snippet with %s behavior patches | %.1f–%.1f s', char(labelType), t0, t1), ...
     'FontSize', 18);
+
 box(ax, 'off');
 
 %% ---- legend mapping ----
