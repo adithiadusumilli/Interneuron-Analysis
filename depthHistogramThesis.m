@@ -1,4 +1,5 @@
 function plotCortexDepthHistogramPyrInt(baseDir)
+% for fig 2!
 % plotcortexdepthhistogrampyrint
 
 % makes a cortex-only depth histogram using neuronDataStruct.depth and saved gmm spike-width classifications (0=pyramidal, 1=interneuron)
@@ -103,19 +104,27 @@ Y = binCenters(:);
 X = [pyrCounts(:), intCounts(:)];
 
 % stacked horizontal bars so everything stays on the right
-barh(ax, Y, X, 'stacked');
+b = barh(ax, Y, X, 'stacked');
+
+% set colors
+b(1).FaceColor = [0.2 0.4 0.8]; % pyr
+b(2).FaceColor = [0.9 0.4 0.2]; % int
+b(1).EdgeColor = 'none';
+b(2).EdgeColor = 'none';
+b(1).FaceAlpha = 0.9;
+b(2).FaceAlpha = 0.9;
 
 % formatting to match example style
 set(ax,'YDir','reverse'); % 0 at top, increasing down
 xlabel(ax,'# of units');
-ylabel(ax,'depth (\mum)');
+ylabel(ax,'Depth (\mum)');
 
-title(ax, sprintf('cortex depth distribution | pyr vs int | n=%d (pyr=%d, int=%d)', nTot, nPyr, nInt));
+title(ax, sprintf('Cortex Depth Distribution | Pyr vs Int | n=%d (pyr=%d, int=%d)', nTot, nPyr, nInt), 'FontSize',20);
 
-legend(ax, {'pyramidal','interneuron'}, 'Location','southeast');
+legend(ax, {'Pyramidal','Interneuron'}, 'Location','southeast');
 box(ax,'off');
 ax.TickDir = 'out';
 ax.LineWidth = 1;
-ax.FontSize = 12;
+ax.FontSize = 18;
 
 end
