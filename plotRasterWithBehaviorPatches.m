@@ -282,33 +282,36 @@ end
 end
 
 function cmap = local_behavior_cmap(nColors)
-% high-contrast fixed palette
-% for nColors==11: 1 is "unlabeled" (light gray), 2..11 are canonical behaviors 1..10
-% for nColors==7:  7 distinct colors
+% high-contrast categorical palette for behavior labels
 
 if nColors == 11
     cmap = [
-        0.85 0.85 0.85;  % unlabeled
-        0.00 0.45 0.70;  % climbdown
-        0.90 0.62 0.00;  % climbup
-        0.00 0.62 0.45;  % eating
-        0.80 0.47 0.65;  % grooming
-        0.34 0.71 0.91;  % jumpdown
-        0.84 0.37 0.00;  % jumping
-        0.94 0.89 0.26;  % rearing
-        0.49 0.18 0.56;  % still
-        0.20 0.29 0.37;  % walkflat
-        0.64 0.08 0.18;  % walkgrid
+        0.7 0.7 0.7;   % unlabeled (gray)
+
+        0.0 0.45 0.70; % climbdown  (blue)
+        0.80 0.47 0.65;% climbup    (purple)
+        0.0 0.60 0.50; % eating     (teal)
+        0.90 0.60 0.0; % grooming   (orange)
+
+        0.35 0.70 0.90;% jumpdown   (light blue)
+        0.95 0.90 0.25;% jumping    (yellow)
+        0.80 0.40 0.0; % rearing    (brown/orange)
+
+        0.50 0.50 0.50;% still      (dark gray)
+        0.20 0.20 0.20;% walkflat   (black)
+
+        0.85 0.33 0.10 % walkgrid   (red)
     ];
 else
+    % 7-color version for UMAP regions
     cmap = [
-        0.00 0.45 0.70;
-        0.90 0.62 0.00;
-        0.00 0.62 0.45;
-        0.80 0.47 0.65;
-        0.34 0.71 0.91;
-        0.84 0.37 0.00;
-        0.49 0.18 0.56;
+        0.0 0.45 0.70
+        0.80 0.47 0.65
+        0.0 0.60 0.50
+        0.90 0.60 0.0
+        0.35 0.70 0.90
+        0.95 0.90 0.25
+        0.85 0.33 0.10
     ];
 end
 end
