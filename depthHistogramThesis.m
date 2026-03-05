@@ -5,7 +5,7 @@ function depthHistogramThesis(baseDir)
 % makes a cortex-only depth histogram using neuronDataStruct.depth and saved gmm spike-width classifications (0=pyramidal, 1=interneuron)
 
 
-% j run plotCortexDepthHistogramPyrInt("Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData")
+% j run depthHistogramThesis("Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData")
 
 arguments
     baseDir (1,1) string
