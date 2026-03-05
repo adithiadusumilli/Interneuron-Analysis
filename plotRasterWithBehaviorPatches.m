@@ -4,7 +4,7 @@ function plotRasterWithBehaviorPatches(baseDir, t0, t1, labelType)
 %   basedir: path to session processedddata folder
 %   t0, t1: snippet window in seconds
 %   labeltype: "classifier" (default), "manual", or "umap"
-%
+
 % run:
 %   plotRasterWithBehaviorPatches("Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData", 600, 675, "classifier")
 
@@ -245,10 +245,10 @@ end
 xlim(ax, [t0 t1]);
 ylim(ax, yl);
 
-ax.FontSize = 14;         % tick label size
-ax.TickDir = 'out';       % cleaner
-ax.LineWidth = 1;         % slightly thicker axes
-ax.YDir = 'reverse';      % optional: comment out if you prefer neuron 1 at bottom
+ax.FontSize = 14; % tick label size
+ax.TickDir = 'out'; % cleaner
+ax.LineWidth = 1; % thicker axes
+% ax.YDir = 'reverse'; 
 
 xlabel(ax, 'time (s)', 'FontSize', 16);
 ylabel(ax, 'neuron index', 'FontSize', 16);
