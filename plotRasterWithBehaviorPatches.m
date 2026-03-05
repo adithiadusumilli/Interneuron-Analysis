@@ -288,8 +288,8 @@ if nColors == 11
     cmap = [
         0.85 0.85 0.85;  % unlabeled (light gray)
 
-        0.00 0.45 0.74;  % climbdown (blue)
-        0.85 0.33 0.10;  % climbup (red-orange)
+        0.00 0.45 0.85;  % climbdown (blue)
+        0.60 0.00 0.00;  % climbup
         0.00 0.62 0.45;  % eating (green)
         0.93 0.69 0.13;  % grooming (yellow)
 
@@ -297,10 +297,10 @@ if nColors == 11
         0.30 0.75 0.93;  % jumping (cyan)
         0.64 0.08 0.18;  % rearing (dark red)
 
-        0.40 0.40 0.40;  % still (dark gray)
+        0.90 0.00 0.60;  % still (magenta)
         0.00 0.00 0.00;  % walkflat (black)
 
-        1.00 0.50 0.00   % walkgrid (bright orange)
+        0.80 0.35 0.00   % walkgrid (bright orange)
     ];
 else
     % UMAP case
