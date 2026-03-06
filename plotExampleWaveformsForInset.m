@@ -88,18 +88,48 @@ intExampleInd = intInds(intMedIdx);
 end
 
 function plotSingleWaveformInset(unitStruct, fs, waveColor, figTitle)
-% plots one waveform with a 0.5 ms reference bar
+% plots one waveform emphasizing the peak-to-peak measurement with a 0.5 ms reference bar
 
 waveforms = unitStruct.waveforms;
 biggestChan = unitStruct.biggestChan;
 ap = double(waveforms(:,biggestChan));
 
+% make polarity consistent so trough comes before peak when possible
+[~,mx0] = max(ap);
+[~,mn0] = min(ap);
+if mx0 < mn0
+    ap = -ap;
+end
+
+% recompute after possible flip
+[~,mx] = max(ap);
+[~,mn] = min(ap);
+
 t_ms = (0:numel(ap)-1) / fs * 1000; % ms
+
+% crop around the peak-to-peak event
+leftPad = 8;
+rightPad = 12;
+i0 = max(1, mn - leftPad);
+i1 = min(numel(ap), mx + rightPad);
+
+apCrop = ap(i0:i1);
+tCrop_ms = t_ms(i0:i1);
+
+% local indices for markers in cropped trace
+mnLocal = mn - i0 + 1;
+mxLocal = mx - i0 + 1;
 
 figure('Color','w','Position',[100 100 260 220]);
 ax = axes; hold(ax,'on');
 
-plot(ax, t_ms, ap, 'Color', waveColor, 'LineWidth', 2);
+plot(ax, tCrop_ms, apCrop, 'Color', waveColor, 'LineWidth', 2.5);
+
+% mark trough and peak used for duration
+plot(ax, tCrop_ms(mnLocal), apCrop(mnLocal), 'o', ...
+    'MarkerFaceColor', waveColor, 'MarkerEdgeColor', waveColor, 'MarkerSize', 5);
+plot(ax, tCrop_ms(mxLocal), apCrop(mxLocal), 'o', ...
+    'MarkerFaceColor', waveColor, 'MarkerEdgeColor', waveColor, 'MarkerSize', 5);
 
 % clean inset look
 box(ax,'off');
@@ -107,16 +137,21 @@ ax.XColor = 'none';
 ax.YColor = 'none';
 ax.LineWidth = 1.2;
 
-% add 0.5 ms scale bar
-xRange = max(t_ms) - min(t_ms);
-yRange = max(ap) - min(ap);
+% tighten limits
+xlim(ax, [min(tCrop_ms) max(tCrop_ms)]);
+yPad = 0.18 * (max(apCrop) - min(apCrop));
+ylim(ax, [min(apCrop)-yPad, max(apCrop)+0.10*yPad]);
 
-xBarStart = min(t_ms) + 0.08*xRange;
+% add 0.5 ms scale bar
+xRange = max(tCrop_ms) - min(tCrop_ms);
+yRange = diff(ylim(ax));
+
+xBarStart = min(tCrop_ms) + 0.10*xRange;
 xBarEnd   = xBarStart + 0.5; % 0.5 ms
-yBar      = min(ap) + 0.08*yRange;
+yBar      = min(ylim(ax)) + 0.15*yRange;
 
 plot(ax, [xBarStart xBarEnd], [yBar yBar], 'k', 'LineWidth', 2);
-text(mean([xBarStart xBarEnd]), yBar - 0.08*yRange, '0.5 ms', ...
+text(mean([xBarStart xBarEnd]), yBar - 0.10*yRange, '0.5 ms', ...
     'HorizontalAlignment','center', 'VerticalAlignment','top', 'FontSize', 12);
 
 title(ax, figTitle, 'FontSize', 14);
