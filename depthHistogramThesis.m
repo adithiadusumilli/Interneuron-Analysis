@@ -35,8 +35,11 @@ if ~isfield(neuronDataStruct,'depth')
     error('neuronDataStruct does not contain a depth field.');
 end
 
-allDepths = double([neuronDataStruct.depth]); % 1 x nUnits
-nUnits = numel(allDepths);
+allDepths_raw = double([neuronDataStruct.depth]); % 1 x nUnits (largest = brain surface)
+nUnits = numel(allDepths_raw);
+
+% convert so 0 µm corresponds to the surface and depth increases downward
+allDepths = max(allDepths_raw) - allDepths_raw;
 
 %% ---- load cortex indices (these are indices into neuronDataStruct) ----
 F = load(fullfile(baseDir,'NeuralFiringRates1msBins10msGauss.mat'),'cortexInds');
