@@ -73,10 +73,10 @@ cortexLabelsAll = double(cortexLabelsAll);
 cortexLabels = cortexLabelsAll(cortexInds); % 0=pyr, 1=int, nan=other
 cortexDepths = allDepths(cortexInds);
 
-% depth binning (um)
-binSize = 200;
-maxDepth = ceil(max(cortexDepths)/binSize)*binSize;
-binEdges = 0:binSize:maxDepth;
+% depth binning (10 bins total)
+numBins = 10;
+maxDepth = max(cortexDepths);
+binEdges = linspace(0, maxDepth, numBins+1);
 
 % keep only labeled pyr/int and non-nan depths
 keep = ~isnan(cortexDepths) & ~isnan(cortexLabels) & (cortexLabels == 0 | cortexLabels == 1);
