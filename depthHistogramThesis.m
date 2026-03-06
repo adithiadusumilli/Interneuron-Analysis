@@ -24,7 +24,7 @@ animalFolders = {
 
 % depth binning (um)
 binSize = 200;
-maxDepth = 4200;
+maxDepth = ceil(max(cortexDepths)/binSize)*binSize;
 binEdges = 0:binSize:maxDepth;
 
 %% ---- load neuron depths ----
@@ -118,7 +118,7 @@ b(1).FaceAlpha = 0.9;
 b(2).FaceAlpha = 0.9;
 
 % formatting to match example style
-set(ax,'YDir','reverse'); % 0 at top, increasing down
+%set(ax,'YDir','reverse'); % 0 at top, increasing down
 xlabel(ax,'# of units');
 ylabel(ax,'Depth (\mum)');
 
