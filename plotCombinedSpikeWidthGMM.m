@@ -101,7 +101,7 @@ plot(x_ms, yPyr, 'r', 'LineWidth', 2);
 plot(x_ms, yInt, 'g', 'LineWidth', 2);
 xline(intersectionPoint_ms, 'k--', 'LineWidth', 2);
 
-xlabel('Spike Width (ms)');
+xlabel('Waveform Peak-to-Peak Duration (ms)');
 ylabel('Count');
 title(sprintf('Combined %s spike widths across %d animals', char(regionToPlot), numFiles));
 legend({'Widths','Pyramidal','Interneuron','Intersection'}, 'Location', 'northeast');
