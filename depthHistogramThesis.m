@@ -22,10 +22,6 @@ animalFolders = {
     'X:\David\ArenaRecordings\D043-020425-ArenaRecording\ProcessedData'
 };
 
-% depth binning (um)
-binSize = 200;
-maxDepth = ceil(max(cortexDepths)/binSize)*binSize;
-binEdges = 0:binSize:maxDepth;
 
 %% ---- load neuron depths ----
 S = load(fullfile(baseDir,'neuronDataStruct.mat'),'neuronDataStruct');
@@ -76,6 +72,11 @@ cortexLabelsAll = double(cortexLabelsAll);
 % restrict to cortex units only
 cortexLabels = cortexLabelsAll(cortexInds); % 0=pyr, 1=int, nan=other
 cortexDepths = allDepths(cortexInds);
+
+% depth binning (um)
+binSize = 200;
+maxDepth = ceil(max(cortexDepths)/binSize)*binSize;
+binEdges = 0:binSize:maxDepth;
 
 % keep only labeled pyr/int and non-nan depths
 keep = ~isnan(cortexDepths) & ~isnan(cortexLabels) & (cortexLabels == 0 | cortexLabels == 1);
