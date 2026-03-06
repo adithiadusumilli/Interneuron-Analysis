@@ -111,8 +111,8 @@ X = [pyrCounts(:), intCounts(:)];
 b = barh(ax, Y, X, 'stacked');
 
 % set colors
-b(1).FaceColor = [0.2 0.4 0.8]; % pyr
-b(2).FaceColor = [0.9 0.4 0.2]; % int
+b(1).FaceColor = [0 0 1]; % pyr
+b(2).FaceColor = [1 0 0]; % int
 b(1).EdgeColor = 'none';
 b(2).EdgeColor = 'none';
 b(1).FaceAlpha = 0.9;
