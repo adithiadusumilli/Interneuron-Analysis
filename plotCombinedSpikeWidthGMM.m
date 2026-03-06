@@ -89,7 +89,16 @@ figure('Color','w','Position',[100 100 700 500]);
 % slightly smaller bins than before
 binWidth_ms = 0.025;
 
-h = histogram(allWidths_ms, 'BinWidth', binWidth_ms, 'EdgeColor', 'black', 'FaceColor', [0.7 0.7 0.7]);
+% use the reference figure color scheme:
+%   bars = blue
+%   pyramidal fit = blue
+%   interneuron fit = red
+barColor = [0 0 1];
+pyrColor = [0 0 1];
+intColor = [1 0 0];
+
+h = histogram(allWidths_ms, 'BinWidth', binWidth_ms, ...
+    'EdgeColor', 'black', 'FaceColor', barColor, 'FaceAlpha', 0.6);
 hold on;
 
 x_ms = linspace(min(allWidths_ms), max(allWidths_ms), 1000);
@@ -97,13 +106,13 @@ x_ms = linspace(min(allWidths_ms), max(allWidths_ms), 1000);
 yInt = pdf('Normal', x_ms, means_ms(1), stdDevs_ms(1)) * numel(allWidths_ms) * h.BinWidth * weights(1);
 yPyr = pdf('Normal', x_ms, means_ms(2), stdDevs_ms(2)) * numel(allWidths_ms) * h.BinWidth * weights(2);
 
-plot(x_ms, yPyr, 'r', 'LineWidth', 2);
-plot(x_ms, yInt, 'g', 'LineWidth', 2);
+plot(x_ms, yPyr, 'Color', pyrColor, 'LineWidth', 2.5);
+plot(x_ms, yInt, 'Color', intColor, 'LineWidth', 2.5);
 xline(intersectionPoint_ms, 'k--', 'LineWidth', 2);
 
-xlabel('Waveform Peak-to-Peak Duration (ms)');
+xlabel('Waveform Peak-to-Peak Durations (ms)');
 ylabel('Count');
-title(sprintf('Combined %s spike widths across %d animals', char(regionToPlot), numFiles));
+title('M1 Waveform Peak-to-Peak Durations with Fit Gaussian Mixture Models');
 legend({'Widths','Pyramidal','Interneuron','Intersection'}, 'Location', 'northeast');
 box off;
 set(gca, 'FontSize', 14, 'LineWidth', 1, 'TickDir', 'out');
