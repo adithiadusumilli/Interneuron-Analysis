@@ -115,8 +115,8 @@ b(1).FaceColor = [0 0 1]; % pyr
 b(2).FaceColor = [1 0 0]; % int
 b(1).EdgeColor = 'none';
 b(2).EdgeColor = 'none';
-b(1).FaceAlpha = 0.6;
-b(2).FaceAlpha = 0.6;
+b(1).FaceAlpha = 0.75;
+b(2).FaceAlpha = 0.75;
 
 % formatting to match example style
 %set(ax,'YDir','reverse'); % 0 at top, increasing down
