@@ -188,11 +188,11 @@ behNames = local_behavior_names(U, manBehvNames, nColors);
 
 %% ---- make figure + axes ----
 fig = figure('Color','w','Position',[100 100 1100 900]);
-tl = tiledlayout(fig, 3, 1, 'TileSpacing','compact', 'Padding','compact');
+tl = tiledlayout(fig, 5, 1, 'TileSpacing','compact', 'Padding','compact');
 
-ax1 = nexttile(tl, 1); hold(ax1,'on'); % raster
-ax2 = nexttile(tl, 2); hold(ax2,'on'); % emg 1
-ax3 = nexttile(tl, 3); hold(ax3,'on'); % emg 2
+ax1 = nexttile(tl, [3 1]); hold(ax1,'on'); % raster gets 3 rows
+ax2 = nexttile(tl, [1 1]); hold(ax2,'on'); % emg 1 gets 1 row
+ax3 = nexttile(tl, [1 1]); hold(ax3,'on'); % emg 2 gets 1 row
 
 %% ---- panel 1: raster ----
 ylRaster = [0, nNeur+1];
