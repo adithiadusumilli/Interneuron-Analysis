@@ -75,23 +75,33 @@ weights = gm.ComponentProportion;
 stdDevs = stdDevs(order);
 weights = weights(order);
 
-intersectionPoint = calculateIntersectionPoint(means, stdDevs);
+intersectionPoint = calculateIntersectionPoint(means, stdDevs, weights);
+
+%% ---- convert to ms for plotting ----
+allWidths_ms = allWidths * 1000;
+means_ms = means * 1000;
+stdDevs_ms = stdDevs * 1000;
+intersectionPoint_ms = intersectionPoint * 1000;
 
 %% ---- plot histogram + fitted curves ----
 figure('Color','w','Position',[100 100 700 500]);
-h = histogram(allWidths, 'BinWidth', 1/20000, 'EdgeColor', 'black', 'FaceColor', [0.7 0.7 0.7]);
+
+% slightly smaller bins than before
+binWidth_ms = 0.025;
+
+h = histogram(allWidths_ms, 'BinWidth', binWidth_ms, 'EdgeColor', 'black', 'FaceColor', [0.7 0.7 0.7]);
 hold on;
 
-x = linspace(min(allWidths), max(allWidths), 1000);
+x_ms = linspace(min(allWidths_ms), max(allWidths_ms), 1000);
 
-yInt = pdf('Normal', x, means(1), stdDevs(1)) * numel(allWidths) * h.BinWidth * weights(1);
-yPyr = pdf('Normal', x, means(2), stdDevs(2)) * numel(allWidths) * h.BinWidth * weights(2);
+yInt = pdf('Normal', x_ms, means_ms(1), stdDevs_ms(1)) * numel(allWidths_ms) * h.BinWidth * weights(1);
+yPyr = pdf('Normal', x_ms, means_ms(2), stdDevs_ms(2)) * numel(allWidths_ms) * h.BinWidth * weights(2);
 
-plot(x, yPyr, 'r', 'LineWidth', 2);
-plot(x, yInt, 'g', 'LineWidth', 2);
-xline(intersectionPoint, 'k--', 'LineWidth', 2);
+plot(x_ms, yPyr, 'r', 'LineWidth', 2);
+plot(x_ms, yInt, 'g', 'LineWidth', 2);
+xline(intersectionPoint_ms, 'k--', 'LineWidth', 2);
 
-xlabel('Spike Width (s)');
+xlabel('Spike Width (ms)');
 ylabel('Count');
 title(sprintf('Combined %s spike widths across %d animals', char(regionToPlot), numFiles));
 legend({'Widths','Pyramidal','Interneuron','Intersection'}, 'Location', 'northeast');
@@ -100,15 +110,17 @@ set(gca, 'FontSize', 14, 'LineWidth', 1, 'TickDir', 'out');
 
 fprintf('\ncombined %s results across %d animals:\n', char(regionToPlot), numFiles);
 fprintf('n total units = %d\n', numel(allWidths));
-fprintf('narrow/interneuron mean = %.6f s\n', means(1));
-fprintf('wide/pyramidal mean = %.6f s\n', means(2));
-fprintf('intersection point = %.6f s\n', intersectionPoint);
+fprintf('narrow/interneuron mean = %.6f s (%.3f ms)\n', means(1), means_ms(1));
+fprintf('wide/pyramidal mean = %.6f s (%.3f ms)\n', means(2), means_ms(2));
+fprintf('intersection point = %.6f s (%.3f ms)\n', intersectionPoint, intersectionPoint_ms);
 
 end
 
 %% ---- helper function for calculating intersection point ----
-function intersectionPoint = calculateIntersectionPoint(means, stdDevs)
+function intersectionPoint = calculateIntersectionPoint(means, stdDevs, weights)
 gaussPDF = @(x,mu,sig) (1/(sig*sqrt(2*pi))) * exp(-(x-mu).^2/(2*sig^2));
-intersectionEquation = @(x) gaussPDF(x,means(1),stdDevs(1)) - gaussPDF(x,means(2),stdDevs(2));
+intersectionEquation = @(x) ...
+    weights(1) * gaussPDF(x,means(1),stdDevs(1)) - ...
+    weights(2) * gaussPDF(x,means(2),stdDevs(2));
 intersectionPoint = fzero(intersectionEquation, mean(means));
 end
