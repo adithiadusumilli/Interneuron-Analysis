@@ -106,14 +106,14 @@ x_ms = linspace(min(allWidths_ms), max(allWidths_ms), 1000);
 yInt = pdf('Normal', x_ms, means_ms(1), stdDevs_ms(1)) * numel(allWidths_ms) * h.BinWidth * weights(1);
 yPyr = pdf('Normal', x_ms, means_ms(2), stdDevs_ms(2)) * numel(allWidths_ms) * h.BinWidth * weights(2);
 
-plot(x_ms, yPyr, 'Color', pyrColor, 'LineWidth', 2.5);
-plot(x_ms, yInt, 'Color', intColor, 'LineWidth', 2.5);
-xline(intersectionPoint_ms, 'k--', 'LineWidth', 2);
+hPyr = plot(x_ms, yPyr, 'Color', pyrColor, 'LineWidth', 2.5);
+hInt = plot(x_ms, yInt, 'Color', intColor, 'LineWidth', 2.5);
+hX = xline(intersectionPoint_ms, 'k--', 'LineWidth', 2);
 
-xlabel('Waveform Peak-to-Peak Durations (ms)');
-ylabel('Count');
+xlabel('Waveform Peak-to-Peak Durations (ms)', 'FontSize', 18);
+ylabel('Count', 'FontSize', 18);
 title('M1 Waveform Peak-to-Peak Durations with Fit Gaussian Mixture Models');
-legend({'Widths','Pyramidal','Interneuron','Intersection'}, 'Location', 'northeast');
+legend([hPyr hInt hX], {'Pyramidal','Interneuron','Intersection'}, 'Location', 'northeast', 'FontSize', 16);
 box off;
 set(gca, 'FontSize', 14, 'LineWidth', 1, 'TickDir', 'out');
 
