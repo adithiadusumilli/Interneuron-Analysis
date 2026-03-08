@@ -1,7 +1,7 @@
 function plotSavedCrossCorrelationResults(saveFile)
 % plotSavedCrossCorrelationResults for non-chunked xc
 
-% loads saved cross-correlation outputs and redraws figures without rerunning analysis 
+% loads saved pop-avgd cross-correlation outputs and redraws figures without rerunning analysis 
 
 % j run:
 % plotSavedCrossCorrelationResults("X:\David\AnalysesData\InterneuronAnalyses\Lab Meeting Pres\4 aninals run cross correlation, no chunking, pop-wise\runCrossCorrelation_savedOutputs_all4Animals.mat")
@@ -17,7 +17,6 @@ peakLags = S.peakLags;
 peakCorrs = S.peakCorrs; %#ok<NASGU>
 lagCIAll = S.lagCIAll;
 permLagCell = S.permLagCell;
-animalLabels = S.animalLabels;
 
 nSess = numel(xcorrResults.sessions);
 
@@ -28,7 +27,7 @@ peakLagColor = [0.95 0.45 0.35];
 lagCIColor = [0 0 0];
 
 %% ---- tiled cross-correlation figure ----
-figure('Name', 'Cross-Correlation Summary (Cortex only)', 'Color', 'w');
+figure('Name', 'M1 Lag vs. Correlation', 'Color', 'w');
 tile_lay = tiledlayout(1, nSess, 'TileSpacing', 'compact', 'Padding', 'compact');
 
 for iDir = 1:nSess
@@ -40,6 +39,12 @@ for iDir = 1:nSess
         title(sprintf('Session %d (missing)', iDir));
         axis off;
         continue;
+    end
+
+    % extract animal id automatically (D026, D020, etc.)
+    animalID = regexp(sess.baseDir,'D\d+','match','once');
+    if isempty(animalID)
+        animalID = sprintf('Session %d', iDir);
     end
 
     hOrig = plot(sess.lagsSec, sess.xc, 'Color', origColor, 'LineWidth', 2);
@@ -55,7 +60,7 @@ for iDir = 1:nSess
 
     xlabel('Lag (Seconds)');
     ylabel('Correlation');
-    title(sprintf('M1 Lag vs. Correlation — %s', sess.animalLabel));
+    title(sprintf('M1 Lag vs. Correlation — %s', animalID));
     box off;
     set(gca, 'FontSize', 18, 'LineWidth', 1, 'TickDir', 'out');
 
@@ -68,7 +73,7 @@ for iDir = 1:nSess
              'Lag 95% CI (Permutation)'}, ...
             'Orientation', 'horizontal');
         lgd.Layout.Tile = 'south';
-        lgd.FontSize = 12;
+        lgd.FontSize = 16;
         lgd.Box = 'off';
     end
 end
@@ -107,7 +112,7 @@ for s = 1:nSess
 
     permLags = permLagCell{s};
     if isempty(permLags)
-        title(sprintf('%s (no perms)', animalLabels{s}));
+        title(sprintf('Session %d (no perms)', s));
         axis off;
         continue;
     end
