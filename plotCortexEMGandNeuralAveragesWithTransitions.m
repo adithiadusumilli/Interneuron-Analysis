@@ -88,7 +88,7 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
     [mPyrCx, sePyrCx] = grandMS(meanEvt(pyrCxPool));
     [mIntCx, seIntCx] = grandMS(meanEvt(intCxPool));
 
-    % ---------------- 5. figure 1: cortex-only neural averages exactly in your yyaxis style ----------------
+    % ---------------- 5. figure 1: cortex-only neural averages exactly in yyaxis style ----------------
     figure('Name','Unshifted Cortex Neural Activity with Shift Percentile Bounds','Color','w');
     hold on;
 
