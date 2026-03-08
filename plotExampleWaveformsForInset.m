@@ -55,6 +55,30 @@ plotSingleWaveformInset(neuronDataStruct(pyrExampleInd), fs, [0 0 1], 'Pyramidal
 %% ---- plot interneuron waveform ----
 plotSingleWaveformInset(neuronDataStruct(intExampleInd), fs, [1 0 0], 'Interneuron Example');
 
+%% ---- plot total neuron counts ----
+figure('Color','w','Position',[100 100 320 260]);
+ax = axes; hold(ax,'on');
+
+nPyr = numel(pyrInds);
+nInt = numel(intInds);
+
+b1 = bar(ax, 1, nPyr, 'FaceColor', [0 0 1], 'EdgeColor', 'none');
+b2 = bar(ax, 2, nInt, 'FaceColor', [1 0 0], 'EdgeColor', 'none');
+
+b1.FaceAlpha = 0.75;
+b2.FaceAlpha = 0.75;
+
+xlim(ax, [0.4 2.6]);
+xticks(ax, [1 2]);
+xticklabels(ax, {'Pyramidal','Interneuron'});
+ylabel(ax, 'Count');
+title(ax, 'Total Cortex Neuron Counts', 'FontSize', 14);
+
+box(ax,'off');
+ax.LineWidth = 1.2;
+ax.FontSize = 12;
+ax.TickDir = 'out';
+
 end
 
 function [pyrExampleInd, intExampleInd] = pickRepresentativeExamples(neuronDataStruct, pyrInds, intInds, fs)
