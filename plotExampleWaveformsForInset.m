@@ -72,11 +72,11 @@ xlim(ax, [0.4 2.6]);
 xticks(ax, [1 2]);
 xticklabels(ax, {'Pyramidal','Interneuron'});
 ylabel(ax, 'Count');
-title(ax, 'Total Cortex Neuron Counts', 'FontSize', 14);
+title(ax, 'Total Cortex Neuron Counts', 'FontSize', 16);
 
 box(ax,'off');
 ax.LineWidth = 1.2;
-ax.FontSize = 12;
+ax.FontSize = 16;
 ax.TickDir = 'out';
 
 end
@@ -176,8 +176,8 @@ yBar      = min(ylim(ax)) + 0.15*yRange;
 
 plot(ax, [xBarStart xBarEnd], [yBar yBar], 'k', 'LineWidth', 2);
 text(mean([xBarStart xBarEnd]), yBar - 0.10*yRange, '0.5 ms', ...
-    'HorizontalAlignment','center', 'VerticalAlignment','top', 'FontSize', 12);
+    'HorizontalAlignment','center', 'VerticalAlignment','top', 'FontSize', 16);
 
-title(ax, figTitle, 'FontSize', 14);
+title(ax, figTitle, 'FontSize', 16);
 
 end
