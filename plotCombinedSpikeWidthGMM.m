@@ -113,7 +113,7 @@ hX = xline(intersectionPoint_ms, 'k--', 'LineWidth', 2);
 xlabel('Waveform Peak-to-Peak Durations (ms)', 'FontSize', 20);
 ylabel('Count', 'FontSize', 20);
 title('M1 Waveform Peak-to-Peak Durations with Fit Gaussian Mixture Models', 'FontSize', 22);
-legend([hPyr hInt hX], {'Pyramidal Neuron','Interneuron','Intersection'}, 'Location', 'northeast', 'FontSize', 18);
+legend([hPyr hInt hX], {'Pyramidal Neuron Fit','Interneuron Fit','Intersection'}, 'Location', 'northeast', 'FontSize', 18);
 box off;
 set(gca, 'FontSize', 16, 'LineWidth', 1, 'TickDir', 'out');
 
