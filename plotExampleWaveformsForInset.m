@@ -72,7 +72,7 @@ xlim(ax, [0.4 2.6]);
 xticks(ax, [1 2]);
 xticklabels(ax, {'Pyramidal','Interneuron'});
 ylabel(ax, 'Count');
-title(ax, 'Total Cortex Neuron Counts', 'FontSize', 16);
+title(ax, 'M1 Neuron Counts', 'FontSize', 16);
 
 box(ax,'off');
 ax.LineWidth = 1.2;
