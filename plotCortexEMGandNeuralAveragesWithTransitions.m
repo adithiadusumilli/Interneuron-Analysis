@@ -245,58 +245,61 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
 
     % ---------------- 8. figure 3: neural aligned plot with mean emg subplot underneath ----------------
     figure('Name','Cortex Neural Activity with EMG Subplot','Color','w');
-    tl = tiledlayout(2, 1, 'TileSpacing', 'tight', 'Padding', 'compact');
+    tl = tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
 
     % neural subplot
-    nexttile; hold on;
+    axNeural = nexttile; hold on;
 
     yyaxis left
     hPyr2 = shadedErrorBar(S.tAxis, mPyrCx, sePyrCx, 'lineProps', {'b', 'LineWidth', 1.5});
     hPyrLo2 = plot(S.tAxis, pyrCx_pct(1,:), 'b--', 'LineWidth', 1.0);
     hPyrHi2 = plot(S.tAxis, pyrCx_pct(2,:), 'b--', 'LineWidth', 1.0);
-    ylabel('Pyramidal Firing Rate', 'FontSize', 18);
-
+    ylabel('Pyramidal Firing Rate','FontSize',18)
+    
     yyaxis right
     hInt2 = shadedErrorBar(S.tAxis, mIntCx, seIntCx, 'lineProps', {'r', 'LineWidth', 1.5});
     hIntLo2 = plot(S.tAxis, intCx_pct(1,:), 'r--', 'LineWidth', 1.0);
     hIntHi2 = plot(S.tAxis, intCx_pct(2,:), 'r--', 'LineWidth', 1.0);
-    ylabel('Interneuron Firing Rate', 'FontSize', 18);
+    ylabel('Interneuron Firing Rate','FontSize',18)
 
-    xline(0, 'k:', 'LineWidth', 1);
-    box off;
+    xline(0,'k:','LineWidth',1)
 
-    ax4 = gca;
-    ax4.FontSize = 16;
-    ax4.LineWidth = 1;
-    ax4.TickDir = 'out';
+    title('Cortex Neural Activity Aligned to EMG Transition Events','FontSize',18)
+
+    axNeural.FontSize = 16;
+    axNeural.LineWidth = 1;
+    axNeural.TickDir = 'out';
+    box off
 
     yyaxis left
-    ax4.YAxis(1).Exponent = 0;
+    axNeural.YAxis(1).Exponent = 0;
     yyaxis right
-    ax4.YAxis(2).Exponent = 0;
+    axNeural.YAxis(2).Exponent = 0;
 
-    title('Cortex Neural Activity Aligned to EMG Transition Events', 'FontSize', 18);
-
-    legend([hPyr2.mainLine, hPyrLo2, hInt2.mainLine, hIntLo2], ...
-        {'Pyramidal Mean \pm SEM', ...
+    % legend placed UNDER the neural subplot
+    lgd = legend([hPyr2.mainLine hPyrLo2 hInt2.mainLine hIntLo2], ...
+        {'Pyramidal Mean ± SEM', ...
          'Pyramidal Shifted 95% Bounds', ...
-         'Interneuron Mean \pm SEM', ...
+         'Interneuron Mean ± SEM', ...
          'Interneuron Shifted 95% Bounds'}, ...
-        'Location', 'best');
+         'Orientation','horizontal');
+
+    lgd.Layout.Tile = 'south';
+    lgd.FontSize = 14;
+    lgd.Box = 'off';
 
     % emg subplot
-    nexttile; hold on;
-    hEMG = shadedErrorBar(S.tAxis, mEMG, seEMG, 'lineProps', {'k', 'LineWidth', 1.5});
-    xline(0, 'k:', 'LineWidth', 1);
-    xlabel('Time Relative to EMG Transition (ms)', 'FontSize', 18);
-    ylabel('EMG Amplitude', 'FontSize', 18);
-    title('Mean EMG Aligned to Transition Events', 'FontSize', 18);
-    box off;
+    axEMG = nexttile; hold on;
 
-    ax5 = gca;
-    ax5.FontSize = 16;
-    ax5.LineWidth = 1;
-    ax5.TickDir = 'out';
+    shadedErrorBar(S.tAxis, mEMG, seEMG, 'lineProps', {'k','LineWidth',1.5});
+    xline(0,'k:','LineWidth',1)
 
-    sgtitle(tl, 'Cortex Neural Activity and EMG Aligned to EMG Transition Events', 'FontSize', 18);
+    xlabel('Time Relative to EMG Transition (ms)','FontSize',18)
+    ylabel('EMG Amplitude','FontSize',18)
+    title('Mean EMG Aligned to Transition Events','FontSize',18)
+
+    axEMG.FontSize = 16;
+    axEMG.LineWidth = 1;
+    axEMG.TickDir = 'out';
+    box off
 end
