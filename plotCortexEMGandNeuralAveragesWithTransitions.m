@@ -1,7 +1,7 @@
 function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
 % plots three cortex-only figures:
 %  1) cortex pyramidal/interneuron averages aligned to emg transition events with shifted percentile bounds
-%  2) zoomed channel 1 emg transition panel + full-session cortex firing rates
+%  2) zoomed channel 1 emg transition panel + cortex firing rates
 %  3) cortex neural activity aligned to emg transitions with mean emg subplot underneath
 
 % inputs
@@ -119,7 +119,7 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
 
     t1 = title('Cortex Neural Activity Aligned to EMG Transition Events', 'FontSize', 18);
     t1.Units = 'normalized';
-    t1.Position(2) = 1.08;
+    t1.Position(2) = 0.98;
 
     legend([hPyr.mainLine, hPyrLo, hInt.mainLine, hIntLo], ...
         {'Pyramidal Mean \pm SEM', ...
@@ -212,8 +212,9 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
     end
 
     title('Channel 1 EMG Detected Transitions', 'FontSize', 16);
-    xlabel('time (ms)', 'FontSize', 16);
-    ylabel('emg amplitude', 'FontSize', 16);
+    xlabel('Time (ms)', 'FontSize', 16);
+    ylabel('Emg Amplitude', 'FontSize', 16);
+    xlim([t0 t1]);
     box off;
 
     ax2 = gca;
@@ -234,6 +235,7 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
     ylabel('Mean Firing Rate', 'FontSize', 16);
     title('M1 Firing Rates Corresponding to EMG Channel 1 Detected Transitions', 'FontSize', 16);
     legend({'Pyramidal Neuron','Interneuron'}, 'Location', 'best');
+    xlim([t0 t1]);
     box off;
 
     ax3 = gca;
