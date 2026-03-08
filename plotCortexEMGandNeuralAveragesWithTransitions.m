@@ -211,7 +211,7 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
         plot(snippetTransitions, signalCh1(snippetTransitions), 'r*');
     end
 
-    title('channel 1 emg with detected transitions', 'FontSize', 16);
+    title('Channel 1 EMG Detected Transitions', 'FontSize', 16);
     xlabel('time (ms)', 'FontSize', 16);
     ylabel('emg amplitude', 'FontSize', 16);
     box off;
@@ -221,7 +221,7 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
     ax2.LineWidth = 1;
     ax2.TickDir = 'out';
 
-    % -- bottom subplot: full-session cortex pyramidal/interneuron mean firing rates, zoomed to same snippet --
+    % -- bottom subplot: M1 Neural Firing Rates --
     nexttile; hold on;
     plot(snippetIdx, meanPyrFull(snippetIdx), 'b', 'LineWidth', 1.5);
     plot(snippetIdx, meanIntFull(snippetIdx), 'r', 'LineWidth', 1.5);
@@ -230,10 +230,10 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
         xline(snippetTransitions(iT), ':', 'Color', [0.7 0.7 0.7], 'LineWidth', 0.75);
     end
 
-    xlabel('time (ms)', 'FontSize', 16);
-    ylabel('mean firing rate', 'FontSize', 16);
-    title('zoomed full-session cortex firing rates with channel 1 transition times', 'FontSize', 16);
-    legend({'pyramidal','interneuron'}, 'Location', 'best');
+    xlabel('Time (ms)', 'FontSize', 16);
+    ylabel('Mean Firing Rate', 'FontSize', 16);
+    title('M1 Firing Rates Corresponding to EMG Channel 1 Detected Transitions', 'FontSize', 16);
+    legend({'Pyramidal Neuron','Interneuron'}, 'Location', 'best');
     box off;
 
     ax3 = gca;
@@ -241,10 +241,10 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
     ax3.LineWidth = 1;
     ax3.TickDir = 'out';
 
-    sgtitle('Channel 1 EMG Transitions and Cortex Population Activity', 'FontSize', 18);
+    % sgtitle('Channel 1 EMG Transitions and M1 Neural Activity', 'FontSize', 18);
 
     % ---------------- 8. figure 3: neural aligned plot with mean emg subplot underneath ----------------
-    figure('Name','Cortex Neural Activity with EMG Subplot','Color','w');
+    figure('Name','M1 Neural Activity with EMG Subplot','Color','w');
     tl = tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
 
     % neural subplot
@@ -254,7 +254,7 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
     hPyr2 = shadedErrorBar(S.tAxis, mPyrCx, sePyrCx, 'lineProps', {'b', 'LineWidth', 1.5});
     hPyrLo2 = plot(S.tAxis, pyrCx_pct(1,:), 'b--', 'LineWidth', 1.0);
     hPyrHi2 = plot(S.tAxis, pyrCx_pct(2,:), 'b--', 'LineWidth', 1.0);
-    ylabel('Pyramidal Firing Rate','FontSize',18)
+    ylabel('Pyramidal Neuron Firing Rate','FontSize',18)
     
     yyaxis right
     hInt2 = shadedErrorBar(S.tAxis, mIntCx, seIntCx, 'lineProps', {'r', 'LineWidth', 1.5});
@@ -264,7 +264,7 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
 
     xline(0,'k:','LineWidth',1)
 
-    title('Cortex Neural Activity Aligned to EMG Transition Events','FontSize',18)
+    title('M1 Neural Activity During EMG Transition Windows','FontSize',18)
 
     axNeural.FontSize = 16;
     axNeural.LineWidth = 1;
@@ -276,13 +276,13 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
     yyaxis right
     axNeural.YAxis(2).Exponent = 0;
 
-    % legend placed UNDER the neural subplot
-    lgd = legend([hPyr2.mainLine hPyrLo2 hInt2.mainLine hIntLo2], ...
+    lgd = legend(axNeural, ...
+        [hPyr2.mainLine hPyrLo2 hInt2.mainLine hIntLo2], ...
         {'Pyramidal Mean ± SEM', ...
-         'Pyramidal Shifted 95% Bounds', ...
+         'Pyramidal Neuron Shifted 95% Bounds', ...
          'Interneuron Mean ± SEM', ...
          'Interneuron Shifted 95% Bounds'}, ...
-         'Orientation','horizontal');
+        'Orientation','horizontal');
 
     lgd.Layout.Tile = 'south';
     lgd.FontSize = 14;
