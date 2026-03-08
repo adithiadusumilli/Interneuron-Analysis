@@ -1,11 +1,12 @@
 function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
-% plots two cortex-only figures:
+% plots three cortex-only figures:
 %  1) cortex pyramidal/interneuron averages aligned to emg transition events with shifted percentile bounds
-%  2) zoomed full-session combined emg transition panel + full-session cortex firing rates
-%
+%  2) zoomed channel 1 emg transition panel + full-session cortex firing rates
+%  3) cortex neural activity aligned to emg transitions with mean emg subplot underneath
+
 % inputs
 %   datafile: full path to emg_neural_allchannels.mat
-%   channelstouse: vector with channel indices to pool / display (default = 1:4)
+%   channelstouse: vector with channel indices to pool for the aligned averages (default = 1:4)
 
     if nargin < 2
         channelsToUse = 1:4;
@@ -33,7 +34,7 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
         'intCxWinShiftedMeanCell', ...
         'validTransitionsCell');
 
-    % ---------------- 1. pool requested channels for the averaged figure ----------------
+    % ---------------- 1. pool requested channels for the averaged figures ----------------
     emgPool = [];      % events x time
     pyrCxPool = [];    % events x neurons x time
     intCxPool = [];
@@ -77,7 +78,7 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
 
     % ---------------- 3. compute mean & sem for emg ----------------
     mEMG = mean(emgPool, 1, 'omitnan');
-    seEMG = std(emgPool, 0, 1, 'omitnan') ./ sqrt(size(emgPool,1)); %#ok<NASGU>
+    seEMG = std(emgPool, 0, 1, 'omitnan') ./ sqrt(size(emgPool,1));
 
     % ---------------- 4. compute cortex neural mean ± sem ----------------
     meanEvt = @(M) squeeze(mean(M, 2, 'omitnan'));   % average across neurons -> events x time
@@ -86,30 +87,46 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
     [mPyrCx, sePyrCx] = grandMS(meanEvt(pyrCxPool));
     [mIntCx, seIntCx] = grandMS(meanEvt(intCxPool));
 
-    % ---------------- 5. figure 1: cortex-only neural averages exactly in your yyaxis style ----------------
-    figure('Name','Unshifted Cortex Neural Activity with Shift Percentile Bounds','Color','w');
+    % ---------------- 5. figure 1: cortex-only neural averages in yyaxis style ----------------
+    figure('Name','Cortex Neural Activity Aligned to EMG Transition Events','Color','w');
     hold on;
 
     yyaxis left
-    shadedErrorBar(S.tAxis, mPyrCx, sePyrCx, 'lineProps', {'b', 'LineWidth', 1.5});
-    plot(S.tAxis, pyrCx_pct(1,:), 'b--');
-    plot(S.tAxis, pyrCx_pct(2,:), 'b--');
+    hPyr = shadedErrorBar(S.tAxis, mPyrCx, sePyrCx, 'lineProps', {'b', 'LineWidth', 1.5});
+    hPyrLo = plot(S.tAxis, pyrCx_pct(1,:), 'b--', 'LineWidth', 1.0);
+    hPyrHi = plot(S.tAxis, pyrCx_pct(2,:), 'b--', 'LineWidth', 1.0);
     ylabel('Pyramidal Firing Rate', 'FontSize', 18);
 
     yyaxis right
-    shadedErrorBar(S.tAxis, mIntCx, seIntCx, 'lineProps', {'r', 'LineWidth', 1.5});
-    plot(S.tAxis, intCx_pct(1,:), 'r--');
-    plot(S.tAxis, intCx_pct(2,:), 'r--');
+    hInt = shadedErrorBar(S.tAxis, mIntCx, seIntCx, 'lineProps', {'r', 'LineWidth', 1.5});
+    hIntLo = plot(S.tAxis, intCx_pct(1,:), 'r--', 'LineWidth', 1.0);
+    hIntHi = plot(S.tAxis, intCx_pct(2,:), 'r--', 'LineWidth', 1.0);
     ylabel('Interneuron Firing Rate', 'FontSize', 18);
 
     xlabel('Time Relative to EMG Transition (ms)', 'FontSize', 18);
-    sgtitle('Cortex Neural Activity Aligned to EMG Transition Events with 95% Shifted Percentile Bounds', 'FontSize', 18);
 
     ax1 = gca;
     ax1.FontSize = 16;
     ax1.LineWidth = 1;
     ax1.TickDir = 'out';
     box off;
+
+    % remove exponent text / scientific notation offset so it does not overlap the title
+    yyaxis left
+    ax1.YAxis(1).Exponent = 0;
+    yyaxis right
+    ax1.YAxis(2).Exponent = 0;
+
+    t1 = title('Cortex Neural Activity Aligned to EMG Transition Events', 'FontSize', 18);
+    t1.Units = 'normalized';
+    t1.Position(2) = 1.08;
+
+    legend([hPyr.mainLine, hPyrLo, hInt.mainLine, hIntLo], ...
+        {'Pyramidal Mean \pm SEM', ...
+         'Pyramidal Shifted 95% Bounds', ...
+         'Interneuron Mean \pm SEM', ...
+         'Interneuron Shifted 95% Bounds'}, ...
+        'Location', 'best');
 
     % ---------------- 6. load full-session emg and cortex firing rates ----------------
     E = load(fullfile(baseDir, 'EMG1ms.mat'));
@@ -156,58 +173,51 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
     meanIntFull = mean(intFRs, 1, 'omitnan');
     meanPyrFull = mean(pyrFRs, 1, 'omitnan');
 
-    % ---------------- 7. combine transitions across selected channels ----------------
-    allTransitions = [];
-    for ch = channelsToUse
-        if ch <= numel(S.validTransitionsCell) && ~isempty(S.validTransitionsCell{ch})
-            allTransitions = [allTransitions; S.validTransitionsCell{ch}(:)]; %#ok<AGROW>
-        end
-    end
-    allTransitions = unique(allTransitions(:));
-    allTransitions = allTransitions(~isnan(allTransitions));
-    allTransitions = sort(allTransitions);
+    % ---------------- 7. figure 2: zoomed channel 1 emg transition panel + cortex firing rates ----------------
+    selectedChannel = 1;
 
-    if isempty(allTransitions)
-        error('no valid transitions found for the selected channels.');
+    if selectedChannel > size(emgAll,1)
+        error('channel 1 does not exist in EMG data.');
     end
 
-    % build one combined emg signal by averaging across the selected channels
-    validChannels = channelsToUse(channelsToUse >= 1 & channelsToUse <= size(emgAll,1));
-    combinedSignal = mean(emgAll(validChannels, :), 1, 'omitnan');
+    signalCh1 = emgAll(selectedChannel, :);
 
-    % ---------------- 8. choose a zoomed snippet around a dense transition region ----------------
-    % use the middle transition as the center of the snippet
-    centerTransition = allTransitions(round(numel(allTransitions)/2));
+    if selectedChannel <= numel(S.validTransitionsCell) && ~isempty(S.validTransitionsCell{selectedChannel})
+        transitionsCh1 = S.validTransitionsCell{selectedChannel}(:);
+        transitionsCh1 = transitionsCh1(~isnan(transitionsCh1));
+        transitionsCh1 = transitionsCh1(transitionsCh1 >= 1 & transitionsCh1 <= numel(signalCh1));
+        transitionsCh1 = sort(unique(transitionsCh1));
+    else
+        error('no valid transitions found for channel 1.');
+    end
 
-    % show a 20-second window (20000 ms) centered around that transition
+    % choose a zoomed snippet around the middle detected transition in channel 1
+    centerTransition = transitionsCh1(round(numel(transitionsCh1)/2));
     snippetHalfWidth = 10000; % ms on each side
     t0 = max(1, centerTransition - snippetHalfWidth);
-    t1 = min(numel(combinedSignal), centerTransition + snippetHalfWidth);
-
+    t1 = min(numel(signalCh1), centerTransition + snippetHalfWidth);
     snippetIdx = t0:t1;
 
-    % transitions that fall inside the snippet
-    snippetTransitions = allTransitions(allTransitions >= t0 & allTransitions <= t1);
+    snippetTransitions = transitionsCh1(transitionsCh1 >= t0 & transitionsCh1 <= t1);
 
-    % ---------------- 9. figure 2: zoomed combined transition-time panel + cortex firing rates ----------------
-    figure('Name','Detected EMG Transitions and Cortex Population Activity','Color','w');
+    figure('Name','Channel 1 EMG Transitions and Cortex Population Activity','Color','w');
     tiledlayout(2, 1, 'TileSpacing', 'tight', 'Padding', 'compact');
 
-    % -- top subplot: combined emg with detected transitions --
+    % -- top subplot: channel 1 emg with detected transitions --
     nexttile; hold on;
-    plot(snippetIdx, combinedSignal(snippetIdx), 'k');
+    plot(snippetIdx, signalCh1(snippetIdx), 'k');
 
     if ~isempty(snippetTransitions)
-        plot(snippetTransitions, combinedSignal(snippetTransitions), 'r*');
+        plot(snippetTransitions, signalCh1(snippetTransitions), 'r*');
     end
 
-    title(sprintf('combined emg with detected transitions | channels [%s]', num2str(validChannels)));
-    xlabel('time (ms)');
-    ylabel('emg amplitude');
+    title('channel 1 emg with detected transitions', 'FontSize', 16);
+    xlabel('time (ms)', 'FontSize', 16);
+    ylabel('emg amplitude', 'FontSize', 16);
     box off;
 
     ax2 = gca;
-    ax2.FontSize = 16;
+    ax2.FontSize = 14;
     ax2.LineWidth = 1;
     ax2.TickDir = 'out';
 
@@ -220,16 +230,73 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
         xline(snippetTransitions(iT), ':', 'Color', [0.7 0.7 0.7], 'LineWidth', 0.75);
     end
 
-    xlabel('time (ms)');
-    ylabel('mean firing rate');
-    title('zoomed full-session cortex firing rates with emg transition times');
+    xlabel('time (ms)', 'FontSize', 16);
+    ylabel('mean firing rate', 'FontSize', 16);
+    title('zoomed full-session cortex firing rates with channel 1 transition times', 'FontSize', 16);
     legend({'pyramidal','interneuron'}, 'Location', 'best');
     box off;
 
     ax3 = gca;
-    ax3.FontSize = 16;
+    ax3.FontSize = 14;
     ax3.LineWidth = 1;
     ax3.TickDir = 'out';
 
-    sgtitle('Zoomed Combined EMG Transition Panel and Cortex Population Activity', 'FontSize', 18);
+    sgtitle('Channel 1 EMG Transitions and Cortex Population Activity', 'FontSize', 18);
+
+    % ---------------- 8. figure 3: neural aligned plot with mean emg subplot underneath ----------------
+    figure('Name','Cortex Neural Activity with EMG Subplot','Color','w');
+    tl = tiledlayout(2, 1, 'TileSpacing', 'tight', 'Padding', 'compact');
+
+    % neural subplot
+    nexttile; hold on;
+
+    yyaxis left
+    hPyr2 = shadedErrorBar(S.tAxis, mPyrCx, sePyrCx, 'lineProps', {'b', 'LineWidth', 1.5});
+    hPyrLo2 = plot(S.tAxis, pyrCx_pct(1,:), 'b--', 'LineWidth', 1.0);
+    hPyrHi2 = plot(S.tAxis, pyrCx_pct(2,:), 'b--', 'LineWidth', 1.0);
+    ylabel('Pyramidal Firing Rate', 'FontSize', 18);
+
+    yyaxis right
+    hInt2 = shadedErrorBar(S.tAxis, mIntCx, seIntCx, 'lineProps', {'r', 'LineWidth', 1.5});
+    hIntLo2 = plot(S.tAxis, intCx_pct(1,:), 'r--', 'LineWidth', 1.0);
+    hIntHi2 = plot(S.tAxis, intCx_pct(2,:), 'r--', 'LineWidth', 1.0);
+    ylabel('Interneuron Firing Rate', 'FontSize', 18);
+
+    xline(0, 'k:', 'LineWidth', 1);
+    box off;
+
+    ax4 = gca;
+    ax4.FontSize = 16;
+    ax4.LineWidth = 1;
+    ax4.TickDir = 'out';
+
+    yyaxis left
+    ax4.YAxis(1).Exponent = 0;
+    yyaxis right
+    ax4.YAxis(2).Exponent = 0;
+
+    title('Cortex Neural Activity Aligned to EMG Transition Events', 'FontSize', 18);
+
+    legend([hPyr2.mainLine, hPyrLo2, hInt2.mainLine, hIntLo2], ...
+        {'Pyramidal Mean \pm SEM', ...
+         'Pyramidal Shifted 95% Bounds', ...
+         'Interneuron Mean \pm SEM', ...
+         'Interneuron Shifted 95% Bounds'}, ...
+        'Location', 'best');
+
+    % emg subplot
+    nexttile; hold on;
+    hEMG = shadedErrorBar(S.tAxis, mEMG, seEMG, 'lineProps', {'k', 'LineWidth', 1.5});
+    xline(0, 'k:', 'LineWidth', 1);
+    xlabel('Time Relative to EMG Transition (ms)', 'FontSize', 18);
+    ylabel('EMG Amplitude', 'FontSize', 18);
+    title('Mean EMG Aligned to Transition Events', 'FontSize', 18);
+    box off;
+
+    ax5 = gca;
+    ax5.FontSize = 16;
+    ax5.LineWidth = 1;
+    ax5.TickDir = 'out';
+
+    sgtitle(tl, 'Cortex Neural Activity and EMG Aligned to EMG Transition Events', 'FontSize', 18);
 end
