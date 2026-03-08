@@ -110,12 +110,12 @@ hPyr = plot(x_ms, yPyr, 'Color', pyrColor, 'LineWidth', 2.5);
 hInt = plot(x_ms, yInt, 'Color', intColor, 'LineWidth', 2.5);
 hX = xline(intersectionPoint_ms, 'k--', 'LineWidth', 2);
 
-xlabel('Waveform Peak-to-Peak Durations (ms)', 'FontSize', 18);
-ylabel('Count', 'FontSize', 18);
+xlabel('Waveform Peak-to-Peak Durations (ms)', 'FontSize', 20);
+ylabel('Count', 'FontSize', 20);
 title('M1 Waveform Peak-to-Peak Durations with Fit Gaussian Mixture Models');
-legend([hPyr hInt hX], {'Pyramidal','Interneuron','Intersection'}, 'Location', 'northeast', 'FontSize', 16);
+legend([hPyr hInt hX], {'Pyramidal','Interneuron','Intersection'}, 'Location', 'northeast', 'FontSize', 18);
 box off;
-set(gca, 'FontSize', 14, 'LineWidth', 1, 'TickDir', 'out');
+set(gca, 'FontSize', 16, 'LineWidth', 1, 'TickDir', 'out');
 
 fprintf('\ncombined %s results across %d animals:\n', char(regionToPlot), numFiles);
 fprintf('n total units = %d\n', numel(allWidths));
