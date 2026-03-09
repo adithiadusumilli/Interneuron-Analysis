@@ -27,7 +27,7 @@ FDRresults.sourceFile = saveFile;
 FDRresults.alpha = alpha;
 FDRresults.flag = flag;
 FDRresults.tailType = char(tailType);
-FDRresults.sessions = repmat(struct(), 1, nSess);
+FDRresults.sessions = struct([]);
 
 for s = 1:nSess
     sess = allSessions.sessions(s);
@@ -107,7 +107,31 @@ for s = 1:nSess
         end
     end
 
-    out = sess;
+    out = struct();
+    out.sessInd = sess.sessInd;
+    out.baseDir = sess.baseDir;
+    out.combinedFile = sess.combinedFile;
+    out.lags = sess.lags;
+    out.binSize = sess.binSize;
+    out.nInt = sess.nInt;
+    out.nPyr = sess.nPyr;
+    out.nAll = sess.nAll;
+    out.typeVec = sess.typeVec;
+    out.numBins = sess.numBins;
+    out.xcMatAll = sess.xcMatAll;
+    out.peakCorrMatAll = sess.peakCorrMatAll;
+    out.peakLagMatAll = sess.peakLagMatAll;
+    out.nullCorrMatAllShifts = sess.nullCorrMatAllShifts;
+    out.nullCorrPrctile2p5 = sess.nullCorrPrctile2p5;
+    out.nullCorrPrctile97p5 = sess.nullCorrPrctile97p5;
+    out.nullCorrMean = sess.nullCorrMean;
+    out.nullCorrStd = sess.nullCorrStd;
+    out.realRowDone = sess.realRowDone;
+    out.shiftDone = sess.shiftDone;
+    out.realRows = sess.realRows;
+    out.shiftNums = sess.shiftNums;
+    out.shiftAmtPerNeuronAll = sess.shiftAmtPerNeuronAll;
+
     out.animalID = animalID;
     out.alpha = alpha;
     out.flag = flag;
