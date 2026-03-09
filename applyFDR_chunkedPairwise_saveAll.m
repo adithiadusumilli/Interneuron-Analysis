@@ -58,31 +58,54 @@ for s = 1:nSess
         nullVals(:,k) = tmp(keepLinear);
     end
 
-    valid = ~isnan(realVals) & all(~isnan(nullVals),2);
-    keepLinear = keepLinear(valid);
-    realVals = realVals(valid);
-    nullVals = nullVals(valid,:);
+    % keep rows where real value exists
+    validReal = ~isnan(realVals);
+    keepLinear = keepLinear(validReal);
+    realVals = realVals(validReal);
+    nullVals = nullVals(validReal,:);
 
     pVals = nan(size(realVals));
 
     for i = 1:numel(realVals)
+        thisNull = nullVals(i,:);
+        thisNull = thisNull(~isnan(thisNull) & isfinite(thisNull));
+        thisReal = realVals(i);
+
+        % require at least a modest number of valid null draws
+        if isnan(thisReal) || ~isfinite(thisReal) || numel(thisNull) < 10
+            pVals(i) = NaN;
+            continue;
+        end
+
         switch tailType
             case "right"
-                pVals(i) = (sum(nullVals(i,:) >= realVals(i)) + 1) / (nNull + 1);
+                pVals(i) = (sum(thisNull >= thisReal) + 1) / (numel(thisNull) + 1);
+
             case "left"
-                pVals(i) = (sum(nullVals(i,:) <= realVals(i)) + 1) / (nNull + 1);
+                pVals(i) = (sum(thisNull <= thisReal) + 1) / (numel(thisNull) + 1);
+
             case "two"
-                mu = mean(nullVals(i,:), 'omitnan');
-                realDev = abs(realVals(i) - mu);
-                nullDev = abs(nullVals(i,:) - mu);
-                pVals(i) = (sum(nullDev >= realDev) + 1) / (nNull + 1);
+                mu = mean(thisNull, 'omitnan');
+                realDev = abs(thisReal - mu);
+                nullDev = abs(thisNull - mu);
+                pVals(i) = (sum(nullDev >= realDev) + 1) / (numel(thisNull) + 1);
+
             otherwise
                 error('tailType must be "right", "left", or "two".');
         end
     end
 
-    fdrCut = FDRcutoff(pVals, alpha, flag);
-    sigVec = pVals <= fdrCut;
+    % only pass valid p-values into FDR
+    validP = ~isnan(pVals) & isfinite(pVals);
+
+    if any(validP)
+        fdrCut = FDRcutoff(pVals(validP), alpha, flag);
+    else
+        fdrCut = 0;
+    end
+
+    sigVec = false(size(pVals));
+    sigVec(validP) = pVals(validP) <= fdrCut;
 
     pMat = nan(n);
     sigMaskFDR = false(n);
@@ -139,7 +162,7 @@ for s = 1:nSess
     out.alpha = alpha;
     out.flag = flag;
     out.tailType = char(tailType);
-    out.nTests = numel(pVals);
+    out.nTests = nnz(validP);
     out.nSignificant = nnz(triu(sigMaskFDR,1));
     out.fdrCutoff = fdrCut;
     out.pMat = pMat;
@@ -150,7 +173,7 @@ for s = 1:nSess
 
     FDRresults.sessions{s} = out;
 
-    fprintf('%s | tests=%d | significant=%d | cutoff=%.6g\n', ...
+    fprintf('%s | valid tests=%d | significant=%d | cutoff=%.6g\n', ...
         animalID, out.nTests, out.nSignificant, out.fdrCutoff);
 end
 
