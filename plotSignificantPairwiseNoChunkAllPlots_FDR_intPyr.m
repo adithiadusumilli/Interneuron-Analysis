@@ -60,19 +60,31 @@ for sess = 1:numSessions
 
     fprintf('\n=== %s ===\n', animalID);
     fprintf('int x pyr pairs: %d total | %d significant\n', totalPairs, sigPairs);
+    fprintf('%s: heatmap non-nan entries = %d\n', animalID, nnz(~isnan(sigCorrMat)));
 
-    % ---- lag bin edges ----
-    if ~isempty(sigLagVec)
-        minLagSec = floor(min(sigLagVec)*1000)/1000;
-        maxLagSec = ceil(max(sigLagVec)*1000)/1000;
-    elseif ~isempty(allLagVec)
-        minLagSec = floor(min(allLagVec)*1000)/1000;
-        maxLagSec = ceil(max(allLagVec)*1000)/1000;
-    else
-        minLagSec = -0.2;
-        maxLagSec = 0.2;
+    % ---- robust lag bin edges ----
+    lagSource = sigLagVec(~isnan(sigLagVec) & isfinite(sigLagVec));
+    if isempty(lagSource)
+        lagSource = allLagVec(~isnan(allLagVec) & isfinite(allLagVec));
     end
-    lagBinEdgesSec = (minLagSec-0.001):0.001:(maxLagSec+0.001);
+
+    if isempty(lagSource)
+        lagBinEdgesSec = -0.201:0.001:0.201;
+    else
+        minLagSec = floor(min(lagSource)*1000)/1000;
+        maxLagSec = ceil(max(lagSource)*1000)/1000;
+
+        if minLagSec == maxLagSec
+            minLagSec = minLagSec - 0.001;
+            maxLagSec = maxLagSec + 0.001;
+        end
+
+        lagBinEdgesSec = minLagSec:0.001:maxLagSec;
+
+        if numel(lagBinEdgesSec) < 2
+            lagBinEdgesSec = [minLagSec-0.001, maxLagSec+0.001];
+        end
+    end
 
     % ==================== heatmap: peak correlation ====================
     figure('Name', sprintf('%s – NO-CHUNK int-pyr significant peak corr heatmap', animalID), 'Color', 'w');
@@ -129,24 +141,24 @@ for sess = 1:numSessions
     grid on;
 
     % ==================== histogram: peak correlations > 0.2 ====================
-    corrOverThresh = allCorrVec(allCorrVec > 0.2);
-    figure;
-    histogram(corrOverThresh, 50, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
-    xlabel('peak correlation (> 0.2)');
-    ylabel('count');
-    title(sprintf('%s – NO-CHUNK int-pyr peak correlations > 0.2 (n=%d / %d)', ...
-        animalID, numel(corrOverThresh), totalPairs));
-    grid on;
+    %corrOverThresh = allCorrVec(allCorrVec > 0.2);
+    %figure;
+    %histogram(corrOverThresh, 50, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
+    %xlabel('peak correlation (> 0.2)');
+    %ylabel('count');
+    %title(sprintf('%s – NO-CHUNK int-pyr peak correlations > 0.2 (n=%d / %d)', ...
+    %    animalID, numel(corrOverThresh), totalPairs));
+    %grid on;
 
     % ==================== histogram: significant |lag| > 0.2 s ====================
-    lagsOverThresh = sigLagVec(abs(sigLagVec) > 0.2);
-    figure;
-    histogram(lagsOverThresh, 'BinEdges', lagBinEdgesSec, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
-    xlabel('peak lag (s)');
-    ylabel('count');
-    title(sprintf('%s – NO-CHUNK int-pyr FDR-significant |peak lag| > 0.2 s (n=%d / %d sig)', ...
-        animalID, numel(lagsOverThresh), numel(sigLagVec)));
-    grid on;
+    %lagsOverThresh = sigLagVec(abs(sigLagVec) > 0.2);
+    %figure;
+    %histogram(lagsOverThresh, 'BinEdges', lagBinEdgesSec, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
+    %xlabel('peak lag (s)');
+    %ylabel('count');
+    %title(sprintf('%s – NO-CHUNK int-pyr FDR-significant |peak lag| > 0.2 s (n=%d / %d sig)', ...
+    %    animalID, numel(lagsOverThresh), numel(sigLagVec)));
+    %grid on;
 
     % ==================== scatterhist: significant pairs ====================
     if ~isempty(sigLagVec)
@@ -171,9 +183,25 @@ for sess = 1:numSessions
     grid on;
 
     if ~isempty(lagsForCorrOverThresh)
-        minLagSec2 = floor(min(lagsForCorrOverThresh)*1000)/1000;
-        maxLagSec2 = ceil(max(lagsForCorrOverThresh)*1000)/1000;
-        lagBinEdgesSec2 = (minLagSec2-0.001):0.001:(maxLagSec2+0.001);
+        lagSource2 = lagsForCorrOverThresh(~isnan(lagsForCorrOverThresh) & isfinite(lagsForCorrOverThresh));
+
+        if isempty(lagSource2)
+            lagBinEdgesSec2 = -0.201:0.001:0.201;
+        else
+            minLagSec2 = floor(min(lagSource2)*1000)/1000;
+            maxLagSec2 = ceil(max(lagSource2)*1000)/1000;
+
+            if minLagSec2 == maxLagSec2
+                minLagSec2 = minLagSec2 - 0.001;
+                maxLagSec2 = maxLagSec2 + 0.001;
+            end
+
+            lagBinEdgesSec2 = minLagSec2:0.001:maxLagSec2;
+
+            if numel(lagBinEdgesSec2) < 2
+                lagBinEdgesSec2 = [minLagSec2-0.001, maxLagSec2+0.001];
+            end
+        end
 
         figure;
         histogram(lagsForCorrOverThresh, 'BinEdges', lagBinEdgesSec2, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
