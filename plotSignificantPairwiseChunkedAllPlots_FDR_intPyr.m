@@ -6,8 +6,8 @@ function plotSignificantPairwiseChunkedAllPlots_FDR_intPyr(fdrMatFile)
 %   FDRresults.sessions{s}.peakCorrMat_all
 %   FDRresults.sessions{s}.peakLagSecMat_all
 %   FDRresults.sessions{s}.sigMaskFDR
-%   FDRresults.sessions{s}.intIdx
-%   FDRresults.sessions{s}.pyrIdx
+%   FDRresults.sessions{s}.nInt_ref
+%   FDRresults.sessions{s}.nPyr_ref
 
 S = load(fdrMatFile, 'FDRresults');
 FDRresults = S.FDRresults;
@@ -26,27 +26,23 @@ for sess = 1:numSessions
         continue;
     end
 
-    if isfield(D, 'intIdx') && ~isempty(D.intIdx)
-        intIdx = D.intIdx(:);
-    elseif isfield(D, 'neuronType') && ~isempty(D.neuronType)
-        intIdx = find(D.neuronType == 1);
-    else
-        warning('sess %d: could not find intIdx, skipping', sess);
+    if ~isfield(D, 'nInt_ref') || ~isfield(D, 'nPyr_ref') || isempty(D.nInt_ref) || isempty(D.nPyr_ref)
+        warning('sess %d: missing nInt_ref / nPyr_ref, skipping', sess);
         continue;
     end
 
-    if isfield(D, 'pyrIdx') && ~isempty(D.pyrIdx)
-        pyrIdx = D.pyrIdx(:);
-    elseif isfield(D, 'neuronType') && ~isempty(D.neuronType)
-        pyrIdx = find(D.neuronType == 0);
-    else
-        warning('sess %d: could not find pyrIdx, skipping', sess);
+    % use matrix ordering directly: interneurons first, pyramidal second
+    intRows = 1:D.nInt_ref;
+    pyrCols = D.nInt_ref + (1:D.nPyr_ref);
+
+    if max(pyrCols) > size(peakCorrs,2)
+        warning('sess %d: int/pyr block exceeds matrix dimensions, skipping', sess);
         continue;
     end
 
-    blockCorr = peakCorrs(intIdx, pyrIdx);
-    blockLag = peakLags(intIdx, pyrIdx);
-    blockSig = sigMask(intIdx, pyrIdx);
+    blockCorr = peakCorrs(intRows, pyrCols);
+    blockLag = peakLags(intRows, pyrCols);
+    blockSig = sigMask(intRows, pyrCols);
 
     sigCorrVec = blockCorr(blockSig);
     sigLagVec = blockLag(blockSig);
@@ -70,6 +66,7 @@ for sess = 1:numSessions
 
     fprintf('\n=== %s ===\n', animalID);
     fprintf('int x pyr pairs: %d total | %d significant\n', totalPairs, sigPairs);
+    fprintf('%s: heatmap non-nan entries = %d\n', animalID, nnz(~isnan(sigCorrMat)));
 
     % ---- robust lag bin edges ----
     lagSource = sigLagVec(~isnan(sigLagVec) & isfinite(sigLagVec));
@@ -95,18 +92,28 @@ for sess = 1:numSessions
         end
     end
 
-    % ==================== heatmap: peak correlation ====================
-    figure('Name', sprintf('%s – CHUNKED int-pyr significant peak corr heatmap', animalID), 'Color', 'w');
+    % ==================== reference heatmap: all int x pyr peak correlation ====================
+    %figure('Name', sprintf('%s – CHUNKED int-pyr all peak corr heatmap', animalID), 'Color', 'w');
+    %imagesc(blockCorr);
+    %axis xy;
+    %colormap(parula);
+    %c = colorbar;
+    %ylabel(c, 'peak correlation');
+    %xlabel('pyramidal neurons');
+    %ylabel('interneurons');
+    %title(sprintf('%s – CHUNKED int-pyr all peak correlations', animalID));
+    %set(gca, 'TickDir', 'out');
+    5box off;
 
+    % ==================== significant heatmap: peak correlation ====================
+    figure('Name', sprintf('%s – CHUNKED int-pyr significant peak corr heatmap', animalID), 'Color', 'w');
     hImg = imagesc(sigCorrMat);
     set(hImg, 'AlphaData', ~isnan(sigCorrMat));
     set(gca, 'Color', 'k');
-
     axis xy;
     colormap(parula);
     c = colorbar;
     ylabel(c, 'peak correlation');
-
     xlabel('pyramidal neurons');
     ylabel('interneurons');
     title(sprintf('%s – CHUNKED int-pyr FDR-significant peak correlations: %d / %d', ...
@@ -114,18 +121,28 @@ for sess = 1:numSessions
     set(gca, 'TickDir', 'out');
     box off;
 
-    % ==================== heatmap: peak lag ====================
-    figure('Name', sprintf('%s – CHUNKED int-pyr significant peak lag heatmap', animalID), 'Color', 'w');
+    % ==================== reference heatmap: all int x pyr peak lag ====================
+    %figure('Name', sprintf('%s – CHUNKED int-pyr all peak lag heatmap', animalID), 'Color', 'w');
+    %imagesc(blockLag);
+    %axis xy;
+    %colormap(turbo);
+    %c2 = colorbar;
+    %ylabel(c2, 'peak lag (s)');
+    %xlabel('pyramidal neurons');
+    %ylabel('interneurons');
+    %title(sprintf('%s – CHUNKED int-pyr all peak lags', animalID));
+    %set(gca, 'TickDir', 'out');
+    %box off;
 
+    % ==================== significant heatmap: peak lag ====================
+    figure('Name', sprintf('%s – CHUNKED int-pyr significant peak lag heatmap', animalID), 'Color', 'w');
     hImg2 = imagesc(sigLagMat);
     set(hImg2, 'AlphaData', ~isnan(sigLagMat));
     set(gca, 'Color', 'k');
-
     axis xy;
     colormap(turbo);
     c2 = colorbar;
     ylabel(c2, 'peak lag (s)');
-
     xlabel('pyramidal neurons');
     ylabel('interneurons');
     title(sprintf('%s – CHUNKED int-pyr FDR-significant peak lags: %d / %d', ...
@@ -133,44 +150,26 @@ for sess = 1:numSessions
     set(gca, 'TickDir', 'out');
     box off;
 
-    % ==================== histogram: significant peak lags ====================
-    figure;
-    histogram(sigLagVec, 'BinEdges', lagBinEdgesSec, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
-    xlabel('peak lag (s)');
-    ylabel('count');
-    title(sprintf('%s – CHUNKED int-pyr FDR-significant peak lags (n=%d / %d)', animalID, sigPairs, totalPairs));
-    grid on;
+    if sigPairs == 0
+        fprintf('%s: no FDR-significant int x pyr pairs, so significant histograms/scatters were skipped.\n', animalID);
+    else
+        % ==================== histogram: significant peak lags ====================
+        figure;
+        histogram(sigLagVec, 'BinEdges', lagBinEdgesSec, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
+        xlabel('peak lag (s)');
+        ylabel('count');
+        title(sprintf('%s – CHUNKED int-pyr FDR-significant peak lags (n=%d / %d)', animalID, sigPairs, totalPairs));
+        grid on;
 
-    % ==================== histogram: significant peak correlations ====================
-    figure;
-    histogram(sigCorrVec, 50, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
-    xlabel('peak correlation');
-    ylabel('count');
-    title(sprintf('%s – CHUNKED int-pyr FDR-significant peak correlations (n=%d / %d)', animalID, sigPairs, totalPairs));
-    grid on;
+        % ==================== histogram: significant peak correlations ====================
+        figure;
+        histogram(sigCorrVec, 50, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
+        xlabel('peak correlation');
+        ylabel('count');
+        title(sprintf('%s – CHUNKED int-pyr FDR-significant peak correlations (n=%d / %d)', animalID, sigPairs, totalPairs));
+        grid on;
 
-    % ==================== histogram: peak correlations > 0.2 ====================
-    %corrOverThresh = allCorrVec(allCorrVec > 0.2);
-    %figure;
-    %histogram(corrOverThresh, 50, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
-    %xlabel('peak correlation (> 0.2)');
-    %ylabel('count');
-    %title(sprintf('%s – CHUNKED int-pyr peak correlations > 0.2 (n=%d / %d)', ...
-    %    animalID, numel(corrOverThresh), totalPairs));
-    %grid on;
-
-    % ==================== histogram: significant |lag| > 0.2 s ====================
-    %lagsOverThresh = sigLagVec(abs(sigLagVec) > 0.2);
-    %figure;
-    %histogram(lagsOverThresh, 'BinEdges', lagBinEdgesSec, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
-    %xlabel('peak lag (s)');
-    %ylabel('count');
-    %title(sprintf('%s – CHUNKED int-pyr FDR-significant |peak lag| > 0.2 s (n=%d / %d sig)', ...
-    %    animalID, numel(lagsOverThresh), numel(sigLagVec)));
-    %grid on;
-
-    % ==================== scatterhist: significant pairs ====================
-    if ~isempty(sigLagVec)
+        % ==================== scatterhist: significant pairs ====================
         figure;
         scatterhist(sigLagVec(:), sigCorrVec(:), 'Direction', 'out', 'Marker', '.');
         xlabel('peak lag (s)');
@@ -178,7 +177,7 @@ for sess = 1:numSessions
         title(sprintf('%s – CHUNKED int-pyr FDR-significant pairs (n=%d / %d)', animalID, sigPairs, totalPairs));
     end
 
-    % ==================== corr >= 0.2 analyses ====================
+    % ==================== histogram: peak correlations >= 0.2 ====================
     corrMask = (allCorrVec >= 0.2) & ~isnan(allCorrVec) & ~isnan(allLagVec);
     corrOverThresh = allCorrVec(corrMask);
     lagsForCorrOverThresh = allLagVec(corrMask);
@@ -212,6 +211,7 @@ for sess = 1:numSessions
             end
         end
 
+        % ==================== histogram: peak lags where corr >= 0.2 ====================
         figure;
         histogram(lagsForCorrOverThresh, 'BinEdges', lagBinEdgesSec2, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
         xlabel('peak lag (s) for pairs with corr >= 0.2');
@@ -220,6 +220,7 @@ for sess = 1:numSessions
             animalID, numel(lagsForCorrOverThresh)));
         grid on;
 
+        % ==================== scatter: lag vs corr where corr >= 0.2 ====================
         figure;
         scatter(lagsForCorrOverThresh(:), corrOverThresh(:), '.');
         xlabel('peak lag (s)');
