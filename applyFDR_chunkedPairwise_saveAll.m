@@ -17,7 +17,7 @@ if exist('FDRcutoff','file') ~= 2
     error('FDRcutoff.m is not on the matlab path.');
 end
 
-S = load(saveFile);
+S = load(char(saveFile));
 
 nSess = numel(S.baseDirs);
 
@@ -28,7 +28,7 @@ FDRresults.flag = flag;
 FDRresults.tailType = char(tailType);
 FDRresults.baseDirs = S.baseDirs;
 FDRresults.sessNames = S.sessNames;
-FDRresults.sessions = repmat(struct(), 1, nSess);
+FDRresults.sessions = cell(1, nSess);
 
 for s = 1:nSess
     baseDir = S.baseDirs{s};
@@ -93,17 +93,17 @@ for s = 1:nSess
     pMat = pMat + pMat.';
     sigMaskFDR = sigMaskFDR | sigMaskFDR.';
 
-    sigPeakCorrMatAll = realMat;
-    sigPeakCorrMatAll(~sigMaskFDR) = NaN;
+    sigPeakCorrMat_all = realMat;
+    sigPeakCorrMat_all(~sigMaskFDR) = NaN;
 
     sigPeakLagSecMat_all = lagMat;
     sigPeakLagSecMat_all(~sigMaskFDR) = NaN;
 
-    sigXcMatAll = xcMat;
+    sigXcMat_all = xcMat;
     for i = 1:n
         for j = 1:n
             if ~sigMaskFDR(i,j)
-                sigXcMatAll(i,j,:) = NaN;
+                sigXcMat_all(i,j,:) = NaN;
             end
         end
     end
@@ -112,7 +112,7 @@ for s = 1:nSess
     out.baseDir = baseDir;
     out.animalID = animalID;
 
-    % save originals again
+    % original variables
     out.binSize = S.all_binSize{s};
     out.channelsToUse = S.all_channelsToUse{s};
     out.chunkHalf = S.all_chunkHalf{s};
@@ -135,7 +135,7 @@ for s = 1:nSess
     out.shiftFound = S.shiftFound(s,:);
     out.sessName = S.sessNames{s};
 
-    % save FDR results
+    % FDR variables
     out.alpha = alpha;
     out.flag = flag;
     out.tailType = char(tailType);
@@ -144,19 +144,19 @@ for s = 1:nSess
     out.fdrCutoff = fdrCut;
     out.pMat = pMat;
     out.sigMaskFDR = sigMaskFDR;
-    out.sigPeakCorrMat_all = sigPeakCorrMatAll;
+    out.sigPeakCorrMat_all = sigPeakCorrMat_all;
     out.sigPeakLagSecMat_all = sigPeakLagSecMat_all;
-    out.sigXcMat_all = sigXcMatAll;
+    out.sigXcMat_all = sigXcMat_all;
 
-    FDRresults.sessions(s) = out;
+    FDRresults.sessions{s} = out;
 
     fprintf('%s | tests=%d | significant=%d | cutoff=%.6g\n', ...
         animalID, out.nTests, out.nSignificant, out.fdrCutoff);
 end
 
-[folderPath, baseName, ~] = fileparts(saveFile);
+[folderPath, baseName, ~] = fileparts(char(saveFile));
 outFile = fullfile(folderPath, [baseName '_FDR.mat']);
-save(outFile, 'FDRresults', '-v7.3');
+save(char(outFile), 'FDRresults', '-v7.3');
 
 fprintf('\nsaved:\n%s\n', outFile);
 end
