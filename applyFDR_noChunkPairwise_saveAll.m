@@ -27,7 +27,7 @@ FDRresults.sourceFile = saveFile;
 FDRresults.alpha = alpha;
 FDRresults.flag = flag;
 FDRresults.tailType = char(tailType);
-FDRresults.sessions = struct([]);
+FDRresults.sessions = cell(1, nSess);
 
 for s = 1:nSess
     sess = allSessions.sessions(s);
@@ -145,7 +145,7 @@ for s = 1:nSess
     out.sigPeakLagMatAll = sigPeakLagMatAll;
     out.sigXcMatAll = sigXcMatAll;
 
-    FDRresults.sessions(s) = out;
+    FDRresults.sessions{s} = out;
 
     fprintf('%s | tests=%d | significant=%d | cutoff=%.6g\n', ...
         animalID, out.nTests, out.nSignificant, out.fdrCutoff);
