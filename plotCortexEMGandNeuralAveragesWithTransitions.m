@@ -246,30 +246,36 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse, 
         error('no valid transitions found for channel 1.');
     end
 
-    % choose a zoomed snippet around the middle detected transition in channel 1
-    centerTransition = transitionsCh1(round(numel(transitionsCh1)/2));
-    snippetHalfWidth = 10000; % ms on each side
-    t0 = max(1, centerTransition - snippetHalfWidth);
-    t1 = min(numel(signalCh1), centerTransition + snippetHalfWidth);
+    % zoom into a fixed window from 1.518 to 1.520 seconds
+    t0_sec = 1.518;
+    t1_sec = 1.520;
+
+    % emg is sampled at 1 ms resolution, so convert sec -> sample indices
+    t0 = max(1, round(t0_sec * 1000));
+    t1 = min(numel(signalCh1), round(t1_sec * 1000));
     snippetIdx = t0:t1;
 
     snippetTransitions = transitionsCh1(transitionsCh1 >= t0 & transitionsCh1 <= t1);
+
+    % x-axis in seconds for plotting
+    timeSec = snippetIdx / 1000;
+    snippetTransitionsSec = snippetTransitions / 1000;
 
     figure('Name','Channel 1 EMG Transitions and Cortex Population Activity','Color','w');
     tiledlayout(2, 1, 'TileSpacing', 'tight', 'Padding', 'compact');
 
     % -- top subplot: channel 1 emg with detected transitions --
     nexttile; hold on;
-    plot(snippetIdx, signalCh1(snippetIdx), 'k');
+    plot(timeSec, signalCh1(snippetIdx), 'k');
 
     if ~isempty(snippetTransitions)
-        plot(snippetTransitions, signalCh1(snippetTransitions), 'r*');
+        plot(snippetTransitionsSec, signalCh1(snippetTransitions), 'r*');
     end
 
     title('Channel 1 EMG Detected Transitions', 'FontSize', 16);
-    xlabel('Time (ms)', 'FontSize', 16);
+    xlabel('Time (s)', 'FontSize', 16);
     ylabel('Emg Amplitude', 'FontSize', 16);
-    xlim([t0 t1]);
+    xlim([t0_sec t1_sec]);
     box off;
 
     ax2 = gca;
@@ -279,18 +285,18 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse, 
 
     % -- bottom subplot: M1 Neural Firing Rates --
     nexttile; hold on;
-    plot(snippetIdx, meanPyrFull(snippetIdx), 'b', 'LineWidth', 1.5);
-    plot(snippetIdx, meanIntFull(snippetIdx), 'r', 'LineWidth', 1.5);
+    plot(timeSec, meanPyrFull(snippetIdx), 'b', 'LineWidth', 1.5);
+    plot(timeSec, meanIntFull(snippetIdx), 'r', 'LineWidth', 1.5);
 
-    for iT = 1:numel(snippetTransitions)
-        xline(snippetTransitions(iT), ':', 'Color', [0.7 0.7 0.7], 'LineWidth', 0.75);
+    for iT = 1:numel(snippetTransitionsSec)
+        xline(snippetTransitionsSec(iT), ':', 'Color', [0.7 0.7 0.7], 'LineWidth', 0.75);
     end
 
-    xlabel('Time (ms)', 'FontSize', 16);
+    xlabel('Time (s)', 'FontSize', 16);
     ylabel('Mean Firing Rate', 'FontSize', 16);
     title('M1 Firing Rates Corresponding to EMG Channel 1 Detected Transitions', 'FontSize', 16);
     legend({'Pyramidal Neuron','Interneuron'}, 'Location', 'best');
-    xlim([t0 t1]);
+    xlim([t0_sec t1_sec]);
     box off;
 
     ax3 = gca;
