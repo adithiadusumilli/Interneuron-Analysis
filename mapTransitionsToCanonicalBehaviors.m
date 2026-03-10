@@ -29,6 +29,23 @@ load(fullfile(folderPath, 'UMAP.mat'), ...
 manBehvNames = {'climbdown','climbup','eating','grooming', ...
                 'jumpdown','jumping','rearing','still','walkflat','walkgrid'};
 
+% lookup table for alternate behavior names across animals / label sources
+canonicalLookup = containers.Map;
+canonicalLookup('climbdown')  = 1;
+canonicalLookup('climbup')    = 2;
+canonicalLookup('eating')     = 3;
+canonicalLookup('eat')        = 3;
+canonicalLookup('grooming')   = 4;
+canonicalLookup('groom')      = 4;
+canonicalLookup('jumpdown')   = 5;
+canonicalLookup('jumping')    = 6;
+canonicalLookup('jumpacross') = 6;
+canonicalLookup('rearing')    = 7;
+canonicalLookup('rear')       = 7;
+canonicalLookup('still')      = 8;
+canonicalLookup('walkflat')   = 9;
+canonicalLookup('walkgrid')   = 10;
+
 %% build manual-label remap: per-animal manual index -> canonical index (0..10)
 
 nManualBehv = numel(classifierBehvs);
@@ -36,14 +53,14 @@ manBehvNumbers = zeros(1, nManualBehv);  % 0 = behavior not in canonical list (e
 
 for iBehv = 1:nManualBehv
     thisName = classifierBehvs{iBehv};
-    idx = find(strcmp(thisName, manBehvNames), 1);
-    if isempty(idx)
-        % this behavior name (e.g. nosepoke) is not in the canonical list
+    cleanName = lower(strrep(strrep(thisName, ' ', ''), '_', ''));
+
+    if isKey(canonicalLookup, cleanName)
+        manBehvNumbers(iBehv) = canonicalLookup(cleanName);
+    else
+        % this behavior name is not in the canonical list
         % thus map to 0 and treat as unlabeled in canonical manual-label space
         manBehvNumbers(iBehv) = 0;
-    else
-        % map to canonical index (1..10)
-        manBehvNumbers(iBehv) = idx;
     end
 end
 
@@ -54,13 +71,13 @@ classBehvNumbers = zeros(1, nClassBehv);  % 0 = behavior not in canonical list
 
 for iBehv = 1:nClassBehv
     thisName = classifierBehvs{iBehv};
-    idx = find(strcmp(thisName, manBehvNames), 1);
-    if isempty(idx)
+    cleanName = lower(strrep(strrep(thisName, ' ', ''), '_', ''));
+
+    if isKey(canonicalLookup, cleanName)
+        classBehvNumbers(iBehv) = canonicalLookup(cleanName);
+    else
         % classifier behavior not in canonical list → map to 0
         classBehvNumbers(iBehv) = 0;
-    else
-        % map to canonical index (1..10)
-        classBehvNumbers(iBehv) = idx;
     end
 end
 
