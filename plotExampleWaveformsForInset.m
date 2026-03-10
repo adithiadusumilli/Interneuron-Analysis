@@ -1,9 +1,12 @@
 function plotExampleWaveformsForInset(baseDir)
-% plots one example cortex pyramidal waveform and one example cortex interneuron waveform
-% in separate small figures for use as insets
+% plots one example cortex pyramidal waveform and one example cortex interneuron waveform in separate small figures for use as insets
 
-% j run:
-% plotExampleWaveformsForInset("Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData")
+% also plots average cortex neuron-type percentages across animals:
+%   - bars = mean % across animals
+%   - dots = one dot per animal
+%   - lines connect pyramidal and interneuron percentages within each animal
+
+% j run: plotExampleWaveformsForInset("Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData")
 
 arguments
     baseDir (1,1) string
@@ -16,12 +19,12 @@ animalFolders = {
     'X:\David\ArenaRecordings\D026-032923-ArenaRecording\ProcessedData', ...
     'Z:\David\ArenaRecordings\NeuropixelsTest\D020-062922-ArenaRecording\ProcessedData', ...
     'Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData', ...
-    'X:\David\ArenaRecordings\D043-020425-ArenaRecording\ProcessedData'
+    'X:\David\ArenaRecordings\D043-020525-ArenaRecording\ProcessedData'
 };
 
 fs = 30000; % hz
 
-%% ---- load data ----
+%% ---- load data for current animal ----
 S = load(fullfile(baseDir,'neuronDataStruct.mat'),'neuronDataStruct');
 F = load(fullfile(baseDir,'NeuralFiringRates1msBins10msGauss.mat'),'cortexInds');
 C = load(fullfile(conslidatedDataFoler,'AA_classifications.mat'),'classifications');
@@ -38,7 +41,7 @@ end
 cortexLabelsAll = double(classifications{matchRow,1});
 cortexLabels = cortexLabelsAll(cortexInds); % 0 = pyr, 1 = int
 
-%% ---- pick one example pyr and one example int ----
+%% ---- pick one new example pyr and one new example int ----
 pyrInds = cortexInds(cortexLabels == 0);
 intInds = cortexInds(cortexLabels == 1);
 
@@ -46,8 +49,10 @@ if isempty(pyrInds) || isempty(intInds)
     error('could not find both pyramidal and interneuron cortex units.');
 end
 
-% choose median-width examples rather than arbitrary first units
-[pyrExampleInd, intExampleInd] = pickRepresentativeExamples(neuronDataStruct, pyrInds, intInds, fs);
+% choose more distinct examples:
+% pyramidal = unit near upper quartile width
+% interneuron = unit near lower quartile width
+[pyrExampleInd, intExampleInd] = pickDistinctExamples(neuronDataStruct, pyrInds, intInds, fs);
 
 %% ---- plot pyramidal waveform ----
 plotSingleWaveformInset(neuronDataStruct(pyrExampleInd), fs, [0 0 1], 'Pyramidal Example');
@@ -55,24 +60,59 @@ plotSingleWaveformInset(neuronDataStruct(pyrExampleInd), fs, [0 0 1], 'Pyramidal
 %% ---- plot interneuron waveform ----
 plotSingleWaveformInset(neuronDataStruct(intExampleInd), fs, [1 0 0], 'Interneuron Example');
 
-%% ---- plot total neuron counts ----
-figure('Color','w','Position',[100 100 320 260]);
+%% ---- plot neuron-type percentages across animals ----
+pyrPctAll = nan(numel(animalFolders),1);
+intPctAll = nan(numel(animalFolders),1);
+
+for a = 1:numel(animalFolders)
+    thisBaseDir = string(animalFolders{a});
+
+    Fr = load(fullfile(thisBaseDir,'NeuralFiringRates1msBins10msGauss.mat'),'cortexInds');
+    thisCortexInds = double(Fr.cortexInds(:))';
+
+    thisLabelsAll = double(classifications{a,1});
+    thisCortexLabels = thisLabelsAll(thisCortexInds); % 0 = pyr, 1 = int
+
+    nPyr = sum(thisCortexLabels == 0);
+    nInt = sum(thisCortexLabels == 1);
+    nTot = nPyr + nInt;
+
+    if nTot > 0
+        pyrPctAll(a) = 100 * nPyr / nTot;
+        intPctAll(a) = 100 * nInt / nTot;
+    end
+end
+
+meanPyrPct = mean(pyrPctAll, 'omitnan');
+meanIntPct = mean(intPctAll, 'omitnan');
+
+figure('Color','w','Position',[100 100 380 290]);
 ax = axes; hold(ax,'on');
 
-nPyr = numel(pyrInds);
-nInt = numel(intInds);
+% average bars
+b1 = bar(ax, 1, meanPyrPct, 'FaceColor', [0 0 1], 'EdgeColor', 'none');
+b2 = bar(ax, 2, meanIntPct, 'FaceColor', [1 0 0], 'EdgeColor', 'none');
+b1.FaceAlpha = 0.28;
+b2.FaceAlpha = 0.28;
 
-b1 = bar(ax, 1, nPyr, 'FaceColor', [0 0 1], 'EdgeColor', 'none');
-b2 = bar(ax, 2, nInt, 'FaceColor', [1 0 0], 'EdgeColor', 'none');
+% connect each animal's pyr and int percentages
+for a = 1:numel(animalFolders)
+    plot(ax, [1 2], [pyrPctAll(a) intPctAll(a)], '-', ...
+        'Color', [0.4 0.4 0.4], 'LineWidth', 1.1);
+end
 
-b1.FaceAlpha = 0.75;
-b2.FaceAlpha = 0.75;
+% dots for each animal
+plot(ax, ones(size(pyrPctAll)), pyrPctAll, 'o', ...
+    'MarkerFaceColor', [0 0 1], 'MarkerEdgeColor', 'k', 'MarkerSize', 6);
+
+plot(ax, 2*ones(size(intPctAll)), intPctAll, 'o', ...
+    'MarkerFaceColor', [1 0 0], 'MarkerEdgeColor', 'k', 'MarkerSize', 6);
 
 xlim(ax, [0.4 2.6]);
 xticks(ax, [1 2]);
 xticklabels(ax, {'Pyramidal','Interneuron'});
-ylabel(ax, 'Count');
-title(ax, 'M1 Neuron Counts', 'FontSize', 16);
+ylabel(ax, 'Percent of Cortex Units (%)');
+title(ax, 'M1 Neuron-Type Percentages', 'FontSize', 16);
 
 box(ax,'off');
 ax.LineWidth = 1.2;
@@ -81,8 +121,10 @@ ax.TickDir = 'out';
 
 end
 
-function [pyrExampleInd, intExampleInd] = pickRepresentativeExamples(neuronDataStruct, pyrInds, intInds, fs)
-% choose a representative unit near the median width for each class
+function [pyrExampleInd, intExampleInd] = pickDistinctExamples(neuronDataStruct, pyrInds, intInds, fs)
+% choose more distinct examples:
+%   - pyramidal: closest to 75th percentile width
+%   - interneuron: closest to 25th percentile width
 
 pyrWidths = nan(1,numel(pyrInds));
 for i = 1:numel(pyrInds)
@@ -104,11 +146,14 @@ for i = 1:numel(intInds)
     intWidths(i) = abs(mx-mn)/fs;
 end
 
-[~,pyrMedIdx] = min(abs(pyrWidths - median(pyrWidths,'omitnan')));
-[~,intMedIdx] = min(abs(intWidths - median(intWidths,'omitnan')));
+pyrTarget = prctile(pyrWidths, 75);
+intTarget = prctile(intWidths, 25);
 
-pyrExampleInd = pyrInds(pyrMedIdx);
-intExampleInd = intInds(intMedIdx);
+[~,pyrIdx] = min(abs(pyrWidths - pyrTarget));
+[~,intIdx] = min(abs(intWidths - intTarget));
+
+pyrExampleInd = pyrInds(pyrIdx);
+intExampleInd = intInds(intIdx);
 end
 
 function plotSingleWaveformInset(unitStruct, fs, waveColor, figTitle)
