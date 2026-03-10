@@ -125,7 +125,7 @@ ylabel(ax,'Depth (\mum)');
 
 title(ax, sprintf('Cortex Depth Distribution | Pyr vs Int | n=%d (pyr=%d, int=%d)', nTot, nPyr, nInt), 'FontSize',20);
 
-legend(ax, {'Pyramidal','Interneuron'}, 'Location','northeast');
+legend(ax, {'Pyramidal Neuron','Interneuron'}, 'Location','northeast');
 box(ax,'off');
 ax.TickDir = 'out';
 ax.LineWidth = 1;
