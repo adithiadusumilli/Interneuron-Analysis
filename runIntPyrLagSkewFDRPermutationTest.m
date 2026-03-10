@@ -2,21 +2,28 @@ function runIntPyrLagSkewFDRPermutationTest(saveFile, analysisType, alpha, nNull
 % runs int-vs-pyr-only FDR analysis and skew permutation testing
 % for either no-chunk or chunked pairwise saved results
 
+% actual test:
+%   - use only true int x pyr pairs
+%   - compute empirical p-values from each pair's shifted null
+%   - apply david's FDRcutoff.m
+%   - keep FDR-significant lags
+%   - compute skew = (mean - median) / std
+
+% null test:
+%   - sample the same number of unique pairs from all-vs-all upper-triangle
+%   - sampled pairs may include int-int, pyr-pyr, and int-pyr
+%   - no self-pairs and no duplicate pairs within a draw
+%   - compute p-values, FDR, significant lags, and skew
+%   - repeat nNullDraws times
+
 % inputs
 %   saveFile      : combined pairwise .mat file
 %   analysisType  : "nochunk" or "chunked"
-%   alpha         : fdr alpha (default 0.05)
+%   alpha         : FDR alpha (default 0.05)
 %   nNullDraws    : number of null skew draws (default 100)
 %   flag          : passed to david's FDRcutoff (default true)
 
-% outputs
-%   saves one .mat file with all results
-%   makes plots for each session:
-%       1) actual int-vs-pyr significant lag histogram
-%       2) pooled null significant lag histogram
-%       3) null skew histogram with actual skew marked
-
-% requires david's FDRcutoff.m on the matlab path
+% output: saves results struct and makes plots per session
 
 if nargin < 3 || isempty(alpha)
     alpha = 0.05;
@@ -30,7 +37,7 @@ end
 
 analysisType = lower(string(analysisType));
 
-if exist('FDRcutoff','file') ~= 2
+if exist('FDRcutoff', 'file') ~= 2
     error('FDRcutoff.m is not on the matlab path.');
 end
 
@@ -72,41 +79,47 @@ for s = 1:nSess
     fprintf('nInt = %d | nPyr = %d | nAll = %d\n', nInt, nPyr, nAll);
     fprintf('=============================\n');
 
-    % real int x pyr block
-    intRows = 1:nInt;
-    pyrCols = nInt + (1:nPyr);
+    % ---------------- actual int x pyr pairs ----------------
+    [actualRows, actualCols] = getIntPyrPairs(nInt, nPyr);
 
-    actual = computeBlockStats( ...
-        peakCorr(intRows, pyrCols), ...
-        peakLag(intRows, pyrCols), ...
-        nullCorr(intRows, pyrCols, :), ...
-        alpha, flag);
+    actual = computePairSetStats(peakCorr, peakLag, nullCorr, actualRows, actualCols, alpha, flag);
 
-    fprintf('%s actual: uncorr sig = %d | fdr sig = %d | skew = %.6f\n', ...
-        animalID, actual.nSigUncorr, actual.nSigFDR, actual.skew);
+    fprintf('%s actual: nominal pairs = %d | valid tests = %d | uncorr sig = %d | fdr sig = %d | skew = %.6f\n', ...
+        animalID, numel(actualRows), actual.nValidTests, actual.nSigUncorr, actual.nSigFDR, actual.skew);
 
-    % null skew distribution by random all-vs-all cross-group draws
+    % ---------------- null draws from all-vs-all upper triangle ----------------
+    [poolRows, poolCols] = getAllUpperPairs(nAll);
+
+    % keep only unique upper-triangle pairs by construction
+    nActualNominalPairs = numel(actualRows);
+
+    if nActualNominalPairs > numel(poolRows)
+        error('%s: actual nominal pair count exceeds all-vs-all upper-triangle pool size.', animalID);
+    end
+
     nullSkews = nan(nNullDraws,1);
-    nullPSkew = nan(nNullDraws,1); %#ok<NASGU>
     nullNSigUncorr = nan(nNullDraws,1);
     nullNSigFDR = nan(nNullDraws,1);
+    nullNValidTests = nan(nNullDraws,1);
     nullLagCell = cell(nNullDraws,1);
+    nullFdrCutoff = nan(nNullDraws,1);
+    nullPairTypeCounts = nan(nNullDraws, 3); % [int-int, int-pyr, pyr-pyr]
 
     for r = 1:nNullDraws
-        pick = randperm(nAll, nInt + nPyr);   % unique bag of neurons
-        grpA = pick(1:nInt);
-        grpB = pick(nInt+1:end);
+        drawIdx = randperm(numel(poolRows), nActualNominalPairs);  % no duplicates, no self-pairs
+        drawRows = poolRows(drawIdx);
+        drawCols = poolCols(drawIdx);
 
-        nullDraw = computeBlockStats( ...
-            peakCorr(grpA, grpB), ...
-            peakLag(grpA, grpB), ...
-            nullCorr(grpA, grpB, :), ...
-            alpha, flag);
+        nullDraw = computePairSetStats(peakCorr, peakLag, nullCorr, drawRows, drawCols, alpha, flag);
 
         nullSkews(r) = nullDraw.skew;
         nullNSigUncorr(r) = nullDraw.nSigUncorr;
         nullNSigFDR(r) = nullDraw.nSigFDR;
+        nullNValidTests(r) = nullDraw.nValidTests;
         nullLagCell{r} = nullDraw.sigLagVec;
+        nullFdrCutoff(r) = nullDraw.fdrCutoff;
+
+        nullPairTypeCounts(r,:) = classifySampledPairs(drawRows, drawCols, nInt);
     end
 
     validNullSkews = nullSkews(~isnan(nullSkews) & isfinite(nullSkews));
@@ -121,7 +134,8 @@ for s = 1:nSess
         animalID, actual.skew, numel(validNullSkews), skewP);
 
     % ---------------- plots ----------------
-    % plot 1: actual significant lag histogram
+
+    % actual significant lag histogram
     figure('Name', sprintf('%s actual int-pyr significant lags', animalID), 'Color', 'w');
     if ~isempty(actual.sigLagVec)
         lagEdgesActual = makeLagEdges(actual.sigLagVec);
@@ -135,7 +149,7 @@ for s = 1:nSess
         animalID, actual.nSigUncorr, actual.nSigFDR, actual.skew));
     grid on;
 
-    % plot 2: pooled null significant lag histogram
+    % pooled null significant lag histogram
     pooledNullLags = vertcat(nullLagCell{:});
     pooledNullLags = pooledNullLags(~isnan(pooledNullLags) & isfinite(pooledNullLags));
 
@@ -151,35 +165,41 @@ for s = 1:nSess
     title(sprintf('%s pooled null significant lags across %d draws', animalID, nNullDraws));
     grid on;
 
-    % plot 3: null skew histogram with actual skew marked
+    % null skew histogram with actual skew marked
     figure('Name', sprintf('%s skew null distribution', animalID), 'Color', 'w');
     if ~isempty(validNullSkews)
         histogram(validNullSkews, 30, 'FaceAlpha', 0.8, 'EdgeColor', 'none'); hold on;
         xline(actual.skew, 'r-', 'LineWidth', 2);
+        legend({'Null skews', 'Actual skew'}, 'Location', 'best');
     else
         histogram(nan, 30, 'FaceAlpha', 0.8, 'EdgeColor', 'none'); hold on;
+        legend({'Null skews'}, 'Location', 'best');
     end
     xlabel('Skew = (mean - median) / std');
     ylabel('Count');
     title(sprintf('%s skew null distribution | actual=%.4f | p=%.4f', animalID, actual.skew, skewP));
-    legend({'Null skews', 'Actual skew'}, 'Location', 'best');
     grid on;
 
-    % save session results
+    % ---------------- save session results ----------------
     R = struct();
     R.animalID = animalID;
     R.nInt = nInt;
     R.nPyr = nPyr;
     R.nAll = nAll;
 
+    R.actualRows = actualRows;
+    R.actualCols = actualCols;
     R.actual = actual;
-    R.actual.nPairs = nInt * nPyr;
+    R.actual.nPairsNominal = nActualNominalPairs;
 
     R.nullSkews = nullSkews;
     R.validNullSkews = validNullSkews;
     R.nullNSigUncorr = nullNSigUncorr;
     R.nullNSigFDR = nullNSigFDR;
+    R.nullNValidTests = nullNValidTests;
     R.nullLagCell = nullLagCell;
+    R.nullFdrCutoff = nullFdrCutoff;
+    R.nullPairTypeCounts = nullPairTypeCounts;
     R.skewP = skewP;
 
     results.sessions{s} = R;
@@ -228,22 +248,42 @@ end
 end
 
 % ============================================================
-function out = computeBlockStats(realBlock, lagBlock, nullBlock, alpha, flag)
-% computes pairwise empirical p-values, FDR significance, significant lag skew
+function [rows, cols] = getIntPyrPairs(nInt, nPyr)
+% true int x pyr block: rows are int, cols are pyr
+[rr, cc] = ndgrid(1:nInt, nInt + (1:nPyr));
+rows = rr(:);
+cols = cc(:);
+end
 
-[nR, nC, nNull] = size(nullBlock);
+% ============================================================
+function [rows, cols] = getAllUpperPairs(nAll)
+% all-vs-all unique upper-triangle pairs, excluding self-pairs
+mask = triu(true(nAll), 1);
+[rows, cols] = find(mask);
+end
 
-realVec = realBlock(:);
-lagVec = lagBlock(:);
-null2D = reshape(nullBlock, nR*nC, nNull);
+% ============================================================
+function out = computePairSetStats(realMat, lagMat, nullMat, rows, cols, alpha, flag)
+% computes pairwise empirical p-values, FDR significance, and skew
+% for an arbitrary list of selected pairs
 
-pVals = nan(size(realVec));
+nPairs = numel(rows);
 
-for i = 1:numel(realVec)
-    thisReal = realVec(i);
-    thisLag = lagVec(i);
-    thisNull = null2D(i,:);
+realVals = nan(nPairs,1);
+lagVals = nan(nPairs,1);
+pVals = nan(nPairs,1);
+
+for i = 1:nPairs
+    r = rows(i);
+    c = cols(i);
+
+    thisReal = realMat(r,c);
+    thisLag = lagMat(r,c);
+    thisNull = squeeze(nullMat(r,c,:));
     thisNull = thisNull(~isnan(thisNull) & isfinite(thisNull));
+
+    realVals(i) = thisReal;
+    lagVals(i) = thisLag;
 
     if isnan(thisReal) || ~isfinite(thisReal) || isnan(thisLag) || ~isfinite(thisLag) || numel(thisNull) < 10
         pVals(i) = NaN;
@@ -268,21 +308,24 @@ end
 sigFDR = false(size(pVals));
 sigFDR(validP) = pVals(validP) <= fdrCut;
 
-sigLagVec = lagVec(sigFDR);
+sigLagVec = lagVals(sigFDR);
 sigLagVec = sigLagVec(~isnan(sigLagVec) & isfinite(sigLagVec));
 
 out = struct();
+out.rows = rows;
+out.cols = cols;
+out.realVals = realVals;
+out.lagVals = lagVals;
 out.pVals = pVals;
 out.fdrCutoff = fdrCut;
+out.nPairsNominal = nPairs;
 out.nValidTests = nnz(validP);
 out.nSigUncorr = nnz(sigUncorr);
 out.nSigFDR = nnz(sigFDR);
 out.sigLagVec = sigLagVec;
 out.skew = computeSkew(sigLagVec);
-
-out.pMat = reshape(pVals, nR, nC);
-out.sigUncorrMask = reshape(sigUncorr, nR, nC);
-out.sigFDRMask = reshape(sigFDR, nR, nC);
+out.sigUncorrMask = sigUncorr;
+out.sigFDRMask = sigFDR;
 end
 
 % ============================================================
@@ -325,4 +368,18 @@ edges = xmin:0.001:xmax;
 if numel(edges) < 2
     edges = [xmin-0.001 xmax+0.001];
 end
+end
+
+% ============================================================
+function counts = classifySampledPairs(rows, cols, nInt)
+% returns [int-int, int-pyr, pyr-pyr] counts for one sampled null draw
+
+isIntRow = rows <= nInt;
+isIntCol = cols <= nInt;
+
+nIntInt = sum(isIntRow & isIntCol);
+nPyrPyr = sum(~isIntRow & ~isIntCol);
+nIntPyr = sum(xor(isIntRow, isIntCol));
+
+counts = [nIntInt, nIntPyr, nPyrPyr];
 end
