@@ -1,6 +1,6 @@
 function mapTransitionsToCanonicalBehaviors(folderPath)
-% map emg transition windows to canonical behavior labels from umap,
-% manual annotation, and classifier-based labels
+% map emg transition windows to canonical behavior labels from umap, manual annotation, and classifier-based labels
+% manual now uses same fields as classifier to not break pipeline since we are prioritizing classifier and new animals don't have manual labels
 
 % this function:
 %   - loads emg transition indices for each muscle channel
@@ -20,7 +20,6 @@ load(fullfile(folderPath, 'EMG_Neural_AllChannels.mat'), 'validTransitionsCell')
 % load behavior variables from umap
 load(fullfile(folderPath, 'UMAP.mat'), ...
     'regionAssignmentsFiltered', ...   % numeric umap region ids per timepoint
-    'behvLabelsNoArt', ...             % manual label indices (0 = unlabeled)
     'origDownsampEMGInd', ...          % mapping from reduced umap index to full downsampemg index
     'classifierLabels', ...            % classifier label indices (0 = unlabeled)
     'classifierBehvs', ...             % behavior names for classifier labels (per animal)
@@ -125,8 +124,10 @@ for ch = 1:4
         regLabels(i) = regIdx;
 
         %% manual label mapping → canonical 0..10
+        % manual labels no longer exist separately, so keep the manual field
+        % but populate it using classifier labels to preserve downstream code
 
-        manualVal = behvLabelsNoArt(umapIdx);  % 0 = unlabeled, >0 indexes classifierBehvs
+        manualVal = classifierLabels(umapIdx);  % 0 = unlabeled, >0 indexes classifierBehvs
 
         if manualVal == 0
             % unlabeled in original annotations → keep as 0
