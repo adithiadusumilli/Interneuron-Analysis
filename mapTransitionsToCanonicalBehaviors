@@ -1,7 +1,7 @@
 function mapTransitionsToCanonicalBehaviors(folderPath)
 % map emg transition windows to canonical behavior labels from umap,
 % manual annotation, and classifier-based labels
-%
+
 % this function:
 %   - loads emg transition indices for each muscle channel
 %   - maps each transition index into the reduced time axis used for umap / manual labels
@@ -24,7 +24,6 @@ load(fullfile(folderPath, 'UMAP.mat'), ...
     'origDownsampEMGInd', ...          % mapping from reduced umap index to full downsampemg index
     'classifierLabels', ...            % classifier label indices (0 = unlabeled)
     'classifierBehvs', ...             % behavior names for classifier labels (per animal)
-    'analyzedBehaviors', ...           % behavior names for manual labels (per animal)
     'regionBehvAssignments');          % umap region behavior assignments (not remapped here)
 
 % canonical behavior name list and ordering (shared across animals)
@@ -34,16 +33,15 @@ manBehvNames = {'climbdown','climbup','eating','grooming', ...
 
 %% build manual-label remap: per-animal manual index -> canonical index (0..10)
 
-nManualBehv = numel(analyzedBehaviors);
+nManualBehv = numel(classifierBehvs);
 manBehvNumbers = zeros(1, nManualBehv);  % 0 = behavior not in canonical list (e.g. nosepoke)
 
 for iBehv = 1:nManualBehv
-    thisName = analyzedBehaviors{iBehv};
+    thisName = classifierBehvs{iBehv};
     idx = find(strcmp(thisName, manBehvNames), 1);
     if isempty(idx)
-        % this behavior name (e.g. nosepoke) is not in the canonical list,
-        % so we map it to 0 and treat those transitions as unlabeled in
-        % the canonical manual-label space
+        % this behavior name (e.g. nosepoke) is not in the canonical list
+        % thus map to 0 and treat as unlabeled in canonical manual-label space
         manBehvNumbers(iBehv) = 0;
     else
         % map to canonical index (1..10)
@@ -128,7 +126,7 @@ for ch = 1:4
 
         %% manual label mapping → canonical 0..10
 
-        manualVal = behvLabelsNoArt(umapIdx);  % 0 = unlabeled, >0 indexes analyzedBehaviors
+        manualVal = behvLabelsNoArt(umapIdx);  % 0 = unlabeled, >0 indexes classifierBehvs
 
         if manualVal == 0
             % unlabeled in original annotations → keep as 0
@@ -171,7 +169,7 @@ end
 save(fullfile(folderPath, 'transitionCanonicalBehaviorLabels.mat'), ...
     'regionLabelsPerTransition', 'manualLabelsPerTransition', ...
     'classifierLabelsPerTransition', ...
-    'classifierBehvs', 'manBehvNames', 'analyzedBehaviors', ...
+    'classifierBehvs', 'manBehvNames', ...
     'regionBehvAssignments');
 
 %% plot histogram of transitions by umap region for each muscle
