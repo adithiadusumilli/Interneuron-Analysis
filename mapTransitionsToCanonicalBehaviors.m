@@ -1,6 +1,6 @@
 function mapTransitionsToCanonicalBehaviors(folderPath)
 % map emg transition windows to canonical behavior labels from umap, manual annotation, and classifier-based labels
-% manual now uses same fields as classifier to not break pipeline since we are prioritizing classifier and new animals don't have manual labels
+% no actual umap or manual labels, they are just copies of classifier labeling (new animals dont have manual and UMAP format is diff)
 
 % this function:
 %   - loads emg transition indices for each muscle channel
@@ -19,11 +19,10 @@ load(fullfile(folderPath, 'EMG_Neural_AllChannels.mat'), 'validTransitionsCell')
 
 % load behavior variables from umap
 load(fullfile(folderPath, 'UMAP.mat'), ...
-    'regionAssignmentsFiltered', ...   % numeric umap region ids per timepoint
     'origDownsampEMGInd', ...          % mapping from reduced umap index to full downsampemg index
     'classifierLabels', ...            % classifier label indices (0 = unlabeled)
     'classifierBehvs', ...             % behavior names for classifier labels (per animal)
-    'regionBehvAssignments');          % umap region behavior assignments (not remapped here)
+    'regionBehvAssignments');          % kept for saving to preserve pipeline compatibility
 
 % canonical behavior name list and ordering (shared across animals)
 % indices 1..10 in the canonical space will always correspond to these names
@@ -71,15 +70,6 @@ end
 map = nan(max(origDownsampEMGInd), 1);
 map(origDownsampEMGInd) = 1:numel(origDownsampEMGInd);
 
-%% build explicit mapping from raw umap region codes to contiguous region indices 1..7
-
-regionCodes = unique(regionAssignmentsFiltered(:));
-nRegions = numel(regionCodes);
-if nRegions ~= 7
-    error('mapTransitionsToCanonicalBehaviors:expectedSevenRegions', ...
-        'expected 7 umap regions, found %d', nRegions);
-end
-
 % outputs: 1 cell per muscle (1x4), each storing label per transition
 regionLabelsPerTransition = cell(1, 4);
 manualLabelsPerTransition = cell(1, 4);
@@ -113,17 +103,24 @@ for ch = 1:4
             continue;
         end
 
-        %% umap region mapping → contiguous 1..7
+        %% umap region mapping → use classifier labels to preserve pipeline
+        % region labels no longer exist separately, so keep the field
+        % but populate it from classifier labels
 
-        regionVal = regionAssignmentsFiltered(umapIdx);  % raw region code
-        regIdx = find(regionCodes == regionVal, 1);
-        if isempty(regIdx)
-            error('mapTransitionsToCanonicalBehaviors:unknownRegionCode', ...
-                'unexpected umap region code %d', regionVal);
+        regionVal = classifierLabels(umapIdx);  % 0 = unlabeled, >0 indexes classifierBehvs
+
+        if regionVal == 0
+            regLabels(i) = 0;
+        else
+            if regionVal < 1 || regionVal > numel(classBehvNumbers)
+                error('mapTransitionsToCanonicalBehaviors:regionLabelOutOfRange', ...
+                    'region label index %d out of range (1..%d)', ...
+                    regionVal, numel(classBehvNumbers));
+            end
+            regLabels(i) = classBehvNumbers(regionVal);
         end
-        regLabels(i) = regIdx;
 
-        %% manual label mapping → canonical 0..10
+        %% manual label mapping → use classifier labels to preserve pipeline
         % manual labels no longer exist separately, so keep the manual field
         % but populate it using classifier labels to preserve downstream code
 
