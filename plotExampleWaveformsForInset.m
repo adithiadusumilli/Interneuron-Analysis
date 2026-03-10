@@ -110,8 +110,8 @@ plot(ax, 2*ones(size(intPctAll)), intPctAll, 'o', ...
 
 xlim(ax, [0.4 2.6]);
 xticks(ax, [1 2]);
-xticklabels(ax, {'Pyramidal','Interneuron'});
-ylabel(ax, 'Percent of Cortex Units (%)');
+xticklabels(ax, {'Pyramidal Neuron','Interneuron'});
+ylabel(ax, 'Percent of M1 Units (%)');
 title(ax, 'M1 Neuron-Type Percentages', 'FontSize', 16);
 
 box(ax,'off');
