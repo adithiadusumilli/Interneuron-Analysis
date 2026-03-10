@@ -1,4 +1,4 @@
-function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
+function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse, doBaselineNorm)
 % plots three cortex-only figures:
 %  1) cortex pyramidal/interneuron averages aligned to emg transition events with shifted percentile bounds
 %  2) zoomed channel 1 emg transition panel + cortex firing rates
@@ -7,9 +7,13 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
 % inputs
 %   datafile: full path to emg_neural_allchannels.mat
 %   channelstouse: vector with channel indices to pool for the aligned averages (default = 1:4)
+%   doBaselineNorm: logical, per-trial baseline subtract (-500 to -450 ms) after avg across neurons but before avg across trials (default = true)
 
     if nargin < 2
         channelsToUse = 1:4;
+    end
+    if nargin < 3 || isempty(doBaselineNorm)
+        doBaselineNorm = true;
     end
 
     % add shadederrorbar if available
@@ -34,6 +38,25 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
         'intCxWinShiftedMeanCell', ...
         'validTransitionsCell');
 
+    % ---------------- helper funcs ----------------
+    % average across neurons -> events x time
+    meanEvt = @(M) squeeze(mean(M, 2, 'omitnan'));
+
+    % grand mean and sem across events
+    grandMS = @(E) deal(mean(E, 1, 'omitnan'), std(E, 0, 1, 'omitnan') ./ sqrt(size(E,1)));
+
+    % per-trial baseline subtraction using -500 to -450 ms window
+    function Eout = subtractTrialBaseline(Ein, tAxisLocal, tStart, tEnd)
+        % ein: events x time
+        [~, iStart] = min(abs(tAxisLocal - tStart));
+        [~, iEnd]   = min(abs(tAxisLocal - tEnd));
+        if iEnd < iStart
+            tmp = iStart; iStart = iEnd; iEnd = tmp;
+        end
+        baselines = mean(Ein(:, iStart:iEnd), 2, 'omitnan'); % events x 1
+        Eout = Ein - baselines; % implicit expansion per event
+    end
+
     % ---------------- 1. pool requested channels for the averaged figures ----------------
     emgPool = [];      % events x time
     pyrCxPool = [];    % events x neurons x time
@@ -54,13 +77,38 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
     intCx_shiftMat = [];
 
     for ch = channelsToUse
-        % first shift was fully saved, so average across neurons and then across events
-        firstPyrCx = squeeze(mean(mean(S.pyrCxWinShiftedCell{ch}, 2, 'omitnan'), 1, 'omitnan'))';
-        firstIntCx = squeeze(mean(mean(S.intCxWinShiftedCell{ch}, 2, 'omitnan'), 1, 'omitnan'))';
+        % first shift was fully saved: events x neurons x time -> events x time
+        firstPyrCx_evt = meanEvt(S.pyrCxWinShiftedCell{ch});
+        firstIntCx_evt = meanEvt(S.intCxWinShiftedCell{ch});
 
-        % remaining 99 shifts were saved as event x time means
-        pyrCxShifts = cellfun(@(M) mean(M, 1, 'omitnan'), S.pyrCxWinShiftedMeanCell(ch, :), 'UniformOutput', false);
-        intCxShifts = cellfun(@(M) mean(M, 1, 'omitnan'), S.intCxWinShiftedMeanCell(ch, :), 'UniformOutput', false);
+        if doBaselineNorm
+            firstPyrCx_evt = subtractTrialBaseline(firstPyrCx_evt, S.tAxis, -500, -450);
+            firstIntCx_evt = subtractTrialBaseline(firstIntCx_evt, S.tAxis, -500, -450);
+        end
+
+        % then average across events to get 1 x time for the first shift
+        firstPyrCx = mean(firstPyrCx_evt, 1, 'omitnan');
+        firstIntCx = mean(firstIntCx_evt, 1, 'omitnan');
+
+        % remaining 99 shifts were saved as events x time means
+        pyrCxShifts = cell(size(S.pyrCxWinShiftedMeanCell, 2), 1);
+        intCxShifts = cell(size(S.intCxWinShiftedMeanCell, 2), 1);
+
+        for k = 1:size(S.pyrCxWinShiftedMeanCell, 2)
+            E = S.pyrCxWinShiftedMeanCell{ch, k}; % events x time
+            if doBaselineNorm
+                E = subtractTrialBaseline(E, S.tAxis, -500, -450);
+            end
+            pyrCxShifts{k} = mean(E, 1, 'omitnan'); % 1 x time
+        end
+
+        for k = 1:size(S.intCxWinShiftedMeanCell, 2)
+            E = S.intCxWinShiftedMeanCell{ch, k}; % events x time
+            if doBaselineNorm
+                E = subtractTrialBaseline(E, S.tAxis, -500, -450);
+            end
+            intCxShifts{k} = mean(E, 1, 'omitnan'); % 1 x time
+        end
 
         pyrCxShifts = vertcat(pyrCxShifts{:});
         intCxShifts = vertcat(intCxShifts{:});
@@ -81,11 +129,18 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse)
     seEMG = std(emgPool, 0, 1, 'omitnan') ./ sqrt(size(emgPool,1));
 
     % ---------------- 4. compute cortex neural mean ± sem ----------------
-    meanEvt = @(M) squeeze(mean(M, 2, 'omitnan'));   % average across neurons -> events x time
-    grandMS = @(E) deal(mean(E, 1, 'omitnan'), std(E, 0, 1, 'omitnan') ./ sqrt(size(E,1)));
+    % average across neurons -> events x time
+    pyrCx_evt = meanEvt(pyrCxPool);
+    intCx_evt = meanEvt(intCxPool);
 
-    [mPyrCx, sePyrCx] = grandMS(meanEvt(pyrCxPool));
-    [mIntCx, seIntCx] = grandMS(meanEvt(intCxPool));
+    % per-trial baseline subtraction before averaging across events
+    if doBaselineNorm
+        pyrCx_evt = subtractTrialBaseline(pyrCx_evt, S.tAxis, -500, -450);
+        intCx_evt = subtractTrialBaseline(intCx_evt, S.tAxis, -500, -450);
+    end
+
+    [mPyrCx, sePyrCx] = grandMS(pyrCx_evt);
+    [mIntCx, seIntCx] = grandMS(intCx_evt);
 
     % ---------------- 5. figure 1: cortex-only neural averages in yyaxis style ----------------
     figure('Name','Cortex Neural Activity Aligned to EMG Transition Events','Color','w');
