@@ -8,15 +8,12 @@ function runNonChunkedXcorrPerBehavior_saveOnly(baseDirs, labelType, behaviors, 
 
 % important: this is NOT event-centered like chunked, it j restricts to timepoints belonging to a behavior, concatenates those timepoints into vectors, then computes xc(lag) over those vectors
 
-% label types:
-%   - "umap": 1..7 (computed from regionAssignmentsFiltered mapped via origDownsampEMGInd)
-%   - "manual": canonical 0..10 (computed from behvLabelsNoArt + analyzedBehaviors -> manBehvNames)
-%   - "classifier": canonical 0..10 (computed from classifierLabels + classifierBehvs -> manBehvNames)
+% this updated version is classifier-only to avoid loading unused variables from UMAP.mat
 
 % inputs:
 %   baseDirs : cell array of ProcessedData folders (one per animal/session)
-%   labelType : "umap" | "manual" | "classifier"
-%   behaviors : vector of behaviors to compute (default depends on labelType)
+%   labelType : must be "classifier"
+%   behaviors : vector of behaviors to compute (default 0:10)
 %   maxLagSecs : max lag in seconds (default 0.5)
 %   numShifts : circular-shift null draws for correlation bounds (default 100)
 %   numPerms : label-permutation draws for lag ci (default 100)
@@ -31,21 +28,21 @@ function runNonChunkedXcorrPerBehavior_saveOnly(baseDirs, labelType, behaviors, 
 %     'Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData', ...
 %     'X:\David\ArenaRecordings\D043-020525-ArenaRecording\ProcessedData'
 %   };
-%   runNonChunkedXcorrPerBehavior_saveOnly(baseDirs, "classifier", 1:7, 0.5, 100, 100);
+%   runNonChunkedXcorrPerBehavior_saveOnly(baseDirs, "classifier", 0:10, 0.5, 100, 100);
 
     if nargin < 2 || isempty(labelType),  labelType = "classifier"; end
     labelType = lower(string(labelType));
+
+    if labelType ~= "classifier"
+        error('this updated version only supports labelType = "classifier".');
+    end
 
     if nargin < 4 || isempty(maxLagSecs), maxLagSecs = 0.5; end
     if nargin < 5 || isempty(numShifts),  numShifts  = 100; end
     if nargin < 6 || isempty(numPerms),   numPerms   = 100; end
 
     if nargin < 3 || isempty(behaviors)
-        if labelType == "umap"
-            behaviors = 1:7;
-        else
-            behaviors = 0:10;
-        end
+        behaviors = 0:10;
     end
 
     binSize = 0.001;  % 1 ms bins
@@ -113,7 +110,7 @@ function runNonChunkedXcorrPerBehavior_saveOnly(baseDirs, labelType, behaviors, 
             continue;
         end
 
-        regionClass    = neuronType(regionInds);
+        regionClass = neuronType(regionInds);
 
         intFRs = frMatrix(regionClass == 1, :);
         pyrFRs = frMatrix(regionClass == 0, :);
@@ -244,17 +241,22 @@ end
 
 % =====================================================================
 % helper: build full-length timepoint behavior labels aligned to fr bins
+% classifier-only version
 % =====================================================================
 function [labels1k, meta] = buildTimepointBehaviorLabels(baseDir, Tfr, labelType)
 % outputs:
-%   labels1k: 1 x Tfr vector with labels (umap:1..7, manual/classifier:0..10), nan if unknown
-%   meta: struct with mapping info and canonical names (for manual/classifier)
+%   labels1k: 1 x Tfr vector with labels (classifier: 0..10), nan if unknown
+%   meta: struct with mapping info and canonical names
 
     labelType = lower(string(labelType));
     meta = struct();
     meta.labelType = labelType;
 
     labels1k = nan(1, Tfr);
+
+    if labelType ~= "classifier"
+        error('this version of buildTimepointBehaviorLabels only supports "classifier".');
+    end
 
     umapFile = fullfile(baseDir, 'UMAP.mat');
     if ~isfile(umapFile)
@@ -263,154 +265,87 @@ function [labels1k, meta] = buildTimepointBehaviorLabels(baseDir, Tfr, labelType
     end
 
     U = load(umapFile, ...
-        'regionAssignmentsFiltered', 'regionAssignmentFiltered', ...
-        'behvLabelsNoArt', 'origDownsampEMGInd', ...
-        'classifierLabels', 'classifierBehvs', ...
-        'analyzedBehaviors');
+        'origDownsampEMGInd', ...
+        'classifierLabels', ...
+        'classifierBehvs');
 
     if ~isfield(U, 'origDownsampEMGInd') || isempty(U.origDownsampEMGInd)
         warning('origDownsampEMGInd missing/empty in UMAP.mat; cannot align labels.');
         return;
     end
 
-    origInd = U.origDownsampEMGInd(:);
+    if ~isfield(U, 'classifierLabels') || isempty(U.classifierLabels)
+        warning('classifierLabels missing; cannot build classifier labels.');
+        return;
+    end
 
-    % canonical behavior name list (shared across animals)
+    if ~isfield(U, 'classifierBehvs') || isempty(U.classifierBehvs)
+        warning('classifierBehvs missing; cannot remap classifier labels to canonical.');
+        return;
+    end
+
+    origInd = U.origDownsampEMGInd(:);
+    classifierLabels = U.classifierLabels(:);
+    classifierBehvs = U.classifierBehvs;
+
+    % canonical behavior name list
     manBehvNames = {'climbdown','climbup','eating','grooming', ...
                     'jumpdown','jumping','rearing','still','walkflat','walkgrid'};
     meta.manBehvNames = manBehvNames;
 
-    % ----- choose raw label vector (reduced time base) -----
-    labelVecReduced = [];
+    % lookup table for alternate behavior names across animals
+    canonicalLookup = containers.Map;
+    canonicalLookup('climbdown')  = 1;
+    canonicalLookup('climbup')    = 2;
+    canonicalLookup('eating')     = 3;
+    canonicalLookup('eat')        = 3;
+    canonicalLookup('grooming')   = 4;
+    canonicalLookup('groom')      = 4;
+    canonicalLookup('jumpdown')   = 5;
+    canonicalLookup('jumping')    = 6;
+    canonicalLookup('jumpacross') = 6;
+    canonicalLookup('rearing')    = 7;
+    canonicalLookup('rear')       = 7;
+    canonicalLookup('still')      = 8;
+    canonicalLookup('walkflat')   = 9;
+    canonicalLookup('walkgrid')   = 10;
 
-    switch labelType
-        case "umap"
-            if isfield(U,'regionAssignmentsFiltered') && ~isempty(U.regionAssignmentsFiltered)
-                regionAssignmentsFiltered = U.regionAssignmentsFiltered;
-            elseif isfield(U,'regionAssignmentFiltered') && ~isempty(U.regionAssignmentFiltered)
-                regionAssignmentsFiltered = U.regionAssignmentFiltered;
-            else
-                warning('regionAssignment(s)Filtered missing; cannot build umap labels.');
-                return;
-            end
+    % build remap: per-animal classifier index -> canonical index (0..10)
+    nClassBehv = numel(classifierBehvs);
+    classBehvNumbers = zeros(1, nClassBehv);
 
-            regionAssignmentsFiltered = regionAssignmentsFiltered(:);
+    for iBehv = 1:nClassBehv
+        thisName = classifierBehvs{iBehv};
+        cleanName = lower(strrep(strrep(thisName, ' ', ''), '_', ''));
 
-            % map raw region codes -> contiguous 1..7 like your mapper
-            regionCodes = unique(regionAssignmentsFiltered(~isnan(regionAssignmentsFiltered)));
-            regionCodes = regionCodes(:);
-            if numel(regionCodes) ~= 7
-                warning('expected 7 umap regions, found %d. still proceeding with contiguous mapping.', numel(regionCodes));
-            end
-            meta.regionCodes = regionCodes;
-
-            labelVecReduced = nan(size(regionAssignmentsFiltered));
-            for i = 1:numel(regionAssignmentsFiltered)
-                rv = regionAssignmentsFiltered(i);
-                if isnan(rv), continue; end
-                idx = find(regionCodes == rv, 1);
-                if ~isempty(idx)
-                    labelVecReduced(i) = idx;
-                end
-            end
-
-        case "manual"
-            if ~isfield(U,'behvLabelsNoArt') || isempty(U.behvLabelsNoArt)
-                warning('behvLabelsNoArt missing; cannot build manual labels.');
-                return;
-            end
-            if ~isfield(U,'analyzedBehaviors') || isempty(U.analyzedBehaviors)
-                warning('analyzedBehaviors missing; cannot remap manual labels to canonical.');
-                return;
-            end
-
-            behvLabelsNoArt = U.behvLabelsNoArt(:);
-            analyzedBehaviors = U.analyzedBehaviors;
-
-            % build remap: per-animal manual index -> canonical index (0..10)
-            nManualBehv = numel(analyzedBehaviors);
-            manBehvNumbers = zeros(1, nManualBehv); % 0 = not tracked in canonical list
-
-            for iBehv = 1:nManualBehv
-                thisName = analyzedBehaviors{iBehv};
-                idx = find(strcmp(thisName, manBehvNames), 1);
-                if isempty(idx)
-                    manBehvNumbers(iBehv) = 0;
-                else
-                    manBehvNumbers(iBehv) = idx;
-                end
-            end
-            meta.analyzedBehaviors = analyzedBehaviors;
-            meta.manualRemap = manBehvNumbers;
-
-            % apply remap to reduced label vector
-            labelVecReduced = nan(size(behvLabelsNoArt));
-            for i = 1:numel(behvLabelsNoArt)
-                v = behvLabelsNoArt(i);
-                if isnan(v)
-                    continue;
-                elseif v == 0
-                    labelVecReduced(i) = 0;
-                else
-                    if v >= 1 && v <= numel(manBehvNumbers)
-                        labelVecReduced(i) = manBehvNumbers(v);
-                    else
-                        labelVecReduced(i) = nan;
-                    end
-                end
-            end
-
-        case "classifier"
-            if ~isfield(U,'classifierLabels') || isempty(U.classifierLabels)
-                warning('classifierLabels missing; cannot build classifier labels.');
-                return;
-            end
-            if ~isfield(U,'classifierBehvs') || isempty(U.classifierBehvs)
-                warning('classifierBehvs missing; cannot remap classifier labels to canonical.');
-                return;
-            end
-
-            classifierLabels = U.classifierLabels(:);
-            classifierBehvs = U.classifierBehvs;
-
-            % build remap: per-animal classifier index -> canonical index (0..10)
-            nClassBehv = numel(classifierBehvs);
-            classBehvNumbers = zeros(1, nClassBehv);
-
-            for iBehv = 1:nClassBehv
-                thisName = classifierBehvs{iBehv};
-                idx = find(strcmp(thisName, manBehvNames), 1);
-                if isempty(idx)
-                    classBehvNumbers(iBehv) = 0;
-                else
-                    classBehvNumbers(iBehv) = idx;
-                end
-            end
-            meta.classifierBehvs = classifierBehvs;
-            meta.classifierRemap = classBehvNumbers;
-
-            % apply remap to reduced label vector
-            labelVecReduced = nan(size(classifierLabels));
-            for i = 1:numel(classifierLabels)
-                v = classifierLabels(i);
-                if isnan(v)
-                    continue;
-                elseif v == 0
-                    labelVecReduced(i) = 0;
-                else
-                    if v >= 1 && v <= numel(classBehvNumbers)
-                        labelVecReduced(i) = classBehvNumbers(v);
-                    else
-                        labelVecReduced(i) = nan;
-                    end
-                end
-            end
-
-        otherwise
-            error('labelType must be "umap", "manual", or "classifier".');
+        if isKey(canonicalLookup, cleanName)
+            classBehvNumbers(iBehv) = canonicalLookup(cleanName);
+        else
+            classBehvNumbers(iBehv) = 0;
+        end
     end
 
-    % ----- align reduced labels into full fr timeline using origDownsampEMGInd -----
+    meta.classifierBehvs = classifierBehvs;
+    meta.classifierRemap = classBehvNumbers;
+
+    % apply remap to reduced label vector
+    labelVecReduced = nan(size(classifierLabels));
+    for i = 1:numel(classifierLabels)
+        v = classifierLabels(i);
+        if isnan(v)
+            continue;
+        elseif v == 0
+            labelVecReduced(i) = 0;
+        else
+            if v >= 1 && v <= numel(classBehvNumbers)
+                labelVecReduced(i) = classBehvNumbers(v);
+            else
+                labelVecReduced(i) = nan;
+            end
+        end
+    end
+
+    % align reduced labels into full fr timeline using origDownsampEMGInd
     n = min(numel(origInd), numel(labelVecReduced));
     origInd = origInd(1:n);
     labelVecReduced = labelVecReduced(1:n);
