@@ -179,7 +179,9 @@ function runNonChunkedXcorrPerBehavior_saveOnly(baseDirs, labelType, behaviors, 
                     intShift = circshift(intVec, shiftAmt);
                     v = ~isnan(intShift) & ~isnan(pyrVec);
                     if nnz(v) > 10
-                        ctrlCorrs(s) = corr(intShift(v)', pyrVec(v)');
+                        x = intShift(v);
+                        y = pyrVec(v);
+                        ctrlCorrs(s) = corr(x(:), y(:));
                     end
                 end
                 ctrlCI = prctile(ctrlCorrs, [2.5 97.5]);
@@ -385,7 +387,9 @@ function [lagsSec, xc, peakLagSec, peakCorr] = computeManualXCorrVec(intVec, pyr
 
         v = ~isnan(intSeg) & ~isnan(pyrSeg);
         if nnz(v) > 10
-            xc(li) = corr(intSeg(v), pyrSeg(v));
+            x = intSeg(v);
+            y = pyrSeg(v);
+            xc(li) = corr(x(:), y(:));
         end
     end
 
