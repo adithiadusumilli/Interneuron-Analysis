@@ -177,7 +177,7 @@ sgtitle(sprintf('behavior %d raw emg with transition markers', behaviorToPlot))
 figure('Name', sprintf('Mean abs EMG during behavior %d', behaviorToPlot), 'Color', 'w');
 tiledlayout(1, nCh, 'Padding', 'compact', 'TileSpacing', 'compact');
 
-allDurVec = vertcat(allEpochDurations{:});
+allDurVec = cell2mat(cellfun(@(x) x(:), allEpochDurations, 'UniformOutput', false));
 if isempty(allDurVec)
     targetLen = 1;
 else
