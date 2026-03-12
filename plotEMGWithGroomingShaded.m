@@ -5,7 +5,6 @@ function plotEMGWithGroomingShaded(baseDirs)
 
 behaviorToPlot = 4; % grooming
 nAnimals = numel(baseDirs);
-nCh = 4;
 
 figure('Color','w')
 tiledlayout(nAnimals,1,'Padding','compact','TileSpacing','compact')
@@ -35,8 +34,15 @@ for iDir = 1:nAnimals
     
     origInd = U.origDownsampEMGInd(:);
     lab = U.classifierLabels(:);
-    
-    labels1k(origInd) = lab;
+
+    % make lengths match
+    n = min(numel(origInd), numel(lab));
+    origInd = origInd(1:n);
+    lab = lab(1:n);
+
+    % keep only valid indices
+    ok = origInd >= 1 & origInd <= nTime & ~isnan(lab);
+    labels1k(origInd(ok)) = lab(ok);
     
     % grooming mask
     mask = labels1k == behaviorToPlot;
@@ -46,6 +52,7 @@ for iDir = 1:nAnimals
     
     t = (0:nTime-1)/1000; % seconds
     
+    % first plot emg lightly so patches do not hide it
     plot(t,emg,'k')
     
     % shade grooming
@@ -53,19 +60,24 @@ for iDir = 1:nAnimals
     s = find(d==1);
     e = find(d==-1)-1;
     
+    yMin = min(emg);
+    yMax = max(emg);
+
     for k = 1:numel(s)
         xs = t([s(k) e(k)]);
         patch([xs(1) xs(2) xs(2) xs(1)], ...
-              [min(emg) min(emg) max(emg) max(emg)], ...
+              [yMin yMin yMax yMax], ...
               [1 0.8 0.8], ...
               'EdgeColor','none','FaceAlpha',0.3)
     end
     
+    % redraw emg on top
     plot(t,emg,'k')
     
-    title(sprintf('%s EMG (grooming shaded)',animalID))
+    title(sprintf('%s EMG channel 1 (grooming shaded)',animalID))
     xlabel('time (s)')
     ylabel('EMG')
     
+    hold off
 end
 end
