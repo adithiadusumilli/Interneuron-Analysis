@@ -42,7 +42,29 @@ for iDir = 1:nAnimals
 
     % keep only valid indices
     ok = origInd >= 1 & origInd <= nTime & ~isnan(lab);
-    labels1k(origInd(ok)) = lab(ok);
+    labels1k = nan(1,nTime);
+
+    origInd = U.origDownsampEMGInd(:);
+    lab = U.classifierLabels(:);
+    behvNames = U.classifierBehvs;
+
+    n = min(numel(origInd), numel(lab));
+    origInd = origInd(1:n);
+    lab = lab(1:n);
+
+    for i = 1:n
+        idx = lab(i);
+    
+        if idx <= 0 || isnan(idx)
+            continue
+        end
+    
+        name = lower(behvNames{idx});
+    
+        if contains(name,'groom')
+            labels1k(origInd(i)) = 4;
+        end
+    end
     
     % grooming mask
     mask = labels1k == behaviorToPlot;
