@@ -246,30 +246,22 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse, 
         error('no valid transitions found for channel 1.');
     end
 
-    % zoom into a fixed window from 1.518 to 1.520 seconds
+    % plot full trace but crop x-axis to 1.518 to 1.520 seconds
+    timeSecAll = (1:numel(signalCh1)) / 1000;
+    transitionsCh1Sec = transitionsCh1 / 1000;
+
     t0_sec = 1.518;
     t1_sec = 1.520;
-
-    % emg is sampled at 1 ms resolution, so convert sec -> sample indices
-    t0 = max(1, round(t0_sec * 1000));
-    t1 = min(numel(signalCh1), round(t1_sec * 1000));
-    snippetIdx = t0:t1;
-
-    snippetTransitions = transitionsCh1(transitionsCh1 >= t0 & transitionsCh1 <= t1);
-
-    % x-axis in seconds for plotting
-    timeSec = snippetIdx / 1000;
-    snippetTransitionsSec = snippetTransitions / 1000;
 
     figure('Name','Channel 1 EMG Transitions and Cortex Population Activity','Color','w');
     tiledlayout(2, 1, 'TileSpacing', 'tight', 'Padding', 'compact');
 
     % -- top subplot: channel 1 emg with detected transitions --
     nexttile; hold on;
-    plot(timeSec, signalCh1(snippetIdx), 'k');
+    plot(timeSecAll, signalCh1, 'k');
 
-    if ~isempty(snippetTransitions)
-        plot(snippetTransitionsSec, signalCh1(snippetTransitions), 'r*');
+    if ~isempty(transitionsCh1)
+        plot(transitionsCh1Sec, signalCh1(transitionsCh1), 'r*');
     end
 
     title('Channel 1 EMG Detected Transitions', 'FontSize', 16);
@@ -285,11 +277,13 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse, 
 
     % -- bottom subplot: M1 Neural Firing Rates --
     nexttile; hold on;
-    plot(timeSec, meanPyrFull(snippetIdx), 'b', 'LineWidth', 1.5);
-    plot(timeSec, meanIntFull(snippetIdx), 'r', 'LineWidth', 1.5);
+    timeSecNeural = (1:numel(meanPyrFull)) / 1000;
 
-    for iT = 1:numel(snippetTransitionsSec)
-        xline(snippetTransitionsSec(iT), ':', 'Color', [0.7 0.7 0.7], 'LineWidth', 0.75);
+    plot(timeSecNeural, meanPyrFull, 'b', 'LineWidth', 1.5);
+    plot(timeSecNeural, meanIntFull, 'r', 'LineWidth', 1.5);
+
+    for iT = 1:numel(transitionsCh1Sec)
+        xline(transitionsCh1Sec(iT), ':', 'Color', [0.7 0.7 0.7], 'LineWidth', 0.75);
     end
 
     xlabel('Time (s)', 'FontSize', 16);
