@@ -1,4 +1,4 @@
-function runIntPyrLagSkewMAFDRPermutationTest_subset(saveFile, analysisType, alpha, nNullDraws)
+function runIntPyrLagSkewMAFDRPermutationTest(saveFile, analysisType, alpha, nNullDraws)
 % runs int-vs-pyr-only mafdr analysis and skew permutation testing
 % for either no-chunk or chunked pairwise saved results
 
