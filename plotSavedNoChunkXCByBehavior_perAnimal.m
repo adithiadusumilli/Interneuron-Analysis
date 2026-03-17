@@ -1,17 +1,18 @@
-function plotSavedNoChunkXCByBehavior_perAnimal(noChunkFile, minTrials)
-% plots saved nonchunked population xc results
-% split by classifier behvs
+function plotSavedNoChunkXCByBehavior_perAnimal(noChunkFile, minBouts)
+% plots saved nonchunked popavg xc results
+% split by classifier behv
 
 % for each animal, makes 2 figures:
-%   1. lag vs corr, with 1 panel per behv that passed minTrials (100)
-%   2. permutation lag histograms, with 1 panel per behv that passed minTrials
+%   1. lag vs correlation, with 1 panel per behv that passed minBouts
+%   2. permutation lag histograms, with 1 panel per behv that passed minBouts
+%
+% reminder!!!! --> a "bout" / "epoch" is one contiguous stretch of timepoints in timeIdx
 
-% j run:
-% plotSavedNoChunkXCByBehavior_perAnimal("X:\David\AnalysesData\nonchunked_xcorr_by_classifier_cortex_allSessions_saved.mat", 100)
+% j run: plotSavedNoChunkXCByBehavior_perAnimal("X:\David\AnalysesData\nonchunked_xcorr_by_classifier_cortex_allSessions_saved.mat", 100)
 
 arguments
     noChunkFile (1,1) string
-    minTrials (1,1) double = 100
+    minBouts (1,1) double = 100
 end
 
 behNames = {'unlabeled','climbdown','climbup','eating','grooming','jumpdown','jumping','rearing','still','walkflat','walkgrid'};
@@ -39,12 +40,16 @@ for i = 1:nSess
     end
 end
 
+binSize = 0.001; % nonchunked file was generated at 1 ms bins
+
 fprintf('\n================ nonchunked per animal ================\n')
 
 for s = 1:nSess
     goodBehLabels = {};
     goodBehStruct = {};
     goodPermLags = {};
+    goodNBouts = [];
+    goodDurSec = [];
 
     for bIdx = 1:numel(R.behaviors)
         beh = R.behaviors(bIdx);
@@ -55,17 +60,27 @@ for s = 1:nSess
 
         thisBeh = R.sessions(s).beh(bIdx);
 
-        if isempty(thisBeh) || ~isfield(thisBeh, 'nTimepoints') || isempty(thisBeh.nTimepoints)
-            continue
-        end
-
-        if thisBeh.nTimepoints < minTrials
+        if isempty(thisBeh) || ~isfield(thisBeh, 'timeIdx') || isempty(thisBeh.timeIdx)
             continue
         end
 
         if isempty(thisBeh.xc) || isempty(thisBeh.lagsSec)
             continue
         end
+
+        timeIdx = sort(thisBeh.timeIdx(:));
+
+        if isempty(timeIdx)
+            nBouts = 0;
+        else
+            nBouts = 1 + sum(diff(timeIdx) > 1);
+        end
+
+        if nBouts < minBouts
+            continue
+        end
+
+        durSec = numel(timeIdx) * binSize;
 
         if beh >= 0 && beh <= 10
             goodBehLabels{end+1} = sprintf('%d: %s', beh, behNames{beh+1}); %#ok<AGROW>
@@ -75,10 +90,12 @@ for s = 1:nSess
 
         goodBehStruct{end+1} = thisBeh; %#ok<AGROW>
         goodPermLags{end+1} = thisBeh.permPeakLags; %#ok<AGROW>
+        goodNBouts(end+1) = nBouts; %#ok<AGROW>
+        goodDurSec(end+1) = durSec; %#ok<AGROW>
     end
 
-    fprintf('%s nonchunk: %d behaviors passed minTrials=%d\n', ...
-        animalIDs{s}, numel(goodBehLabels), minTrials)
+    fprintf('%s nonchunk: %d behaviors passed minBouts=%d\n', ...
+        animalIDs{s}, numel(goodBehLabels), minBouts)
 
     if isempty(goodBehLabels)
         continue
@@ -121,7 +138,8 @@ for s = 1:nSess
 
         xlabel('Lag (Seconds)');
         ylabel('Correlation');
-        title(sprintf('%s\nn = %d', goodBehLabels{k}, thisBeh.nTimepoints));
+        title(sprintf('%s\nbouts = %d | dur = %.1f s', ...
+            goodBehLabels{k}, goodNBouts(k), goodDurSec(k)));
         box off;
         set(gca, 'FontSize', 14, 'LineWidth', 1, 'TickDir', 'out');
 
@@ -169,7 +187,8 @@ for s = 1:nSess
 
         xlabel('Peak Lag (s)');
         ylabel('Count');
-        title(sprintf('%s\nn = %d', goodBehLabels{k}, thisBeh.nTimepoints));
+        title(sprintf('%s\nbouts = %d | dur = %.1f s', ...
+            goodBehLabels{k}, goodNBouts(k), goodDurSec(k)));
         box off;
         set(gca, 'FontSize', 14, 'LineWidth', 1, 'TickDir', 'out');
 
