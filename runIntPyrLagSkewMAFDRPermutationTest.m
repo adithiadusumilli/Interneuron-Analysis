@@ -1,48 +1,28 @@
 function runIntPyrLagSkewMAFDRPermutationTest(saveFile, analysisType, alpha, nNullDraws)
-% runs int-vs-pyr-only mafdr analysis and skew permutation testing
+% runs int-vs-pyr-only storey/mafdr analysis and skew permutation testing
 % for either no-chunk or chunked pairwise saved results
 
-% important update vs old fdr function:
-%   - computes empirical p-values for all true int x pyr pairs
-%   - first identifies nominally significant pairs (p <= alpha)
-%   - then applies matlab mafdr ONLY to that nominal subset
-%   - calls pairs significant if q <= alpha within that subset
-
-% this matches the logic discussed with david b4:
-%   - do not mafdr-correct over every pair, only correct the originally sig candidates
-
-% actual test:
-%   - use only true int x pyr pairs
-%   - compute empirical p-values from each pair's shifted null
-%   - keep nominally significant pairs (p <= alpha)
-%   - apply mafdr to that subset
-%   - keep q-significant lags
-%   - compute skew = (mean - median) / std
+% updated logic:
+%   - compute empirical p-values for all true int x pyr pairs
+%   - run matlab mafdr on all valid p-values
+%   - call pairs significant if q <= alpha
+%   - compute skew = (mean - median) / std from q-significant lags
 
 % null test:
 %   - sample the same number of unique pairs from all-vs-all upper-triangle
 %   - sampled pairs may include int-int, pyr-pyr, and int-pyr
 %   - no self-pairs and no duplicate pairs within a draw
-%   - compute p-values, mafdr q-values on the nominal subset, significant lags, and skew
+%   - compute p-values, mafdr q-values, significant lags, and skew
 %   - repeat nNullDraws times
-%
+
 % inputs
-%   saveFile : combined pairwise .mat file
-%   analysisType : "nochunk" or "chunked"
-%   alpha : nominal p threshold and q threshold (default 0.05)
-%   nNullDraws : number of null skew draws (default 100)
+%   saveFile      : combined pairwise .mat file
+%   analysisType  : "nochunk" or "chunked"
+%   alpha         : q-value threshold (default 0.05)
+%   nNullDraws    : number of null skew draws (default 100)
 
 % output
 %   saves results struct and makes plots per session
-
-% j run:
-% runIntPyrLagSkewMAFDRPermutationTest_subset( ...
-%     'C:\Users\mirilab\Documents\GlobusTransfer\pairwise_nochunk_allPairs_ALL_SESSIONS_COMBINED.mat', ...
-%     'nochunk', 0.05, 100)
-
-% runIntPyrLagSkewMAFDRPermutationTest_subset( ...
-%     'C:\Users\mirilab\Documents\GlobusTransfer\pairwiseChunked_ALLPAIRS_ALLSESS_REAL_AND_SHIFTS_COMBINED.mat', ...
-%     'chunked', 0.05, 100)
 
 if nargin < 3 || isempty(alpha)
     alpha = 0.05;
@@ -83,7 +63,7 @@ results.sourceFile = saveFile;
 results.analysisType = char(analysisType);
 results.alpha = alpha;
 results.nNullDraws = nNullDraws;
-results.fdrMethod = 'mafdr_storey_on_nominal_subset';
+results.fdrMethod = 'mafdr_storey_all_valid_pvalues';
 results.sessions = cell(1, nSess);
 
 for s = 1:nSess
@@ -98,10 +78,10 @@ for s = 1:nSess
     % ---------------- actual int x pyr pairs ----------------
     [actualRows, actualCols] = getIntPyrPairs(nInt, nPyr);
 
-    actual = computePairSetStatsMAFDRSubset(peakCorr, peakLag, nullCorr, actualRows, actualCols, alpha);
+    actual = computePairSetStatsMAFDR(peakCorr, peakLag, nullCorr, actualRows, actualCols, alpha);
 
-    fprintf('%s actual: nominal pairs = %d | valid tests = %d | uncorr sig = %d | q<=%.3f sig = %d | skew = %.6f\n', ...
-        animalID, numel(actualRows), actual.nValidTests, actual.nSigUncorr, alpha, actual.nSigFDR, actual.skew);
+    fprintf('%s actual: nominal pairs = %d | valid tests = %d | uncorr p<=%.3f = %d | q<=%.3f sig = %d | skew = %.6f\n', ...
+        animalID, numel(actualRows), actual.nValidTests, alpha, actual.nSigUncorr, alpha, actual.nSigFDR, actual.skew);
 
     % ---------------- null draws from all-vs-all upper triangle ----------------
     [poolRows, poolCols] = getAllUpperPairs(nAll);
@@ -125,7 +105,7 @@ for s = 1:nSess
         drawRows = poolRows(drawIdx);
         drawCols = poolCols(drawIdx);
 
-        nullDraw = computePairSetStatsMAFDRSubset(peakCorr, peakLag, nullCorr, drawRows, drawCols, alpha);
+        nullDraw = computePairSetStatsMAFDR(peakCorr, peakLag, nullCorr, drawRows, drawCols, alpha);
 
         nullSkews(r) = nullDraw.skew;
         nullNSigUncorr(r) = nullDraw.nSigUncorr;
@@ -150,8 +130,7 @@ for s = 1:nSess
 
     % ---------------- plots ----------------
 
-    % actual significant lag histogram
-    figure('Name', sprintf('%s actual int-pyr significant lags (mafdr subset)', animalID), 'Color', 'w');
+    figure('Name', sprintf('%s actual int-pyr significant lags (mafdr)', animalID), 'Color', 'w');
     if ~isempty(actual.sigLagVec)
         lagEdgesActual = makeLagEdges(actual.sigLagVec);
         histogram(actual.sigLagVec, 'BinEdges', lagEdgesActual, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
@@ -164,11 +143,10 @@ for s = 1:nSess
         animalID, actual.nSigUncorr, alpha, actual.nSigFDR, actual.skew));
     grid on;
 
-    % pooled null significant lag histogram
     pooledNullLags = vertcat(nullLagCell{:});
     pooledNullLags = pooledNullLags(~isnan(pooledNullLags) & isfinite(pooledNullLags));
 
-    figure('Name', sprintf('%s null significant lags (mafdr subset)', animalID), 'Color', 'w');
+    figure('Name', sprintf('%s null significant lags (mafdr)', animalID), 'Color', 'w');
     if ~isempty(pooledNullLags)
         lagEdgesNull = makeLagEdges(pooledNullLags);
         histogram(pooledNullLags, 'BinEdges', lagEdgesNull, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
@@ -180,8 +158,7 @@ for s = 1:nSess
     title(sprintf('%s pooled null significant lags across %d draws', animalID, nNullDraws));
     grid on;
 
-    % null skew histogram with actual skew marked
-    figure('Name', sprintf('%s skew null distribution (mafdr subset)', animalID), 'Color', 'w');
+    figure('Name', sprintf('%s skew null distribution (mafdr)', animalID), 'Color', 'w');
     if ~isempty(validNullSkews)
         histogram(validNullSkews, 30, 'FaceAlpha', 0.8, 'EdgeColor', 'none'); hold on;
         xline(actual.skew, 'r-', 'LineWidth', 2);
@@ -221,7 +198,7 @@ for s = 1:nSess
 end
 
 [folderPath, baseName, ~] = fileparts(char(saveFile));
-outFile = fullfile(folderPath, sprintf('%s_intPyrSkewMAFDRsubset_%s.mat', baseName, char(analysisType)));
+outFile = fullfile(folderPath, sprintf('%s_intPyrSkewMAFDR_%s.mat', baseName, char(analysisType)));
 save(char(outFile), 'results', '-v7.3');
 
 fprintf('\nsaved:\n%s\n', outFile);
@@ -264,7 +241,6 @@ end
 
 % ============================================================
 function [rows, cols] = getIntPyrPairs(nInt, nPyr)
-% true int x pyr block: rows are int, cols are pyr
 [rr, cc] = ndgrid(1:nInt, nInt + (1:nPyr));
 rows = rr(:);
 cols = cc(:);
@@ -272,14 +248,13 @@ end
 
 % ============================================================
 function [rows, cols] = getAllUpperPairs(nAll)
-% all-vs-all unique upper-triangle pairs, excluding self-pairs
 mask = triu(true(nAll), 1);
 [rows, cols] = find(mask);
 end
 
 % ============================================================
-function out = computePairSetStatsMAFDRSubset(realMat, lagMat, nullMat, rows, cols, alpha)
-% computes pairwise empirical p-values, mafdr q-values on the nominal subset,
+function out = computePairSetStatsMAFDR(realMat, lagMat, nullMat, rows, cols, alpha)
+% computes pairwise empirical p-values, mafdr q-values on all valid p-values,
 % significance, and skew for an arbitrary list of selected pairs
 
 nPairs = numel(rows);
@@ -311,28 +286,21 @@ end
 
 validP = ~isnan(pVals) & isfinite(pVals);
 
+% keep this only as a descriptive count
 sigUncorr = false(size(pVals));
 sigUncorr(validP) = pVals(validP) <= alpha;
 
 qVals = nan(size(pVals));
 pFDRVals = nan(size(pVals));
 
-sigIdx = find(sigUncorr);
-
-if ~isempty(sigIdx)
-    pSubset = pVals(sigIdx);
-
-    % use storey-style mafdr on the nominally significant subset only
-    [pFDRtmp, qTmp] = mafdr(pSubset);
-
-    pFDRVals(sigIdx) = pFDRtmp;
-    qVals(sigIdx) = qTmp;
+if any(validP)
+    [pFDRtmp, qTmp] = mafdr(pVals(validP));
+    pFDRVals(validP) = pFDRtmp;
+    qVals(validP) = qTmp;
 end
 
 sigFDR = false(size(pVals));
-if ~isempty(sigIdx)
-    sigFDR(sigIdx) = qVals(sigIdx) <= alpha;
-end
+sigFDR(validP) = qVals(validP) <= alpha;
 
 sigLagVec = lagVals(sigFDR);
 sigLagVec = sigLagVec(~isnan(sigLagVec) & isfinite(sigLagVec));
@@ -354,7 +322,6 @@ out.sigLagVec = sigLagVec;
 out.skew = computeSkew(sigLagVec);
 out.sigUncorrMask = sigUncorr;
 out.sigFDRMask = sigFDR;
-out.nMAFDRInput = numel(sigIdx);
 end
 
 % ============================================================
@@ -401,8 +368,6 @@ end
 
 % ============================================================
 function counts = classifySampledPairs(rows, cols, nInt)
-% returns [int-int, int-pyr, pyr-pyr] counts for one sampled null draw
-
 isIntRow = rows <= nInt;
 isIntCol = cols <= nInt;
 
