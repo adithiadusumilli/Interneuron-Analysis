@@ -29,15 +29,11 @@ nSess = numel(R.sessions);
 animalIDs = cell(1, nSess);
 
 for i = 1:nSess
-    if isfield(R.sessions(i), 'sessionTag') && ~isempty(R.sessions(i).sessionTag)
-        animalIDs{i} = R.sessions(i).sessionTag;
-    else
-        a = regexp(R.sessions(i).baseDir, 'D\d+', 'match', 'once');
-        if isempty(a)
-            a = sprintf('Session %d', i);
-        end
-        animalIDs{i} = a;
+    a = regexp(R.sessions(i).baseDir, 'D\d+', 'match', 'once');
+    if isempty(a)
+        a = sprintf('Session %d', i);
     end
+    animalIDs{i} = a;
 end
 
 binSize = 0.001; % nonchunked file was generated at 1 ms bins
