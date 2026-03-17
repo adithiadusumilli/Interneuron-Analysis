@@ -16,10 +16,10 @@ function runIntPyrLagSkewMAFDRPermutationTest(saveFile, analysisType, alpha, nNu
 %   - repeat nNullDraws times
 
 % inputs
-%   saveFile      : combined pairwise .mat file
-%   analysisType  : "nochunk" or "chunked"
-%   alpha         : q-value threshold (default 0.05)
-%   nNullDraws    : number of null skew draws (default 100)
+%   saveFile : combined pairwise .mat file
+%   analysisType : "nochunk" or "chunked"
+%   alpha : q-value threshold (default 0.05)
+%   nNullDraws : number of null skew draws (default 100)
 
 % output
 %   saves results struct and makes plots per session
