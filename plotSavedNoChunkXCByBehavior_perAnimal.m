@@ -1,21 +1,25 @@
-function plotSavedNoChunkXCByBehavior_perAnimal(noChunkFile, minBouts)
-% plots saved nonchunked popavg xc results
-% split by classifier behv
+function plotSavedNoChunkXCByBehavior_AllAnimalsSummary(noChunkFile, minBouts)
+% plots saved nonchunked popavg xc results by behavior
 
-% for each animal, makes 2 figures:
-%   1. lag vs correlation, with 1 panel per behv that passed minBouts
-%   2. permutation lag histograms, with 1 panel per behv that passed minBouts
-%
-% reminder!!!! --> a "bout" / "epoch" is one contiguous stretch of timepoints in timeIdx
+% outputs:
+%   1. per animal: 2x5 lag vs corr plots (behaviors 1:10)
+%   2. per animal: 2x5 permutation lag histograms (behaviors 1:10)
+%   3. one summary 2x5 figure:
+%        each panel = one behavior
+%        each panel contains all 4 animals:
+%           - black dot = actual peak lag
+%           - slightly offset gray vertical line = null 95% range
 
-% j run: plotSavedNoChunkXCByBehavior_perAnimal("X:\David\AnalysesData\nonchunked_xcorr_by_classifier_cortex_allSessions_saved.mat", 100)
+% j run:
+% plotSavedNoChunkXCByBehavior_AllAnimalsSummary("X:\David\AnalysesData\nonchunked_xcorr_by_classifier_cortex_allSessions_saved.mat",100)
 
 arguments
     noChunkFile (1,1) string
     minBouts (1,1) double = 100
 end
 
-behNames = {'unlabeled','climbdown','climbup','eating','grooming','jumpdown','jumping','rearing','still','walkflat','walkgrid'};
+behNums = 1:10;
+behNames = {'climbdown','climbup','eating','grooming','jumpdown','jumping','rearing','still','walkflat','walkgrid'};
 
 origColor = [0 0 0];
 corrCIColor = [0 0.2 0.6];
@@ -36,84 +40,63 @@ for i = 1:nSess
     animalIDs{i} = a;
 end
 
-binSize = 0.001; % nonchunked file was generated at 1 ms bins
+binSize = 0.001;
 
-fprintf('\n================ nonchunked per animal ================\n')
+% summary storage: session x behavior
+actualLagMat = nan(nSess, numel(behNums));
+lagCIMatLo = nan(nSess, numel(behNums));
+lagCIMatHi = nan(nSess, numel(behNums));
+boutMat = nan(nSess, numel(behNums));
+durMat = nan(nSess, numel(behNums));
+
+fprintf('\n================ nonchunked behavior plots ================\n')
 
 for s = 1:nSess
-    goodBehLabels = {};
-    goodBehStruct = {};
-    goodPermLags = {};
-    goodNBouts = [];
-    goodDurSec = [];
+    figure('Name', sprintf('%s nonchunk lag vs corr by behavior', animalIDs{s}), 'Color', 'w');
+    tile_lay1 = tiledlayout(2, 5, 'TileSpacing', 'compact', 'Padding', 'compact');
 
-    for bIdx = 1:numel(R.behaviors)
-        beh = R.behaviors(bIdx);
+    firstLegendDone = false;
 
-        if isempty(R.sessions(s).beh)
-            continue
-        end
+    for k = 1:numel(behNums)
+        b = behNums(k);
+        thisBeh = R.sessions(s).beh(b);
 
-        thisBeh = R.sessions(s).beh(bIdx);
+        nexttile(tile_lay1, k); hold on;
 
-        if isempty(thisBeh) || ~isfield(thisBeh, 'timeIdx') || isempty(thisBeh.timeIdx)
-            continue
-        end
-
-        if isempty(thisBeh.xc) || isempty(thisBeh.lagsSec)
+        if isempty(thisBeh) || ~isfield(thisBeh, 'timeIdx') || isempty(thisBeh.timeIdx) || ...
+                isempty(thisBeh.xc) || isempty(thisBeh.lagsSec)
+            title(sprintf('%d: %s\nmissing', b, behNames{k}));
+            axis off;
             continue
         end
 
         timeIdx = sort(thisBeh.timeIdx(:));
-
         if isempty(timeIdx)
             nBouts = 0;
         else
             nBouts = 1 + sum(diff(timeIdx) > 1);
         end
+        durSec = numel(timeIdx) * binSize;
 
         if nBouts < minBouts
+            title(sprintf('%d: %s\nbouts = %d (< %d)', b, behNames{k}, nBouts, minBouts));
+            axis off;
             continue
         end
 
-        durSec = numel(timeIdx) * binSize;
-
-        if beh >= 0 && beh <= 10
-            goodBehLabels{end+1} = sprintf('%d: %s', beh, behNames{beh+1}); %#ok<AGROW>
-        else
-            goodBehLabels{end+1} = sprintf('%d', beh); %#ok<AGROW>
-        end
-
-        goodBehStruct{end+1} = thisBeh; %#ok<AGROW>
-        goodPermLags{end+1} = thisBeh.permPeakLags; %#ok<AGROW>
-        goodNBouts(end+1) = nBouts; %#ok<AGROW>
-        goodDurSec(end+1) = durSec; %#ok<AGROW>
-    end
-
-    fprintf('%s nonchunk: %d behaviors passed minBouts=%d\n', ...
-        animalIDs{s}, numel(goodBehLabels), minBouts)
-
-    if isempty(goodBehLabels)
-        continue
-    end
-
-    nPlot = numel(goodBehLabels);
-    nCols = min(4, nPlot);
-    nRows = ceil(nPlot / nCols);
-
-    % ---- figure 1: lag vs correlation ----
-    figure('Name', sprintf('%s nonchunk lag vs correlation by behavior', animalIDs{s}), 'Color', 'w');
-    tile_lay = tiledlayout(nRows, nCols, 'TileSpacing', 'compact', 'Padding', 'compact');
-
-    for k = 1:nPlot
-        nexttile(tile_lay, k); hold on;
-
-        thisBeh = goodBehStruct{k};
         lagsSec = thisBeh.lagsSec(:)';
         xc = thisBeh.xc(:)';
         peakLag = thisBeh.peakLagSec;
         corrCI = thisBeh.ctrlCorrCI;
         lagCI = thisBeh.lagCI;
+
+        actualLagMat(s,k) = peakLag;
+        if ~isempty(lagCI) && numel(lagCI) == 2 && ~any(isnan(lagCI))
+            lagCIMatLo(s,k) = lagCI(1);
+            lagCIMatHi(s,k) = lagCI(2);
+        end
+        boutMat(s,k) = nBouts;
+        durMat(s,k) = durSec;
 
         hOrig = plot(lagsSec, xc, 'Color', origColor, 'LineWidth', 2);
 
@@ -134,12 +117,12 @@ for s = 1:nSess
 
         xlabel('Lag (Seconds)');
         ylabel('Correlation');
-        title(sprintf('%s\nbouts = %d | dur = %.1f s', ...
-            goodBehLabels{k}, goodNBouts(k), goodDurSec(k)));
+        title(sprintf('%d: %s\nbouts = %d | dur = %.1f s', ...
+            b, behNames{k}, nBouts, durSec));
         box off;
-        set(gca, 'FontSize', 14, 'LineWidth', 1, 'TickDir', 'out');
+        set(gca, 'FontSize', 12, 'LineWidth', 1, 'TickDir', 'out');
 
-        if k == 1
+        if ~firstLegendDone
             legHandles = [hOrig];
             legLabels = {'Original Cross-Correlation'};
             if isgraphics(hCorr25), legHandles(end+1) = hCorr25; legLabels{end+1} = '2.5% Correlation Control'; end
@@ -149,32 +132,58 @@ for s = 1:nSess
 
             lgd = legend(legHandles, legLabels, 'Orientation', 'horizontal');
             lgd.Layout.Tile = 'south';
-            lgd.FontSize = 12;
+            lgd.FontSize = 11;
             lgd.Box = 'off';
+            firstLegendDone = true;
         end
     end
 
-    title(tile_lay, sprintf('%s nonchunked: lag vs correlation by classifier behavior', animalIDs{s}), ...
+    title(tile_lay1, sprintf('%s nonchunked: lag vs correlation by behavior', animalIDs{s}), ...
         'FontSize', 16, 'FontWeight', 'bold');
 
-    % ---- figure 2: permutation histograms ----
+    % ---- permutation histograms ----
     figure('Name', sprintf('%s nonchunk permutation histograms by behavior', animalIDs{s}), 'Color', 'w');
-    tile_lay = tiledlayout(nRows, nCols, 'TileSpacing', 'compact', 'Padding', 'compact');
+    tile_lay2 = tiledlayout(2, 5, 'TileSpacing', 'compact', 'Padding', 'compact');
 
-    for k = 1:nPlot
-        nexttile(tile_lay, k); hold on;
+    firstLegendDone = false;
 
-        permLags = goodPermLags{k};
-        thisBeh = goodBehStruct{k};
+    for k = 1:numel(behNums)
+        b = behNums(k);
+        thisBeh = R.sessions(s).beh(b);
 
-        if isempty(permLags)
-            title(sprintf('%s\n(no perms)', goodBehLabels{k}));
+        nexttile(tile_lay2, k); hold on;
+
+        if isempty(thisBeh) || ~isfield(thisBeh, 'timeIdx') || isempty(thisBeh.timeIdx) || ...
+                isempty(thisBeh.permPeakLags)
+            title(sprintf('%d: %s\nmissing', b, behNames{k}));
             axis off;
             continue
         end
 
+        timeIdx = sort(thisBeh.timeIdx(:));
+        if isempty(timeIdx)
+            nBouts = 0;
+        else
+            nBouts = 1 + sum(diff(timeIdx) > 1);
+        end
+        durSec = numel(timeIdx) * binSize;
+
+        if nBouts < minBouts
+            title(sprintf('%d: %s\nbouts = %d (< %d)', b, behNames{k}, nBouts, minBouts));
+            axis off;
+            continue
+        end
+
+        permLags = thisBeh.permPeakLags;
         permLags = permLags(~isnan(permLags));
-        histogram(permLags, 'FaceColor', [0.3 0.6 0.8], 'EdgeColor', 'none');
+
+        if isempty(permLags)
+            title(sprintf('%d: %s\n(no perms)', b, behNames{k}));
+            axis off;
+            continue
+        end
+
+        hHist = histogram(permLags, 'FaceColor', [0.3 0.6 0.8], 'EdgeColor', 'none');
 
         prcLag = prctile(permLags, [2.5 97.5]);
         hCI1 = xline(prcLag(1), '--', 'Color', [0.2 0.2 0.2], 'LineWidth', 1.5);
@@ -183,22 +192,69 @@ for s = 1:nSess
 
         xlabel('Peak Lag (s)');
         ylabel('Count');
-        title(sprintf('%s\nbouts = %d | dur = %.1f s', ...
-            goodBehLabels{k}, goodNBouts(k), goodDurSec(k)));
+        title(sprintf('%d: %s\nbouts = %d | dur = %.1f s', ...
+            b, behNames{k}, nBouts, durSec));
         box off;
-        set(gca, 'FontSize', 14, 'LineWidth', 1, 'TickDir', 'out');
+        set(gca, 'FontSize', 12, 'LineWidth', 1, 'TickDir', 'out');
 
-        if k == 1
-            lgd = legend([hCI1 hPeak], {'Permutation 95% CI', 'Actual Peak Lag'}, ...
+        if ~firstLegendDone
+            lgd = legend([hHist hCI1 hPeak], ...
+                {'Permutation Lag Distribution', 'Permutation 95% CI', 'Actual Peak Lag'}, ...
                 'Orientation', 'horizontal');
             lgd.Layout.Tile = 'south';
-            lgd.FontSize = 12;
+            lgd.FontSize = 11;
             lgd.Box = 'off';
+            firstLegendDone = true;
         end
     end
 
-    title(tile_lay, sprintf('%s nonchunked: permutation lag distributions by classifier behavior', animalIDs{s}), ...
+    title(tile_lay2, sprintf('%s nonchunked: permutation lag distributions by behavior', animalIDs{s}), ...
         'FontSize', 16, 'FontWeight', 'bold');
 end
+
+% ---- summary figure: one panel per behavior, all animals in each panel ----
+figure('Name', 'Nonchunked summary by behavior', 'Color', 'w');
+tile_lay3 = tiledlayout(2, 5, 'TileSpacing', 'compact', 'Padding', 'compact');
+
+xBase = 1:nSess;
+xOffsets = [-0.18 -0.06 0.06 0.18];
+
+for k = 1:numel(behNums)
+    nexttile(tile_lay3, k); hold on;
+
+    for s = 1:nSess
+        if ~isnan(lagCIMatLo(s,k)) && ~isnan(lagCIMatHi(s,k))
+            xci = xBase(s) + xOffsets(s);
+            line([xci xci], [lagCIMatLo(s,k) lagCIMatHi(s,k)], ...
+                'Color', [0.6 0.6 0.6], 'LineWidth', 2);
+        end
+
+        if ~isnan(actualLagMat(s,k))
+            plot(xBase(s), actualLagMat(s,k), 'ko', 'MarkerFaceColor', 'k', 'MarkerSize', 7);
+        end
+    end
+
+    yline(0, 'k:');
+    xlim([0.5 nSess + 0.5]);
+    xticks(1:nSess);
+    xticklabels(animalIDs);
+    ylabel('Peak Lag (s)');
+    title(sprintf('%d: %s', behNums(k), behNames{k}));
+    box off
+    grid on
+end
+
+hActual = plot(nan, nan, 'ko', 'MarkerFaceColor', 'k', 'MarkerSize', 7);
+hNull = line([nan nan], [nan nan], 'Color', [0.6 0.6 0.6], 'LineWidth', 2);
+
+lgd = legend([hActual hNull], ...
+    {'Actual peak lag', 'Null 95% range (not CI on dot)'}, ...
+    'Orientation', 'horizontal');
+lgd.Layout.Tile = 'south';
+lgd.FontSize = 11;
+lgd.Box = 'off';
+
+title(tile_lay3, 'Nonchunked summary: actual peak lag with offset null 95% range by behavior', ...
+    'FontSize', 16, 'FontWeight', 'bold');
 
 end
