@@ -9,7 +9,7 @@ function plotSavedChunkXC_SelectedBehaviors_AllAnimalsSummary(chunkFile, minTria
 %        each panel contains all 4 animals:
 %           - black dot = actual peak lag
 %           - slightly offset gray vertical line = null 95% range
-%
+
 % j run: plotSavedChunkXC_SelectedBehaviors_AllAnimalsSummary("C:\Users\mirilab\Documents\GlobusTransfer\combined_allAnimals_concatCrossCorrPerCanonicalBehavior_classifier.mat", 25)
 
 arguments
