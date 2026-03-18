@@ -1,5 +1,7 @@
-function plotSignificantPairwiseChunkedP05WithFDR(combinedMatFile, alpha, nNullDraws)
-% plots significant pairwise CHUNKED xcorr results using p < alpha & also reports the storey-estimated FDR at that threshold
+function plotSignificantPairwiseChunkedP05WithFDR(combinedMatFile, alpha, nNullDraws, corrThresh)
+% plots significant pairwise CHUNKED xcorr results using:
+%   p < alpha AND peakCorr > corrThresh
+% also reports the storey-estimated FDR at that threshold
 
 % old plotting style kept for:
 %   - heatmap
@@ -18,12 +20,13 @@ function plotSignificantPairwiseChunkedP05WithFDR(combinedMatFile, alpha, nNullD
 %   baseDirs
 
 % j run:
-% plotSignificantPairwiseChunkedP05WithFDR("C:\Users\mirilab\Documents\GlobusTransfer\pairwiseChunked_ALLPAIRS_ALLSESS_REAL_AND_SHIFTS_COMBINED.mat",0.05, 100)
+% plotSignificantPairwiseChunkedP05WithFDR("C:\Users\mirilab\Documents\GlobusTransfer\pairwiseChunked_ALLPAIRS_ALLSESS_REAL_AND_SHIFTS_COMBINED.mat", 0.05, 100, 0.1)
 
 arguments
     combinedMatFile (1,1) string
     alpha (1,1) double = 0.05
     nNullDraws (1,1) double = 100
+    corrThresh (1,1) double = 0.1
 end
 
 if exist('mafdr', 'file') ~= 2
@@ -64,11 +67,11 @@ for sess = 1:numSessions
     end
 
     [rows, cols] = getIntPyrPairs(nInt, nPyr);
-    actual = computePairStatsP05(peakCorrs, peakLags, nullXC, rows, cols, alpha);
+    actual = computePairStatsP05(peakCorrs, peakLags, nullXC, rows, cols, alpha, corrThresh);
 
     fprintf('\n=== %s chunked ===\n', animalID);
-    fprintf('pairs: %d total | %d significant at p<%.3f | est FDR = %.4f\n', ...
-        actual.nPairsNominal, actual.nSig, alpha, actual.fdrAtThreshold);
+    fprintf('pairs: %d total | %d significant at p<%.3f & corr>%.3f | est FDR = %.4f\n', ...
+        actual.nPairsNominal, actual.nSig, alpha, corrThresh, actual.fdrAtThreshold);
 
     % -------- heatmap (old style) --------
     sigMat = nan(nInt, nPyr);
@@ -82,16 +85,16 @@ for sess = 1:numSessions
 
     figure('Name', sprintf('%s significant pairwise chunked peak lag', animalID), 'Color', 'w');
     hImg = imagesc(sigMat);
-    set(hImg, 'AlphaData', ~isnan(sigMat)); % hide nonsig pairs
-    set(gca, 'Color', 'k');                 % black background for NaNs
+    set(hImg, 'AlphaData', ~isnan(sigMat));
+    set(gca, 'Color', 'k');
     axis xy;
     colormap(parula);
     cb = colorbar;
     ylabel(cb, 'peak lag (s)');
     xlabel('pyramidal neurons');
     ylabel('interneurons');
-    title(sprintf('%s – sig pairs: %d / %d | p < %.3f | est FDR = %.3f', ...
-        animalID, actual.nSig, actual.nPairsNominal, alpha, actual.fdrAtThreshold));
+    title(sprintf('%s – sig pairs: %d / %d | p < %.3f & corr > %.2f | est FDR = %.3f', ...
+        animalID, actual.nSig, actual.nPairsNominal, alpha, corrThresh, actual.fdrAtThreshold));
     set(gca, 'TickDir', 'out');
     box off;
 
@@ -105,8 +108,8 @@ for sess = 1:numSessions
     end
     xlabel('peak lag (s)');
     ylabel('count');
-    title(sprintf('%s – significant peak lags (n=%d / %d) | est FDR = %.3f', ...
-        animalID, actual.nSig, actual.nPairsNominal, actual.fdrAtThreshold));
+    title(sprintf('%s – significant peak lags (n=%d / %d) | p < %.3f & corr > %.2f | est FDR = %.3f', ...
+        animalID, actual.nSig, actual.nPairsNominal, alpha, corrThresh, actual.fdrAtThreshold));
     grid on;
 
     % -------- scatterhist (old style) --------
@@ -115,8 +118,8 @@ for sess = 1:numSessions
         scatterhist(actual.sigLagVec(:), actual.sigCorrVec(:), 'Direction', 'out', 'Marker', '.');
         xlabel('peak lag (s)');
         ylabel('peak correlation');
-        title(sprintf('%s – significant pairs (n=%d / %d) | est FDR = %.3f', ...
-            animalID, actual.nSig, actual.nPairsNominal, actual.fdrAtThreshold));
+        title(sprintf('%s – significant pairs (n=%d / %d) | p < %.3f & corr > %.2f | est FDR = %.3f', ...
+            animalID, actual.nSig, actual.nPairsNominal, alpha, corrThresh, actual.fdrAtThreshold));
     end
 
     % -------- skew null distribution --------
@@ -128,7 +131,7 @@ for sess = 1:numSessions
         drawRows = poolRows(drawIdx);
         drawCols = poolCols(drawIdx);
 
-        nullDraw = computePairStatsP05(peakCorrs, peakLags, nullXC, drawRows, drawCols, alpha);
+        nullDraw = computePairStatsP05(peakCorrs, peakLags, nullXC, drawRows, drawCols, alpha, corrThresh);
         nullSkews(r) = nullDraw.skew;
     end
 
@@ -180,7 +183,7 @@ for s = 1:numSessions
     xticks(1);
     xticklabels({summaryAnimalID{s}});
     ylabel('Skew');
-    title(sprintf('%s\nFDR@p<%.2f = %.3f', summaryAnimalID{s}, alpha, summaryFDR(s)));
+    title(sprintf('%s\nFDR@(p<%.2f & corr>%.2f) = %.3f', summaryAnimalID{s}, alpha, corrThresh, summaryFDR(s)));
     box off
     grid on
 end
@@ -189,7 +192,7 @@ sgtitle('Chunked summary: actual skew vs null 95% CI');
 
 end
 
-function out = computePairStatsP05(peakCorrMat, peakLagMat, nullCorrMat, rows, cols, alpha)
+function out = computePairStatsP05(peakCorrMat, peakLagMat, nullCorrMat, rows, cols, alpha, corrThresh)
 nPairs = numel(rows);
 realVals = nan(nPairs,1);
 lagVals = nan(nPairs,1);
@@ -217,7 +220,7 @@ end
 
 validP = ~isnan(pVals) & isfinite(pVals);
 sigMask = false(size(pVals));
-sigMask(validP) = pVals(validP) < alpha;
+sigMask(validP) = (pVals(validP) < alpha) & (realVals(validP) > corrThresh);
 
 qVals = nan(size(pVals));
 if any(validP)
