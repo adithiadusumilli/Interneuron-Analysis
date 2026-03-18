@@ -1,9 +1,9 @@
 function plotSavedChunkXCByBehavior_perAnimal(chunkFile, minTrials)
-% plots saved CHUNKED popavg xc results
+% plots saved chunked popavg xc results
 % split by classifier behv
 
-% for each animal, makes 2 figures:
-%   1. lag vs correlation, with 1 panel per behv that passed minTrials
+% for each animal, makes 2 figs:
+%   1. lag vs corr, with 1 panel per behv that passed minTrials
 %   2. permutation lag histograms, with 1 panel per behv that passed minTrials
 
 % j run: plotSavedChunkXCByBehavior_perAnimal("C:\Users\mirilab\Documents\GlobusTransfer\combined_allAnimals_concatCrossCorrPerCanonicalBehavior_classifier.mat", 100)
@@ -28,7 +28,6 @@ C = load(chunkFile, ...
 nSess = numel(C.animalNames);
 animalIDs = cell(1, nSess);
 
-% force animal ids to be D026 / D020 / D024 / D043 from baseDirs
 for i = 1:nSess
     a = regexp(C.baseDirs{i}, 'D\d+', 'match', 'once');
     if isempty(a)
@@ -51,7 +50,7 @@ for s = 1:nSess
     for bIdx = 1:numel(C.behaviors)
         beh = C.behaviors(bIdx);
 
-        nTrials = C.all_nTrials_real{s, bIdx};
+        nTrials = C.all_nTrials_real(s, bIdx);
         if isempty(nTrials) || isnan(nTrials) || nTrials < minTrials
             continue
         end
