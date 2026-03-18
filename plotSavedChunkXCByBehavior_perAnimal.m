@@ -10,7 +10,7 @@ function plotSavedChunkXCByBehavior_perAnimal(chunkFile, minTrials)
 
 arguments
     chunkFile (1,1) string
-    minTrials (1,1) double = 40
+    minTrials (1,1) double = 25
 end
 
 behNames = {'unlabeled','climbdown','climbup','eating','grooming','jumpdown','jumping','rearing','still','walkflat','walkgrid'};
