@@ -5,8 +5,12 @@ function plotExampleWaveformsForInset(baseDir)
 %   - bars = mean % across animals
 %   - dots = one dot per animal
 %   - lines connect pyramidal and interneuron percentages within each animal
+%   - each animal gets its own marker shape
+%   - legend labels the animals
 
-% j run: plotExampleWaveformsForInset("Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData")
+% also prints % pyr and int units for each animal to command window
+
+% run: plotExampleWaveformsForInset("Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData")
 
 arguments
     baseDir (1,1) string
@@ -22,6 +26,15 @@ animalFolders = {
     'X:\David\ArenaRecordings\D043-020525-ArenaRecording\ProcessedData'
 };
 
+animalNames = {
+    'D026', ...
+    'D020', ...
+    'D024', ...
+    'D043'
+};
+
+markerList = {'o','s','d','^','v','>','<','p','h','x','+'};
+
 fs = 30000; % hz
 
 %% ---- load data for current animal ----
@@ -33,7 +46,7 @@ neuronDataStruct = S.neuronDataStruct;
 cortexInds = double(F.cortexInds(:))';
 classifications = C.classifications;
 
-matchRow = find(contains(string(animalFolders), baseDir), 1);
+matchRow = find(strcmp(string(animalFolders), string(baseDir)), 1);
 if isempty(matchRow)
     error('could not match baseDir to animalFolders.');
 end
@@ -61,10 +74,19 @@ plotSingleWaveformInset(neuronDataStruct(pyrExampleInd), fs, [0 0 1], 'Pyramidal
 plotSingleWaveformInset(neuronDataStruct(intExampleInd), fs, [1 0 0], 'Interneuron Example');
 
 %% ---- plot neuron-type percentages across animals ----
-pyrPctAll = nan(numel(animalFolders),1);
-intPctAll = nan(numel(animalFolders),1);
+nAnimals = numel(animalFolders);
 
-for a = 1:numel(animalFolders)
+if numel(markerList) < nAnimals
+    error('not enough marker types for the number of animals.');
+end
+
+pyrPctAll = nan(nAnimals,1);
+intPctAll = nan(nAnimals,1);
+nPyrAll = nan(nAnimals,1);
+nIntAll = nan(nAnimals,1);
+nTotAll = nan(nAnimals,1);
+
+for a = 1:nAnimals
     thisBaseDir = string(animalFolders{a});
 
     Fr = load(fullfile(thisBaseDir,'NeuralFiringRates1msBins10msGauss.mat'),'cortexInds');
@@ -77,6 +99,10 @@ for a = 1:numel(animalFolders)
     nInt = sum(thisCortexLabels == 1);
     nTot = nPyr + nInt;
 
+    nPyrAll(a) = nPyr;
+    nIntAll(a) = nInt;
+    nTotAll(a) = nTot;
+
     if nTot > 0
         pyrPctAll(a) = 100 * nPyr / nTot;
         intPctAll(a) = 100 * nInt / nTot;
@@ -86,7 +112,17 @@ end
 meanPyrPct = mean(pyrPctAll, 'omitnan');
 meanIntPct = mean(intPctAll, 'omitnan');
 
-figure('Color','w','Position',[100 100 380 290]);
+% print percentages per animal
+fprintf('\nM1 neuron-type percentages by animal:\n');
+fprintf('------------------------------------\n');
+for a = 1:nAnimals
+    fprintf('%s: pyr = %.2f%% (%d/%d), int = %.2f%% (%d/%d)\n', ...
+        animalNames{a}, pyrPctAll(a), nPyrAll(a), nTotAll(a), intPctAll(a), nIntAll(a), nTotAll(a));
+end
+fprintf('------------------------------------\n');
+fprintf('mean: pyr = %.2f%%, int = %.2f%%\n\n', meanPyrPct, meanIntPct);
+
+figure('Color','w','Position',[100 100 450 320]);
 ax = axes; hold(ax,'on');
 
 % average bars
@@ -95,18 +131,34 @@ b2 = bar(ax, 2, meanIntPct, 'FaceColor', [1 0 0], 'EdgeColor', 'none');
 b1.FaceAlpha = 0.28;
 b2.FaceAlpha = 0.28;
 
-% connect each animal's pyr and int percentages
-for a = 1:numel(animalFolders)
-    plot(ax, [1 2], [pyrPctAll(a) intPctAll(a)], '-', ...
-        'Color', [0.4 0.4 0.4], 'LineWidth', 1.1);
+% fixed x-jitter so points do not overlap and the figure is reproducible
+jitterAmt = 0.07;
+xJitter = linspace(-jitterAmt, jitterAmt, nAnimals)';
+
+xPyr = 1 + xJitter;
+xInt = 2 + xJitter;
+
+% connect each animal's pyramidal and interneuron percentages
+for a = 1:nAnimals
+    plot(ax, [xPyr(a) xInt(a)], [pyrPctAll(a) intPctAll(a)], '-', ...
+        'Color', [0.5 0.5 0.5], 'LineWidth', 1.1, 'HandleVisibility', 'off');
 end
 
-% dots for each animal
-plot(ax, ones(size(pyrPctAll)), pyrPctAll, 'o', ...
-    'MarkerFaceColor', [0 0 1], 'MarkerEdgeColor', 'k', 'MarkerSize', 6);
+% plot animal-specific markers and save handles for legend
+legendHandles = gobjects(nAnimals,1);
+for a = 1:nAnimals
+    plot(ax, xPyr(a), pyrPctAll(a), markerList{a}, ...
+        'MarkerFaceColor', [0 0 1], ...
+        'MarkerEdgeColor', 'k', ...
+        'MarkerSize', 7, ...
+        'HandleVisibility', 'off');
 
-plot(ax, 2*ones(size(intPctAll)), intPctAll, 'o', ...
-    'MarkerFaceColor', [1 0 0], 'MarkerEdgeColor', 'k', 'MarkerSize', 6);
+    legendHandles(a) = plot(ax, xInt(a), intPctAll(a), markerList{a}, ...
+        'MarkerFaceColor', [1 0 0], ...
+        'MarkerEdgeColor', 'k', ...
+        'MarkerSize', 7, ...
+        'DisplayName', animalNames{a});
+end
 
 xlim(ax, [0.4 2.6]);
 xticks(ax, [1 2]);
@@ -118,6 +170,11 @@ box(ax,'off');
 ax.LineWidth = 1.2;
 ax.FontSize = 16;
 ax.TickDir = 'out';
+
+legend(ax, legendHandles, animalNames, ...
+    'Location', 'eastoutside', ...
+    'Box', 'off', ...
+    'FontSize', 12);
 
 end
 
