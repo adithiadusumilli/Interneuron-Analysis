@@ -1,16 +1,17 @@
 function plotExampleWaveformsForInset(baseDir)
 % plots one example cortex pyramidal waveform and one example cortex interneuron waveform in separate small figures for use as insets
-
+%
 % also plots average cortex neuron-type percentages across animals:
 %   - bars = mean % across animals
 %   - dots = one dot per animal
 %   - lines connect pyramidal and interneuron percentages within each animal
 %   - each animal gets its own marker shape
 %   - legend labels the animals
-
-% also prints % pyr and int units for each animal to command window
-
-% run: plotExampleWaveformsForInset("Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData")
+%
+% additionally prints percent pyramidal and interneuron units for each animal to the command window
+%
+% run:
+%   plotExampleWaveformsForInset("Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData")
 
 arguments
     baseDir (1,1) string
@@ -144,20 +145,21 @@ for a = 1:nAnimals
         'Color', [0.5 0.5 0.5], 'LineWidth', 1.1, 'HandleVisibility', 'off');
 end
 
-% create black legend markers (shape only = animal identity)
+% plot animal-specific markers and save handles for legend
 legendHandles = gobjects(nAnimals,1);
 for a = 1:nAnimals
-    legendHandles(a) = plot(nan, nan, markerList{a}, ...
-        'MarkerFaceColor', 'k', ...
+    plot(ax, xPyr(a), pyrPctAll(a), markerList{a}, ...
+        'MarkerFaceColor', [0 0 1], ...
+        'MarkerEdgeColor', 'k', ...
+        'MarkerSize', 7, ...
+        'HandleVisibility', 'off');
+
+    legendHandles(a) = plot(ax, xInt(a), intPctAll(a), markerList{a}, ...
+        'MarkerFaceColor', [1 0 0], ...
         'MarkerEdgeColor', 'k', ...
         'MarkerSize', 7, ...
         'DisplayName', animalNames{a});
 end
-
-legend(ax, legendHandles, animalNames, ...
-    'Location', 'eastoutside', ...
-    'Box', 'off', ...
-    'FontSize', 12);
 
 xlim(ax, [0.4 2.6]);
 xticks(ax, [1 2]);
