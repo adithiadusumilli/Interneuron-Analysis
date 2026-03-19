@@ -10,6 +10,7 @@ function plotSavedCrossCorrelationResults(saveFile)
 %   - same x-axis limits across all per-animal permutation histogram panels
 %   - reduced histogram bin size
 %   - slightly reduced font size so the tiled figures look less busy
+%   - fixed the legend so the blue permuted histogram color appears correctly
 
 % run:
 % plotSavedCrossCorrelationResults("X:\David\AnalysesData\InterneuronAnalyses\Lab Meeting Pres\4 aninals run cross correlation, no chunking, pop-wise\runCrossCorrelation_savedOutputs_all4Animals.mat")
@@ -185,9 +186,14 @@ for s = 1:nSess
 
     if ~legendSet
         sharedLegendHandles(1) = hActual;
-        sharedLegendHandles(2) = hHist;
+
+        % dummy patch so blue shows correctly in the legend
+        hHistLegend = patch(nan, nan, permHistColor, 'EdgeColor', 'none');
+        sharedLegendHandles(2) = hHistLegend;
+
         sharedLegendHandles(3) = hPrc1;
         sharedLegendHandles(4) = hPrc2;
+
         legendSet = true;
     end
 
