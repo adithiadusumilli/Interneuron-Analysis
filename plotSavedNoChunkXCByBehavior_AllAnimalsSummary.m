@@ -1,4 +1,4 @@
-function plotSavedNoChunkXCByBehavior_AllAnimalsSummary(noChunkFile, minBouts)
+function plotSavedNoChunkXCByBehavior_AllAnimalsSummary(noChunkFile)
 % plots saved nonchunked popavg xc results by behavior
 
 % outputs:
@@ -10,16 +10,17 @@ function plotSavedNoChunkXCByBehavior_AllAnimalsSummary(noChunkFile, minBouts)
 %           - black dot = actual peak lag
 %           - slightly offset gray vertical line = null 95% range
 
-% j run:
-% plotSavedNoChunkXCByBehavior_AllAnimalsSummary("X:\David\AnalysesData\nonchunked_xcorr_by_classifier_cortex_allSessions_saved.mat",100)
+% this version plots behaviors regardless of bout count, as long as data exist
+
+% j run: plotSavedNoChunkXCByBehavior_AllAnimalsSummary("X:\David\AnalysesData\nonchunked_xcorr_by_classifier_cortex_allSessions_saved.mat")
 
 arguments
     noChunkFile (1,1) string
-    minBouts (1,1) double = 100
 end
 
 behNums = 1:10;
-behNames = {'climbdown','climbup','eating','grooming','jumpdown','jumping','rearing','still','walkflat','walkgrid'};
+behNames = {'climbdown','climbup','eating','grooming','jumpdown', ...
+            'jumping','rearing','still','walkflat','walkgrid'};
 
 origColor = [0 0 0];
 corrCIColor = [0 0.2 0.6];
@@ -77,12 +78,6 @@ for s = 1:nSess
             nBouts = 1 + sum(diff(timeIdx) > 1);
         end
         durSec = numel(timeIdx) * binSize;
-
-        if nBouts < minBouts
-            title(sprintf('%d: %s\nbouts = %d (< %d)', b, behNames{k}, nBouts, minBouts));
-            axis off;
-            continue
-        end
 
         lagsSec = thisBeh.lagsSec(:)';
         xc = thisBeh.xc(:)';
@@ -167,12 +162,6 @@ for s = 1:nSess
             nBouts = 1 + sum(diff(timeIdx) > 1);
         end
         durSec = numel(timeIdx) * binSize;
-
-        if nBouts < minBouts
-            title(sprintf('%d: %s\nbouts = %d (< %d)', b, behNames{k}, nBouts, minBouts));
-            axis off;
-            continue
-        end
 
         permLags = thisBeh.permPeakLags;
         permLags = permLags(~isnan(permLags));
