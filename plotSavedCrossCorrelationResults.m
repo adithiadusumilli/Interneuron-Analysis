@@ -4,12 +4,12 @@ function plotSavedCrossCorrelationResults(saveFile)
 % loads saved pop-averaged cross-correlation outputs and redraws figures without rerunning analysis
 
 % edits in this version:
-%   - uses animal names in titles instead of session numbers
-%   - adds one shared legend below the per-animal permutation histogram figure
-%   - forces the same x-axis limits across all per-animal permutation histogram panels
-%   - reduces histogram bin size
-%   - increases font size across figures
-%   - legend text for percentile lines does not include numeric values
+%   - first tiled plot uses one overarching title and animal-only panel titles
+%   - per-animal permutation histogram plot uses one overarching title and animal-only panel titles
+%   - shared legend below the per-animal permutation histogram figure
+%   - same x-axis limits across all per-animal permutation histogram panels
+%   - reduced histogram bin size
+%   - slightly reduced font size so the tiled figures look less busy
 
 % run:
 % plotSavedCrossCorrelationResults("X:\David\AnalysesData\InterneuronAnalyses\Lab Meeting Pres\4 aninals run cross correlation, no chunking, pop-wise\runCrossCorrelation_savedOutputs_all4Animals.mat")
@@ -35,11 +35,11 @@ peakLagColor = [0.95 0.45 0.35];
 lagCIColor = [0 0 0];
 permHistColor = [0.3 0.6 0.8];
 
-baseFont = 20;
-legendFont = 18;
-titleFont = 20;
-labelFont = 20;
-tickFont = 18;
+% slightly reduced font sizes
+legendFont = 17;
+titleFont = 19;
+labelFont = 19;
+tickFont = 17;
 
 %% ---- get animal ids for all sessions ----
 animalIDs = strings(1, nSess);
@@ -55,6 +55,7 @@ end
 %% ---- tiled cross-correlation figure ----
 figure('Name', 'M1 Lag vs. Correlation', 'Color', 'w');
 tile_lay = tiledlayout(1, nSess, 'TileSpacing', 'compact', 'Padding', 'compact');
+title(tile_lay, 'M1 Lag vs. Correlation', 'FontSize', titleFont);
 
 for iDir = 1:nSess
     nexttile(tile_lay, iDir); hold on;
@@ -82,7 +83,7 @@ for iDir = 1:nSess
 
     xlabel('Lag (Seconds)', 'FontSize', labelFont);
     ylabel('Correlation', 'FontSize', labelFont);
-    title(sprintf('M1 Lag vs. Correlation — %s', animalID), 'FontSize', titleFont);
+    title(animalID, 'FontSize', titleFont);
     box off;
     set(gca, 'FontSize', tickFont, 'LineWidth', 1, 'TickDir', 'out');
 
@@ -155,8 +156,10 @@ commonEdges = linspace(commonXLim(1), commonXLim(2), nBins + 1);
 figure('Name','Cortex non-chunked XC peak lag permutation distributions (per animal)', ...
        'Color','w');
 tile_lay2 = tiledlayout(1, nSess, 'TileSpacing','compact','Padding','compact');
+title(tile_lay2, 'Actual Peak Lags vs. Permutation Distribution', 'FontSize', titleFont);
 
 sharedLegendHandles = gobjects(4,1);
+legendSet = false;
 
 for s = 1:nSess
     ax = nexttile; hold(ax, 'on');
@@ -165,8 +168,7 @@ for s = 1:nSess
     permLags = permLags(~isnan(permLags));
 
     if isempty(permLags)
-        title(sprintf('%s: Actual Peak Lag vs. Permutations (no perms)', animalIDs(s)), ...
-            'FontSize', titleFont);
+        title(sprintf('%s (no perms)', animalIDs(s)), 'FontSize', titleFont);
         axis off;
         continue;
     end
@@ -181,32 +183,33 @@ for s = 1:nSess
     hPrc2 = xline(prcLag(2), '--', 'Color',[0.2 0.2 0.2], 'LineWidth',1.5);
     hActual = xline(peakLags(s), 'r-', 'LineWidth',1.8);
 
-    % store shared legend handles from first valid panel only
-    if s == 1
+    if ~legendSet
         sharedLegendHandles(1) = hActual;
         sharedLegendHandles(2) = hHist;
         sharedLegendHandles(3) = hPrc1;
         sharedLegendHandles(4) = hPrc2;
+        legendSet = true;
     end
 
     xlim(commonXLim);
     xlabel('Peak Lag (s)', 'FontSize', labelFont);
     ylabel('Count', 'FontSize', labelFont);
-    title(sprintf('%s: Actual Peak Lag vs. Permutations', animalIDs(s)), ...
-        'FontSize', titleFont);
+    title(animalIDs(s), 'FontSize', titleFont);
     box off;
     set(gca, 'FontSize', tickFont, 'LineWidth', 1, 'TickDir', 'out');
 end
 
-lgd2 = legend(sharedLegendHandles, ...
-    {'Actual Peak Lag', ...
-     'Permuted Peak Lags', ...
-     '2.5% Permutation Control Lag', ...
-     '97.5% Permutation Control Lag'}, ...
-    'Orientation', 'horizontal');
-lgd2.Layout.Tile = 'south';
-lgd2.FontSize = legendFont;
-lgd2.Box = 'off';
+if legendSet
+    lgd2 = legend(sharedLegendHandles, ...
+        {'Actual Peak Lag', ...
+         'Permuted Peak Lags', ...
+         '2.5% Permutation Control Lag', ...
+         '97.5% Permutation Control Lag'}, ...
+        'Orientation', 'horizontal');
+    lgd2.Layout.Tile = 'south';
+    lgd2.FontSize = legendFont;
+    lgd2.Box = 'off';
+end
 
 %% ---- combined histogram across animals ----
 allPermLags = cat(2, permLagCell{:});
