@@ -5,13 +5,13 @@ function plotSavedNoChunkXCByBehavior_AllAnimalsSummary(noChunkFile)
 %   1. four separate 2x5 lag-vs-correlation figures
 %        - one figure per animal
 %        - each subpanel = one behavior
-
+%
 %   2. one summary 2x5 figure
 %        - each subpanel = one behavior
 %        - each panel contains all animals:
 %            black dot = actual peak lag
 %            slightly offset gray vertical line = null 95% range
-
+%
 %   3. four separate 2x5 permutation histogram figures
 %        - one figure per animal
 %        - each subpanel = one behavior
@@ -22,7 +22,6 @@ function plotSavedNoChunkXCByBehavior_AllAnimalsSummary(noChunkFile)
 %   - uses shared legend beneath each tiled figure
 %   - uses common x-axis limits within each animal's lag-vs-correlation figure
 %   - uses common x-axis limits and bin edges within each animal's permutation histogram figure
-%   - uses animal names only as titles where appropriate
 
 % j run:
 % plotSavedNoChunkXCByBehavior_AllAnimalsSummary("X:\David\AnalysesData\nonchunked_xcorr_by_classifier_cortex_allSessions_saved.mat")
@@ -32,7 +31,8 @@ arguments
 end
 
 behNums = 1:10;
-behNames = {'climbdown','climbup','eating','grooming','jumpdown','jumping','rearing','still','walkflat','walkgrid'};
+behNames = {'climbdown','climbup','eating','grooming','jumpdown', ...
+            'jumping','rearing','still','walkflat','walkgrid'};
 
 origColor = [0 0 0];
 corrCIColor = [0 0.2 0.6];
@@ -150,7 +150,8 @@ end
 for s = 1:nSess
     figure('Name', sprintf('%s nonchunk lag vs corr by behavior', animalIDs{s}), 'Color', 'w');
     tile_lay1 = tiledlayout(2, 5, 'TileSpacing', 'compact', 'Padding', 'compact');
-    title(tile_lay1, sprintf('%s', animalIDs{s}), 'FontSize', titleFont, 'FontWeight', 'bold');
+    title(tile_lay1, sprintf('%s M1 Lag vs. Correlation', animalIDs{s}), ...
+        'FontSize', titleFont, 'FontWeight', 'bold');
 
     firstLegendDone = false;
 
@@ -235,7 +236,8 @@ end
 for s = 1:nSess
     figure('Name', sprintf('%s nonchunk permutation histograms by behavior', animalIDs{s}), 'Color', 'w');
     tile_lay2 = tiledlayout(2, 5, 'TileSpacing', 'compact', 'Padding', 'compact');
-    title(tile_lay2, sprintf('%s', animalIDs{s}), 'FontSize', titleFont, 'FontWeight', 'bold');
+    title(tile_lay2, sprintf('%s Peak Lags vs. Permutation Distribution', animalIDs{s}), ...
+        'FontSize', titleFont, 'FontWeight', 'bold');
 
     sharedLegendHandles = gobjects(4,1);
     legendSet = false;
@@ -308,7 +310,7 @@ end
 %% ---- plot 2: one summary 2x5 figure with all animals in each behavior panel ----
 figure('Name', 'Nonchunked summary by behavior', 'Color', 'w');
 tile_lay3 = tiledlayout(2, 5, 'TileSpacing', 'compact', 'Padding', 'compact');
-title(tile_lay3, 'Actual Peak Lags with Permutation Control Range by Behavior', ...
+title(tile_lay3, 'Actual Peak Lags vs. Permutation Control Range', ...
     'FontSize', titleFont, 'FontWeight', 'bold');
 
 xBase = 1:nSess;
