@@ -5,13 +5,13 @@ function plotSavedNoChunkXCByBehavior_AllAnimalsSummary(noChunkFile)
 %   1. four separate 2x5 lag-vs-correlation figures
 %        - one figure per animal
 %        - each subpanel = one behavior
-%
+
 %   2. one summary 2x5 figure
 %        - each subpanel = one behavior
 %        - each panel contains all animals:
 %            black dot = actual peak lag
 %            slightly offset gray vertical line = null 95% range
-%
+
 %   3. four separate 2x5 permutation histogram figures
 %        - one figure per animal
 %        - each subpanel = one behavior
@@ -22,6 +22,7 @@ function plotSavedNoChunkXCByBehavior_AllAnimalsSummary(noChunkFile)
 %   - uses shared legend beneath each tiled figure
 %   - uses common x-axis limits within each animal's lag-vs-correlation figure
 %   - uses common x-axis limits and bin edges within each animal's permutation histogram figure
+%   - uses prettier behavior labels in plot titles only
 
 % j run:
 % plotSavedNoChunkXCByBehavior_AllAnimalsSummary("X:\David\AnalysesData\nonchunked_xcorr_by_classifier_cortex_allSessions_saved.mat")
@@ -33,6 +34,10 @@ end
 behNums = 1:10;
 behNames = {'climbdown','climbup','eating','grooming','jumpdown', ...
             'jumping','rearing','still','walkflat','walkgrid'};
+
+% prettier labels for plot titles only
+behNamesPretty = {'Climb Down','Climb Up','Eating','Grooming','Jump Down', ...
+                  'Jumping','Rearing','Still','Walk Flat','Walk Grid'};
 
 origColor = [0 0 0];
 corrCIColor = [0 0.2 0.6];
@@ -164,7 +169,7 @@ for s = 1:nSess
         if isempty(thisBeh) || ~isfield(thisBeh, 'timeIdx') || isempty(thisBeh.timeIdx) || ...
                 ~isfield(thisBeh, 'xc') || isempty(thisBeh.xc) || ...
                 ~isfield(thisBeh, 'lagsSec') || isempty(thisBeh.lagsSec)
-            title(behNames{k}, 'FontSize', panelTitleFont);
+            title(behNamesPretty{k}, 'FontSize', panelTitleFont);
             axis off;
             continue
         end
@@ -211,7 +216,7 @@ for s = 1:nSess
         xlim(lagXLimBySess(s,:));
         xlabel('Lag (Seconds)', 'FontSize', labelFont);
         ylabel('Correlation', 'FontSize', labelFont);
-        title(behNames{k}, 'FontSize', panelTitleFont);
+        title(behNamesPretty{k}, 'FontSize', panelTitleFont);
         box off;
         set(gca, 'FontSize', tickFont, 'LineWidth', 1, 'TickDir', 'out');
 
@@ -250,7 +255,7 @@ for s = 1:nSess
 
         if isempty(thisBeh) || ~isfield(thisBeh, 'timeIdx') || isempty(thisBeh.timeIdx) || ...
                 ~isfield(thisBeh, 'permPeakLags') || isempty(thisBeh.permPeakLags)
-            title(behNames{k}, 'FontSize', panelTitleFont);
+            title(behNamesPretty{k}, 'FontSize', panelTitleFont);
             axis off;
             continue
         end
@@ -259,7 +264,7 @@ for s = 1:nSess
         permLags = permLags(~isnan(permLags));
 
         if isempty(permLags)
-            title(behNames{k}, 'FontSize', panelTitleFont);
+            title(behNamesPretty{k}, 'FontSize', panelTitleFont);
             axis off;
             continue
         end
@@ -289,7 +294,7 @@ for s = 1:nSess
         xlim(permXLimBySess(s,:));
         xlabel('Peak Lag (s)', 'FontSize', labelFont);
         ylabel('Count', 'FontSize', labelFont);
-        title(behNames{k}, 'FontSize', panelTitleFont);
+        title(behNamesPretty{k}, 'FontSize', panelTitleFont);
         box off;
         set(gca, 'FontSize', tickFont, 'LineWidth', 1, 'TickDir', 'out');
     end
@@ -354,7 +359,7 @@ for k = 1:numel(behNums)
     xticks(1:nSess);
     xticklabels(animalIDs);
     ylabel('Peak Lag (s)', 'FontSize', labelFont);
-    title(behNames{k}, 'FontSize', panelTitleFont);
+    title(behNamesPretty{k}, 'FontSize', panelTitleFont);
     box off
     grid on
     set(gca, 'FontSize', tickFont, 'LineWidth', 1, 'TickDir', 'out');
