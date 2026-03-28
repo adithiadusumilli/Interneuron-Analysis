@@ -150,13 +150,13 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse, 
     hPyr = shadedErrorBar(S.tAxis, mPyrCx, sePyrCx, 'lineProps', {'b', 'LineWidth', 1.5});
     hPyrLo = plot(S.tAxis, pyrCx_pct(1,:), 'b--', 'LineWidth', 1.0);
     hPyrHi = plot(S.tAxis, pyrCx_pct(2,:), 'b--', 'LineWidth', 1.0);
-    ylabel('Pyramidal Firing Rate', 'FontSize', 18);
+    ylabel('Pyramidal Firing Rate (spikes/s)', 'FontSize', 18);
 
     yyaxis right
     hInt = shadedErrorBar(S.tAxis, mIntCx, seIntCx, 'lineProps', {'r', 'LineWidth', 1.5});
     hIntLo = plot(S.tAxis, intCx_pct(1,:), 'r--', 'LineWidth', 1.0);
     hIntHi = plot(S.tAxis, intCx_pct(2,:), 'r--', 'LineWidth', 1.0);
-    ylabel('Interneuron Firing Rate', 'FontSize', 18);
+    ylabel('Interneuron Firing Rate (spikes/s)', 'FontSize', 18);
 
     xlabel('Time Relative to EMG Transition (ms)', 'FontSize', 18);
 
@@ -246,12 +246,12 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse, 
         error('no valid transitions found for channel 1.');
     end
 
-    % plot full trace but crop x-axis to 1.518 to 1.520 seconds
+    % plot full trace but crop x-axis to 1.514 to 1.521 seconds
     timeSecAll = (1:numel(signalCh1)) / 1000;
     transitionsCh1Sec = transitionsCh1 / 1000;
 
-    t0_sec = 1.518;
-    t1_sec = 1.520;
+    t0_sec = 1.514;
+    t1_sec = 1.521;
 
     figure('Name','Channel 1 EMG Transitions and Cortex Population Activity','Color','w');
     tiledlayout(2, 1, 'TileSpacing', 'tight', 'Padding', 'compact');
@@ -311,13 +311,13 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse, 
     hPyr2 = shadedErrorBar(S.tAxis, mPyrCx, sePyrCx, 'lineProps', {'b', 'LineWidth', 1.5});
     hPyrLo2 = plot(S.tAxis, pyrCx_pct(1,:), 'b--', 'LineWidth', 1.0);
     hPyrHi2 = plot(S.tAxis, pyrCx_pct(2,:), 'b--', 'LineWidth', 1.0);
-    ylabel('Pyramidal Neuron Firing Rate','FontSize',18)
+    ylabel('Pyramidal Neuron Firing Rate (spikes/s)','FontSize',18)
     
     yyaxis right
     hInt2 = shadedErrorBar(S.tAxis, mIntCx, seIntCx, 'lineProps', {'r', 'LineWidth', 1.5});
     hIntLo2 = plot(S.tAxis, intCx_pct(1,:), 'r--', 'LineWidth', 1.0);
     hIntHi2 = plot(S.tAxis, intCx_pct(2,:), 'r--', 'LineWidth', 1.0);
-    ylabel('Interneuron Firing Rate','FontSize',18)
+    ylabel('Interneuron Firing Rate (spikes/s)','FontSize',18)
 
     xline(0,'k:','LineWidth',1)
 
@@ -339,9 +339,9 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse, 
          'Pyramidal Neuron 95% CI Control Shifts', ...
          'Interneuron Mean ± SEM', ...
          'Interneuron 95% CI Control Shifts'}, ...
+        'Location','southoutside', ...
         'Orientation','horizontal');
 
-    lgd.Layout.Tile = 'south';
     lgd.FontSize = 14;
     lgd.Box = 'off';
 
