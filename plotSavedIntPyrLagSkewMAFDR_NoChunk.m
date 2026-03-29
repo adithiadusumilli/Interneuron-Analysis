@@ -242,7 +242,7 @@ for s = 1:nSess
     end
 end
 
-title(t, 'Summary Of Skew Relative To Null Distribution Across Sessions', ...
+title(t, 'Summary Of Skew Relative To Null Distribution', ...
     'FontSize', 18, 'FontWeight', 'bold');
 
 end
