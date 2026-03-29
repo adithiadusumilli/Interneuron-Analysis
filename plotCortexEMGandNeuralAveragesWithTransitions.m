@@ -48,7 +48,9 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse, 
         [~, iStart] = min(abs(tAxisLocal - tStart));
         [~, iEnd]   = min(abs(tAxisLocal - tEnd));
         if iEnd < iStart
-            tmp = iStart; iStart = iEnd; iEnd = tmp;
+            tmp = iStart;
+            iStart = iEnd;
+            iEnd = tmp;
         end
         baselines = mean(Ein(:, iStart:iEnd), 2, 'omitnan');
         Eout = Ein - baselines;
@@ -214,7 +216,7 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse, 
     meanIntFull = mean(intFRs, 1, 'omitnan');
     meanPyrFull = mean(pyrFRs, 1, 'omitnan');
 
-    % ---------------- 7. figure 2: fixed absolute-time window with transitions ----------------
+    % ---------------- 7. figure 2: choose a real window with transitions away from big spike ----------------
     selectedChannel = 1;
 
     if selectedChannel > size(emgAll,1)
@@ -232,12 +234,32 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse, 
         error('no valid transitions found for channel 1.');
     end
 
-    % choose a fixed window that contains detected transitions but avoids the big spike region
-    xWin = [1.5144e6 1.5150e6];
+    if isempty(transitionsCh1)
+        error('no detected transitions available for channel 1.');
+    end
+
+    % find the largest spike and avoid windows centered near it
+    [~, biggestSpikeIdx] = max(signalCh1);
+
+    % keep transitions at least 2000 ms away from the largest spike
+    farEnough = abs(transitionsCh1 - biggestSpikeIdx) > 2000;
+    candidateTransitions = transitionsCh1(farEnough);
+
+    if isempty(candidateTransitions)
+        candidateTransitions = transitionsCh1;
+    end
+
+    centerTransition = candidateTransitions(round(numel(candidateTransitions)/2));
+
+    halfWidth = 300; % ms on each side
+    xWin = [centerTransition - halfWidth, centerTransition + halfWidth];
+    xWin(1) = max(1, xWin(1));
+    xWin(2) = min(numel(signalCh1), xWin(2));
+
     inWin = transitionsCh1 >= xWin(1) & transitionsCh1 <= xWin(2);
 
     if ~any(inWin)
-        error('no detected transitions found in the requested fixed window. choose a different xWin.');
+        error('no detected transitions found in the selected window.');
     end
 
     figure('Name','Channel 1 EMG Transitions and Cortex Population Activity','Color','w');
