@@ -1,7 +1,7 @@
 function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse, doBaselineNorm)
 % plots three cortex-only figures:
 %  1) cortex pyramidal/interneuron averages aligned to emg transition events with shifted percentile bounds
-%  2) zoomed channel 1 emg transition panel + cortex firing rates
+%  2) multiple zoomed channel 1 emg transition panels + cortex firing rates so you can choose the best-looking one
 %  3) cortex neural activity aligned to emg transitions with mean emg subplot underneath
 
 % inputs
@@ -216,7 +216,7 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse, 
     meanIntFull = mean(intFRs, 1, 'omitnan');
     meanPyrFull = mean(pyrFRs, 1, 'omitnan');
 
-    % ---------------- 7. figure 2: choose a real window with transitions away from big spike ----------------
+    % ---------------- 7. figure 2: multiple candidate windows ----------------
     selectedChannel = 1;
 
     if selectedChannel > size(emgAll,1)
@@ -238,10 +238,8 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse, 
         error('no detected transitions available for channel 1.');
     end
 
-    % find the largest spike and avoid windows centered near it
+    % avoid windows centered near the biggest emg spike
     [~, biggestSpikeIdx] = max(signalCh1);
-
-    % keep transitions at least 2000 ms away from the largest spike
     farEnough = abs(transitionsCh1 - biggestSpikeIdx) > 2000;
     candidateTransitions = transitionsCh1(farEnough);
 
@@ -249,69 +247,79 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse, 
         candidateTransitions = transitionsCh1;
     end
 
-    centerTransition = candidateTransitions(round(numel(candidateTransitions)/2));
+    % choose several examples spread across the remaining candidate transitions
+    nExamples = min(6, numel(candidateTransitions));
+    exampleIdx = round(linspace(1, numel(candidateTransitions), nExamples));
+    exampleTransitions = candidateTransitions(exampleIdx);
 
     halfWidth = 300; % ms on each side
-    xWin = [centerTransition - halfWidth, centerTransition + halfWidth];
-    xWin(1) = max(1, xWin(1));
-    xWin(2) = min(numel(signalCh1), xWin(2));
 
-    inWin = transitionsCh1 >= xWin(1) & transitionsCh1 <= xWin(2);
+    for ex = 1:numel(exampleTransitions)
+        centerTransition = exampleTransitions(ex);
 
-    if ~any(inWin)
-        error('no detected transitions found in the selected window.');
+        xWin = [centerTransition - halfWidth, centerTransition + halfWidth];
+        xWin(1) = max(1, xWin(1));
+        xWin(2) = min(numel(signalCh1), xWin(2));
+
+        inWin = transitionsCh1 >= xWin(1) & transitionsCh1 <= xWin(2);
+        theseTransitions = transitionsCh1(inWin);
+
+        figure('Name', sprintf('Channel 1 EMG Transitions Example %d', ex), 'Color', 'w');
+        tiledlayout(2, 1, 'TileSpacing', 'tight', 'Padding', 'compact');
+
+        % top subplot
+        nexttile;
+        hold on;
+        hEmg = plot(1:numel(signalCh1), signalCh1, 'k');
+
+        if ~isempty(theseTransitions)
+            hTrans = plot(theseTransitions, signalCh1(theseTransitions), 'r*', ...
+                'MarkerSize', 8, 'LineWidth', 1.2);
+            legend([hEmg hTrans], {'EMG Signal', 'Detected Transition'}, 'Location', 'best');
+        else
+            legend(hEmg, {'EMG Signal'}, 'Location', 'best');
+        end
+
+        title(sprintf('Channel 1 EMG Detected Transitions Example %d', ex), 'FontSize', 16);
+        xlabel('Time (ms)', 'FontSize', 16);
+        ylabel('EMG Amplitude', 'FontSize', 16);
+        xlim(xWin);
+        box off;
+
+        ax2 = gca;
+        ax2.FontSize = 14;
+        ax2.LineWidth = 1;
+        ax2.TickDir = 'out';
+
+        % bottom subplot
+        nexttile;
+        hold on;
+        plot(1:numel(meanPyrFull), meanPyrFull, 'b', 'LineWidth', 1.5);
+        plot(1:numel(meanIntFull), meanIntFull, 'r', 'LineWidth', 1.5);
+
+        for iT = 1:numel(theseTransitions)
+            xline(theseTransitions(iT), ':', 'Color', [0.7 0.7 0.7], 'LineWidth', 0.75);
+        end
+
+        xlabel('Time (ms)', 'FontSize', 16);
+        ylabel('Mean Firing Rate', 'FontSize', 16);
+        title(sprintf('M1 Firing Rates Corresponding to Example %d', ex), 'FontSize', 16);
+        legend({'Pyramidal Neuron','Interneuron'}, 'Location', 'best');
+        xlim(xWin);
+        box off;
+
+        ax3 = gca;
+        ax3.FontSize = 14;
+        ax3.LineWidth = 1;
+        ax3.TickDir = 'out';
     end
-
-    figure('Name','Channel 1 EMG Transitions and Cortex Population Activity','Color','w');
-    tiledlayout(2, 1, 'TileSpacing', 'tight', 'Padding', 'compact');
-
-    % -- top subplot: channel 1 emg with detected transitions --
-    nexttile; hold on;
-    hEmg = plot(1:numel(signalCh1), signalCh1, 'k');
-
-    hTrans = plot(transitionsCh1(inWin), signalCh1(transitionsCh1(inWin)), 'r*', ...
-        'MarkerSize', 8, 'LineWidth', 1.2);
-
-    title('Channel 1 EMG Detected Transitions', 'FontSize', 16);
-    xlabel('Time (ms)', 'FontSize', 16);
-    ylabel('Emg Amplitude', 'FontSize', 16);
-    xlim(xWin);
-    box off;
-
-    ax2 = gca;
-    ax2.FontSize = 14;
-    ax2.LineWidth = 1;
-    ax2.TickDir = 'out';
-
-    legend([hEmg hTrans], {'EMG Signal', 'Detected Transition'}, 'Location', 'best');
-
-    % -- bottom subplot: M1 Neural Firing Rates --
-    nexttile; hold on;
-    plot(1:numel(meanPyrFull), meanPyrFull, 'b', 'LineWidth', 1.5);
-    plot(1:numel(meanIntFull), meanIntFull, 'r', 'LineWidth', 1.5);
-
-    theseTransitions = transitionsCh1(inWin);
-    for iT = 1:numel(theseTransitions)
-        xline(theseTransitions(iT), ':', 'Color', [0.7 0.7 0.7], 'LineWidth', 0.75);
-    end
-
-    xlabel('Time (ms)', 'FontSize', 16);
-    ylabel('Mean Firing Rate', 'FontSize', 16);
-    title('M1 Firing Rates Corresponding to EMG Channel 1 Detected Transitions', 'FontSize', 16);
-    legend({'Pyramidal Neuron','Interneuron'}, 'Location', 'best');
-    xlim(xWin);
-    box off;
-
-    ax3 = gca;
-    ax3.FontSize = 14;
-    ax3.LineWidth = 1;
-    ax3.TickDir = 'out';
 
     % ---------------- 8. figure 3 ----------------
     figure('Name','M1 Neural Activity with EMG Subplot','Color','w');
     tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
 
-    axNeural = nexttile; hold on;
+    axNeural = nexttile;
+    hold on;
 
     yyaxis left
     hPyr2 = shadedErrorBar(S.tAxis, mPyrCx, sePyrCx, 'lineProps', {'b', 'LineWidth', 1.5});
@@ -350,7 +358,8 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse, 
     lgd.FontSize = 14;
     lgd.Box = 'off';
 
-    axEMG = nexttile; hold on;
+    axEMG = nexttile;
+    hold on;
 
     shadedErrorBar(S.tAxis, mEMG, seEMG, 'lineProps', {'k','LineWidth',1.5});
     xline(0,'k:','LineWidth',1)
