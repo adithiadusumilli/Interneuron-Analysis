@@ -214,7 +214,7 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse, 
     meanIntFull = mean(intFRs, 1, 'omitnan');
     meanPyrFull = mean(pyrFRs, 1, 'omitnan');
 
-    % ---------------- 7. figure 2 ----------------
+    % ---------------- 7. figure 2: fixed absolute-time window with transitions ----------------
     selectedChannel = 1;
 
     if selectedChannel > size(emgAll,1)
@@ -232,28 +232,23 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse, 
         error('no valid transitions found for channel 1.');
     end
 
-    xWin = [1.514e6 1.517e6];
+    % choose a fixed window that contains detected transitions but avoids the big spike region
+    xWin = [1.5144e6 1.5150e6];
     inWin = transitionsCh1 >= xWin(1) & transitionsCh1 <= xWin(2);
 
     if ~any(inWin)
-        [~, nearestIdx] = min(abs(transitionsCh1 - mean(xWin)));
-        nearestCenter = transitionsCh1(nearestIdx);
-        halfWidth = diff(xWin)/2;
-        xWin = [nearestCenter - halfWidth, nearestCenter + halfWidth];
-        inWin = transitionsCh1 >= xWin(1) & transitionsCh1 <= xWin(2);
-        warning('No transitions in requested window. Recentered around nearest detected transition.');
+        error('no detected transitions found in the requested fixed window. choose a different xWin.');
     end
 
     figure('Name','Channel 1 EMG Transitions and Cortex Population Activity','Color','w');
     tiledlayout(2, 1, 'TileSpacing', 'tight', 'Padding', 'compact');
 
+    % -- top subplot: channel 1 emg with detected transitions --
     nexttile; hold on;
-    plot(1:numel(signalCh1), signalCh1, 'k');
+    hEmg = plot(1:numel(signalCh1), signalCh1, 'k');
 
-    if any(inWin)
-        plot(transitionsCh1(inWin), signalCh1(transitionsCh1(inWin)), 'r*', ...
-            'MarkerSize', 8, 'LineWidth', 1.2);
-    end
+    hTrans = plot(transitionsCh1(inWin), signalCh1(transitionsCh1(inWin)), 'r*', ...
+        'MarkerSize', 8, 'LineWidth', 1.2);
 
     title('Channel 1 EMG Detected Transitions', 'FontSize', 16);
     xlabel('Time (ms)', 'FontSize', 16);
@@ -266,15 +261,16 @@ function plotCortexEMGandNeuralAveragesWithTransitions(dataFile, channelsToUse, 
     ax2.LineWidth = 1;
     ax2.TickDir = 'out';
 
+    legend([hEmg hTrans], {'EMG Signal', 'Detected Transition'}, 'Location', 'best');
+
+    % -- bottom subplot: M1 Neural Firing Rates --
     nexttile; hold on;
     plot(1:numel(meanPyrFull), meanPyrFull, 'b', 'LineWidth', 1.5);
     plot(1:numel(meanIntFull), meanIntFull, 'r', 'LineWidth', 1.5);
 
-    if any(inWin)
-        theseTransitions = transitionsCh1(inWin);
-        for iT = 1:numel(theseTransitions)
-            xline(theseTransitions(iT), ':', 'Color', [0.7 0.7 0.7], 'LineWidth', 0.75);
-        end
+    theseTransitions = transitionsCh1(inWin);
+    for iT = 1:numel(theseTransitions)
+        xline(theseTransitions(iT), ':', 'Color', [0.7 0.7 0.7], 'LineWidth', 0.75);
     end
 
     xlabel('Time (ms)', 'FontSize', 16);
