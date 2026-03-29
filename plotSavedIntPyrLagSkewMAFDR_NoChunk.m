@@ -11,8 +11,7 @@ function plotSavedIntPyrLagSkewMAFDR_NoChunk(resultsFile)
 %   3. peak lag versus peak correlation
 %   4. skew relative to null distribution
 
-% summary figure:
-%   - actual skew versus null 95% interval across sessions
+% summary figure -- actual skew versus null 95% interval across sessions
 
 % j run: plotSavedIntPyrLagSkewMAFDR_NoChunk("C:\Users\mirilab\Documents\GlobusTransfer\pairwise_nochunk_allPairs_ALL_SESSIONS_COMBINED_intPyrSkewMAFDR_nochunk.mat")
 
@@ -169,14 +168,14 @@ for s = 1:nSess
     figure('Name', sprintf('%s Skew Relative To Null Distribution', animalID), 'Color', 'w');
 
     if ~isempty(validNullSkews)
-        histogram(validNullSkews, 30, 'EdgeColor', 'none');
+        hHist = histogram(validNullSkews, 30, 'EdgeColor', 'none');
         hold on;
         hActual = xline(actual.skew, 'r', 'LineWidth', 2);
         hCI = xline(nullCI(1), 'k--', 'LineWidth', 1.5);
         xline(nullCI(2), 'k--', 'LineWidth', 1.5);
 
-        legend([hActual hCI], ...
-            {'Actual Skew', '95% Null Skew Interval'}, ...
+        legend([hHist hActual hCI], ...
+            {'Null Skew Distribution', 'Actual Skew', '95% Null Skew Interval'}, ...
             'FontSize', 12, 'Location', 'best');
     else
         histogram(nan);
@@ -195,7 +194,7 @@ for s = 1:nSess
 end
 
 % ================= SUMMARY =================
-figure('Name', 'Summary Of Skew Relative To Null Distribution', 'Color', 'w');
+figure('Name', 'Summary Of Skew Relative To Null Distribution Across Sessions', 'Color', 'w');
 t = tiledlayout(1, nSess, 'TileSpacing', 'compact', 'Padding', 'compact');
 
 for s = 1:nSess
