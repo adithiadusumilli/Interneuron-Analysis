@@ -299,9 +299,9 @@ end
 
 % ================= SUMMARY =================
 figure('Name', 'Summary Of Skew Relative To Null Distribution Across Sessions', 'Color', 'w');
-t = tiledlayout(1, numSessions, 'TileSpacing', 'compact', 'Padding', 'compact');
+t = tiledlayout(1, nSess, 'TileSpacing', 'compact', 'Padding', 'compact');
 
-for s = 1:numSessions
+for s = 1:nSess
     nexttile;
     hold on;
 
