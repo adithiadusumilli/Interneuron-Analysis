@@ -127,7 +127,7 @@ for s = 1:nSess
     legend(hZero, 'Zero Lag Reference', 'Location', 'best', 'FontSize', 12);
 
     set(gca, 'FontSize', 13);
-    grid on;
+    box off;
 
     % ================= PEAK CORRELATION RELATIVE TO SHIFT CONTROL =================
     sigLagVec = actual.sigLagVec(:);
@@ -216,7 +216,7 @@ for s = 1:nSess
     end
 
     set(gca, 'FontSize', 13);
-    grid on;
+    box off;
 
     % ================= SCATTER =================
     if ~isempty(actual.sigLagVec) && ~isempty(actual.realVals)
@@ -294,7 +294,7 @@ for s = 1:nSess
         'FontSize', 16, 'FontWeight', 'bold');
 
     set(gca, 'FontSize', 13);
-    grid on;
+    box off;
 end
 
 % ================= SUMMARY =================
