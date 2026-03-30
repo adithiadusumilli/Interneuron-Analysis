@@ -1,6 +1,5 @@
 function plotDetectedEMGTransitions(emgNeuralFile, emgChannel, t0, t1)
-% plots one emg channel over a selected time window and overlays the
-% already-detected valid transition points saved in EMG_Neural_AllChannels.mat
+% plots 1 emg channel over a selected time window and overlays the already-detected valid transition points saved in EMG_Neural_AllChannels.mat (which is saved per animal!!!)
 
 % inputs:
 %   emgNeuralFile: full file path to EMG_Neural_AllChannels.mat
