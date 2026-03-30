@@ -360,8 +360,7 @@ for k = 1:numel(behNums)
     xticklabels(animalIDs);
     ylabel('Peak Lag (s)', 'FontSize', labelFont);
     title(behNamesPretty{k}, 'FontSize', panelTitleFont);
-    box off
-    grid on
+    box off;
     set(gca, 'FontSize', tickFont, 'LineWidth', 1, 'TickDir', 'out');
 end
 
