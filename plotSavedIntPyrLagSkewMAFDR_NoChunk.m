@@ -116,58 +116,25 @@ for s = 1:nSess
     grid on;
 
     % ================= PEAK CORRELATION VS SHIFT CONTROL =================
-    % plot the cross-correlation curve with shift-based 95% bounds
 
-    % compute full xcorr curve from saved matrices
-    % (reconstructing from peakCorr + nullCorr is not enough, so we recompute)
-    % use all valid int-pyr pairs averaged
-
-    intIdx = actual.rows;
-    pyrIdx = actual.cols;
-
-    validPairs = actual.sigFDRMask;
-
-    if any(validPairs)
-        % average across significant pairs
-        xcAll = [];
-        lagsSec = [];
-
-        for k = find(validPairs(:))'
-            r = intIdx(k);
-            c = pyrIdx(k);
-
-            % skip invalid
-            if isnan(peakCorrs(r,c)) || isnan(peakLags(r,c))
-                continue;
-            end
-
-            % NOTE: we don't have stored full xcorr per pair,
-            % so we approximate using peakCorr only (visual emphasis)
-            % -> instead we plot a single point + threshold
-
-        end
-    end
-
-    % simpler and cleaner: plot peak correlation vs null distribution
-    % (this matches what David is asking conceptually)
-
-    % extract real peak correlations (significant only)
+    % real peak correlations (significant pairs only)
     realCorr = actual.realVals(actual.sigFDRMask);
     realCorr = realCorr(~isnan(realCorr) & isfinite(realCorr));
 
-    % extract null correlations (same pairs, pooled)
+    % pooled null correlations for those same pairs
     nullCorrVals = [];
+
     for k = find(actual.sigFDRMask(:))'
         r = actual.rows(k);
         c = actual.cols(k);
 
-        thisNull = squeeze(nullXC(r,c,:));
+        thisNull = squeeze(sess.nullCorrMatAllShifts(r,c,:));
         thisNull = thisNull(~isnan(thisNull) & isfinite(thisNull));
 
         nullCorrVals = [nullCorrVals; thisNull(:)];
     end
 
-    figure('Name', sprintf('%s Peak Correlation vs Shift Control', animalID), 'Color', 'w');
+    figure('Name', sprintf('%s Peak Correlation Relative To Shift Control', animalID), 'Color', 'w');
 
     if ~isempty(nullCorrVals)
         hHist = histogram(nullCorrVals, 30, 'EdgeColor', 'none'); hold on;
@@ -175,7 +142,7 @@ for s = 1:nSess
         nullCI = prctile(nullCorrVals, [2.5 97.5]);
 
         hReal = xline(mean(realCorr, 'omitnan'), 'r', 'LineWidth', 2);
-        hCI = xline(nullCI(2), 'k--', 'LineWidth', 1.5); % upper bound matters most
+        hCI = xline(nullCI(2), 'k--', 'LineWidth', 1.5);
 
         legend([hHist hReal hCI], ...
             {'Shift Control Distribution', 'Mean Real Peak Correlation', '95% Upper Bound'}, ...
