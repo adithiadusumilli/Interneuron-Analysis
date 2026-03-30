@@ -10,7 +10,7 @@ function plotSavedIntPyrLagSkewMAFDR_NoChunk(resultsFile, combinedMatFile)
 % figures per session:
 %   1. significant pairwise peak lag map
 %   2. distribution of significant peak lags
-%   3. peak correlation as a function of peak lag relative to shift control
+%   3. peak correlation relative to shift control
 %   4. peak lag versus peak correlation
 %   5. skew relative to null distribution
 
@@ -129,10 +129,11 @@ for s = 1:nSess
     set(gca, 'FontSize', 13);
     grid on;
 
-    % ================= PEAK CORRELATION AS A FUNCTION OF PEAK LAG =================
+    % ================= PEAK CORRELATION RELATIVE TO SHIFT CONTROL =================
     sigLagVec = actual.sigLagVec(:);
     sigCorrVec = actual.realVals(actual.sigFDRMask);
     sigCorrVec = sigCorrVec(:);
+
     keep = ~isnan(sigLagVec) & isfinite(sigLagVec) & ~isnan(sigCorrVec) & isfinite(sigCorrVec);
     sigLagVec = sigLagVec(keep);
     sigCorrVec = sigCorrVec(keep);
@@ -156,18 +157,31 @@ for s = 1:nSess
     hCI = gobjects(1);
 
     if ~isempty(sigLagVec)
-        [sigLagSorted, sortIdx] = sort(sigLagVec);
-        sigCorrSorted = sigCorrVec(sortIdx);
+        lagEdges = -0.5:0.01:0.5;
+        lagCenters = lagEdges(1:end-1) + diff(lagEdges)/2;
+        meanCorrByBin = nan(size(lagCenters));
 
-        hCurve = plot(sigLagSorted, sigCorrSorted, '-', 'Color', [0.2 0.2 0.2], 'LineWidth', 1.5);
+        for iBin = 1:numel(lagCenters)
+            inBin = sigLagVec >= lagEdges(iBin) & sigLagVec < lagEdges(iBin+1);
+            if any(inBin)
+                meanCorrByBin(iBin) = mean(sigCorrVec(inBin), 'omitnan');
+            end
+        end
 
-        [peakCorrVal, peakIdx] = max(sigCorrSorted);
-        peakLagVal = sigLagSorted(peakIdx);
+        goodBins = ~isnan(meanCorrByBin) & isfinite(meanCorrByBin);
+        if any(goodBins)
+            hCurve = plot(lagCenters(goodBins), meanCorrByBin(goodBins), '-', ...
+                'Color', [0.2 0.2 0.2], 'LineWidth', 1.5);
 
-        hPeak = plot(peakLagVal, peakCorrVal, 'o', ...
-            'MarkerFaceColor', [0.85 0.33 0.10], ...
-            'MarkerEdgeColor', [0.85 0.33 0.10], ...
-            'MarkerSize', 8);
+            [peakCorrVal, peakIdx] = max(meanCorrByBin(goodBins));
+            goodLagCenters = lagCenters(goodBins);
+            peakLagVal = goodLagCenters(peakIdx);
+
+            hPeak = plot(peakLagVal, peakCorrVal, 'o', ...
+                'MarkerFaceColor', [0.85 0.33 0.10], ...
+                'MarkerEdgeColor', [0.85 0.33 0.10], ...
+                'MarkerSize', 8);
+        end
     end
 
     if ~isempty(nullCorrVals)
@@ -187,11 +201,11 @@ for s = 1:nSess
 
     if isgraphics(hCurve)
         legendHandles(end+1) = hCurve; %#ok<AGROW>
-        legendLabels{end+1} = 'Peak Correlation Curve'; %#ok<AGROW>
+        legendLabels{end+1} = 'Binned Mean Peak Correlation'; %#ok<AGROW>
     end
     if isgraphics(hPeak)
         legendHandles(end+1) = hPeak; %#ok<AGROW>
-        legendLabels{end+1} = 'Maximum Peak Correlation'; %#ok<AGROW>
+        legendLabels{end+1} = 'Maximum Binned Mean Correlation'; %#ok<AGROW>
     end
     if isgraphics(hCI)
         legendHandles(end+1) = hCI; %#ok<AGROW>
@@ -257,7 +271,7 @@ for s = 1:nSess
     figure('Name', sprintf('%s Skew Relative To Null Distribution', animalID), 'Color', 'w');
 
     if ~isempty(validNullSkews)
-        hHist = histogram(validNullSkews, 30, 'EdgeColor', 'none', 'FaceColor', nullColor);
+        histogram(validNullSkews, 30, 'EdgeColor', 'none', 'FaceColor', nullColor);
         hold on;
         hActual = xline(actual.skew, 'r', 'LineWidth', 2);
         hCI = xline(nullCI(1), 'k--', 'LineWidth', 1.5);
