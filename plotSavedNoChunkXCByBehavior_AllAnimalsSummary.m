@@ -82,7 +82,7 @@ for s = 1:nSess
     allLagVals = [];
     for k = 1:numel(behNums)
         b = behNums(k);
-        thisBeh = R.sessions(s).beh(b);
+        thisBeh = R.sessions(s).beh(b + 1);
 
         if isempty(thisBeh) || ~isfield(thisBeh, 'lagsSec') || isempty(thisBeh.lagsSec)
             continue
@@ -110,7 +110,7 @@ for s = 1:nSess
 
     for k = 1:numel(behNums)
         b = behNums(k);
-        thisBeh = R.sessions(s).beh(b);
+        thisBeh = R.sessions(s).beh(b + 1);
 
         if isempty(thisBeh)
             continue
@@ -162,7 +162,7 @@ for s = 1:nSess
 
     for k = 1:numel(behNums)
         b = behNums(k);
-        thisBeh = R.sessions(s).beh(b);
+        thisBeh = R.sessions(s).beh(b + 1);
 
         nexttile(tile_lay1, k); hold on;
 
@@ -249,7 +249,7 @@ for s = 1:nSess
 
     for k = 1:numel(behNums)
         b = behNums(k);
-        thisBeh = R.sessions(s).beh(b);
+        thisBeh = R.sessions(s).beh(b + 1);
 
         nexttile(tile_lay2, k); hold on;
 
