@@ -10,12 +10,12 @@ function plotSavedIntPyrLagSkewMAFDR_NoChunk(resultsFile, combinedMatFile)
 % figures per session:
 %   1. significant pairwise peak lag map
 %   2. distribution of significant peak lags
-%   3. peak correlation relative to shift control
+%   3. peak correlation as a function of peak lag relative to shift control
 %   4. peak lag versus peak correlation
 %   5. skew relative to null distribution
 
 % summary figure -- actual skew versus null 95% interval across sessions
-%
+
 % j run: plotSavedIntPyrLagSkewMAFDR_NoChunk("C:\Users\mirilab\Documents\GlobusTransfer\pairwise_nochunk_allPairs_ALL_SESSIONS_COMBINED_intPyrSkewMAFDR_nochunk.mat","C:\Users\mirilab\Documents\GlobusTransfer\pairwise_nochunk_allPairs_ALL_SESSIONS_COMBINED.mat")
 
 arguments
@@ -50,6 +50,8 @@ summaryNullCI = nan(nSess,2);
 summaryAnimalID = cell(1,nSess);
 summaryNSig = nan(nSess,1);
 summaryNTotal = nan(nSess,1);
+
+nullColor = [0 0.4470 0.7410];
 
 for s = 1:nSess
     sess = R.sessions{s};
@@ -127,12 +129,15 @@ for s = 1:nSess
     set(gca, 'FontSize', 13);
     grid on;
 
-    % ================= PEAK CORRELATION VS SHIFT CONTROL =================
-    realCorr = actual.realVals(actual.sigFDRMask);
-    realCorr = realCorr(~isnan(realCorr) & isfinite(realCorr));
+    % ================= PEAK CORRELATION AS A FUNCTION OF PEAK LAG =================
+    sigLagVec = actual.sigLagVec(:);
+    sigCorrVec = actual.realVals(actual.sigFDRMask);
+    sigCorrVec = sigCorrVec(:);
+    keep = ~isnan(sigLagVec) & isfinite(sigLagVec) & ~isnan(sigCorrVec) & isfinite(sigCorrVec);
+    sigLagVec = sigLagVec(keep);
+    sigCorrVec = sigCorrVec(keep);
 
     nullCorrVals = [];
-
     for k = find(actual.sigFDRMask(:))'
         r = actual.rows(k);
         c = actual.cols(k);
@@ -144,30 +149,57 @@ for s = 1:nSess
     end
 
     figure('Name', sprintf('%s Peak Correlation Relative To Shift Control', animalID), 'Color', 'w');
+    hold on;
 
-    if ~isempty(nullCorrVals)
-        hHist = histogram(nullCorrVals, 30, 'EdgeColor', 'none');
-        hold on;
+    hCurve = gobjects(1);
+    hPeak = gobjects(1);
+    hCI = gobjects(1);
 
-        corrCI = prctile(nullCorrVals, [2.5 97.5]);
+    if ~isempty(sigLagVec)
+        [sigLagSorted, sortIdx] = sort(sigLagVec);
+        sigCorrSorted = sigCorrVec(sortIdx);
 
-        hReal = xline(mean(realCorr, 'omitnan'), 'r', 'LineWidth', 2);
-        hCI = xline(corrCI(2), 'k--', 'LineWidth', 1.5);
+        hCurve = plot(sigLagSorted, sigCorrSorted, '-', 'Color', [0.2 0.2 0.2], 'LineWidth', 1.5);
 
-        legend([hHist hReal hCI], ...
-            {'Shift Control Distribution', 'Mean Real Peak Correlation', '95% Upper Bound'}, ...
-            'FontSize', 12, 'Location', 'best');
-    else
-        histogram(nan);
-        hold on;
-        xline(mean(realCorr, 'omitnan'), 'r', 'LineWidth', 2);
+        [peakCorrVal, peakIdx] = max(sigCorrSorted);
+        peakLagVal = sigLagSorted(peakIdx);
+
+        hPeak = plot(peakLagVal, peakCorrVal, 'o', ...
+            'MarkerFaceColor', [0.85 0.33 0.10], ...
+            'MarkerEdgeColor', [0.85 0.33 0.10], ...
+            'MarkerSize', 8);
     end
 
-    xlabel('Correlation Value', 'FontSize', 14);
-    ylabel('Count', 'FontSize', 14);
+    if ~isempty(nullCorrVals)
+        corrCI = prctile(nullCorrVals, [2.5 97.5]);
+        hCI = yline(corrCI(2), 'k--', 'LineWidth', 1.5);
+    end
 
-    title(sprintf('%s Peak Correlation Relative To Shift Control', animalID), ...
+    xlabel('Peak Lag (Seconds)', 'FontSize', 14);
+    ylabel('Peak Correlation', 'FontSize', 14);
+
+    title(sprintf('%s Peak Correlation Relative To Shift Control (%d / %d Significant Pairs)', ...
+        animalID, actual.nSigFDR, actual.nPairsNominal), ...
         'FontSize', 16, 'FontWeight', 'bold');
+
+    legendHandles = gobjects(0);
+    legendLabels = {};
+
+    if isgraphics(hCurve)
+        legendHandles(end+1) = hCurve; %#ok<AGROW>
+        legendLabels{end+1} = 'Peak Correlation Curve'; %#ok<AGROW>
+    end
+    if isgraphics(hPeak)
+        legendHandles(end+1) = hPeak; %#ok<AGROW>
+        legendLabels{end+1} = 'Maximum Peak Correlation'; %#ok<AGROW>
+    end
+    if isgraphics(hCI)
+        legendHandles(end+1) = hCI; %#ok<AGROW>
+        legendLabels{end+1} = '95% Upper Shift-Control Bound'; %#ok<AGROW>
+    end
+    if ~isempty(legendHandles)
+        legend(legendHandles, legendLabels, 'FontSize', 12, 'Location', 'best');
+    end
 
     set(gca, 'FontSize', 13);
     grid on;
@@ -225,13 +257,14 @@ for s = 1:nSess
     figure('Name', sprintf('%s Skew Relative To Null Distribution', animalID), 'Color', 'w');
 
     if ~isempty(validNullSkews)
-        hHist = histogram(validNullSkews, 30, 'EdgeColor', 'none');
+        hHist = histogram(validNullSkews, 30, 'EdgeColor', 'none', 'FaceColor', nullColor);
         hold on;
         hActual = xline(actual.skew, 'r', 'LineWidth', 2);
         hCI = xline(nullCI(1), 'k--', 'LineWidth', 1.5);
         xline(nullCI(2), 'k--', 'LineWidth', 1.5);
 
-        legend([hHist hActual hCI], ...
+        hNullDummy = patch(nan, nan, nullColor);
+        legend([hNullDummy hActual hCI], ...
             {'Null Skew Distribution', 'Actual Skew', '95% Null Skew Interval'}, ...
             'FontSize', 12, 'Location', 'best');
     else
