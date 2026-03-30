@@ -45,11 +45,11 @@ peakLagColor = [0.95 0.45 0.35];
 lagCIColor = [0 0 0];
 permHistColor = [0.3 0.6 0.8];
 
-titleFont = 16;
-panelTitleFont = 15;
-labelFont = 14;
-tickFont = 13;
-legendFont = 12;
+titleFont = 17;
+panelTitleFont = 16;
+labelFont = 15;
+tickFont = 14;
+legendFont = 14;
 
 A = load(noChunkFile, 'results');
 R = A.results;
