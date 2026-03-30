@@ -1,26 +1,33 @@
-function plotSavedIntPyrLagSkewMAFDR_NoChunk(resultsFile)
+function plotSavedIntPyrLagSkewMAFDR_NoChunk(resultsFile, combinedMatFile)
 % plots saved no-chunk pairwise significance results from runIntPyrLagSkewMAFDRPermutationTest
 
-% expected input:
-%   resultsFile = output .mat from runIntPyrLagSkewMAFDRPermutationTest
-%   for analysisType = "nochunk"
+% expected inputs:
+%   resultsFile     = output .mat from runIntPyrLagSkewMAFDRPermutationTest
+%                     for analysisType = "nochunk"
+%   combinedMatFile = original combined no-chunk pairwise file containing
+%                     allSessions.sessions(s).nullCorrMatAllShifts
 
 % figures per session:
 %   1. significant pairwise peak lag map
 %   2. distribution of significant peak lags
-%   3. peak lag versus peak correlation
-%   4. skew relative to null distribution
+%   3. peak correlation relative to shift control
+%   4. peak lag versus peak correlation
+%   5. skew relative to null distribution
 
 % summary figure -- actual skew versus null 95% interval across sessions
-
-% j run: plotSavedIntPyrLagSkewMAFDR_NoChunk("C:\Users\mirilab\Documents\GlobusTransfer\pairwise_nochunk_allPairs_ALL_SESSIONS_COMBINED_intPyrSkewMAFDR_nochunk.mat")
+%
+% j run: plotSavedIntPyrLagSkewMAFDR_NoChunk("C:\Users\mirilab\Documents\GlobusTransfer\pairwise_nochunk_allPairs_ALL_SESSIONS_COMBINED_intPyrSkewMAFDR_nochunk.mat","C:\Users\mirilab\Documents\GlobusTransfer\pairwise_nochunk_allPairs_ALL_SESSIONS_COMBINED.mat")
 
 arguments
     resultsFile (1,1) string
+    combinedMatFile (1,1) string
 end
 
 S = load(resultsFile, 'results');
 R = S.results;
+
+C = load(combinedMatFile, 'allSessions');
+rawSessions = C.allSessions.sessions;
 
 if ~isfield(R, 'sessions') || isempty(R.sessions)
     error('results file does not contain a valid results.sessions field.');
@@ -34,6 +41,10 @@ end
 
 nSess = numel(R.sessions);
 
+if numel(rawSessions) ~= nSess
+    error('results file and combined no-chunk file do not have the same number of sessions.');
+end
+
 summaryActualSkew = nan(nSess,1);
 summaryNullCI = nan(nSess,2);
 summaryAnimalID = cell(1,nSess);
@@ -42,6 +53,7 @@ summaryNTotal = nan(nSess,1);
 
 for s = 1:nSess
     sess = R.sessions{s};
+    rawSess = rawSessions(s);
 
     animalID = sess.animalID;
     if isempty(animalID)
@@ -116,33 +128,31 @@ for s = 1:nSess
     grid on;
 
     % ================= PEAK CORRELATION VS SHIFT CONTROL =================
-
-    % real peak correlations (significant pairs only)
     realCorr = actual.realVals(actual.sigFDRMask);
     realCorr = realCorr(~isnan(realCorr) & isfinite(realCorr));
 
-    % pooled null correlations for those same pairs
     nullCorrVals = [];
 
     for k = find(actual.sigFDRMask(:))'
         r = actual.rows(k);
         c = actual.cols(k);
 
-        thisNull = squeeze(sess.nullCorrMatAllShifts(r,c,:));
+        thisNull = squeeze(rawSess.nullCorrMatAllShifts(r,c,:));
         thisNull = thisNull(~isnan(thisNull) & isfinite(thisNull));
 
-        nullCorrVals = [nullCorrVals; thisNull(:)];
+        nullCorrVals = [nullCorrVals; thisNull(:)]; %#ok<AGROW>
     end
 
     figure('Name', sprintf('%s Peak Correlation Relative To Shift Control', animalID), 'Color', 'w');
 
     if ~isempty(nullCorrVals)
-        hHist = histogram(nullCorrVals, 30, 'EdgeColor', 'none'); hold on;
+        hHist = histogram(nullCorrVals, 30, 'EdgeColor', 'none');
+        hold on;
 
-        nullCI = prctile(nullCorrVals, [2.5 97.5]);
+        corrCI = prctile(nullCorrVals, [2.5 97.5]);
 
         hReal = xline(mean(realCorr, 'omitnan'), 'r', 'LineWidth', 2);
-        hCI = xline(nullCI(2), 'k--', 'LineWidth', 1.5);
+        hCI = xline(corrCI(2), 'k--', 'LineWidth', 1.5);
 
         legend([hHist hReal hCI], ...
             {'Shift Control Distribution', 'Mean Real Peak Correlation', '95% Upper Bound'}, ...
