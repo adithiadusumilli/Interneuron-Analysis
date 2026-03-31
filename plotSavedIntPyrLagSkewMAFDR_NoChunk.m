@@ -349,6 +349,37 @@ title(t, 'Summary Of Skew Relative To Null Distribution', ...
 
 end
 
+function [lagsVec, xcVec] = getNoChunkExampleXC(rawSess, r, c)
+lagsVec = [];
+xcVec = [];
+
+if isfield(rawSess, 'lagsSec') && ~isempty(rawSess.lagsSec)
+    lagsVec = rawSess.lagsSec(:);
+elseif isfield(rawSess, 'lags') && ~isempty(rawSess.lags)
+    lagsVec = rawSess.lags(:);
+end
+
+if isfield(rawSess, 'xcMatAll') && ~isempty(rawSess.xcMatAll)
+    xcCube = rawSess.xcMatAll;
+elseif isfield(rawSess, 'xcMat_all') && ~isempty(rawSess.xcMat_all)
+    xcCube = rawSess.xcMat_all;
+else
+    xcCube = [];
+end
+
+if isempty(xcCube)
+    xcVec = [];
+    lagsVec = [];
+    return;
+end
+
+xcVec = squeeze(xcCube(r,c,:));
+
+if isempty(lagsVec)
+    lagsVec = (1:numel(xcVec))';
+end
+end
+
 function edges = makeLagEdges(x)
 x = x(~isnan(x) & isfinite(x));
 
