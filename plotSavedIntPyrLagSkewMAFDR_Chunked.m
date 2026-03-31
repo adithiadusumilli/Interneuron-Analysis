@@ -25,7 +25,7 @@ end
 S = load(resultsFile, 'results');
 R = S.results;
 
-C = load(combinedMatFile, 'all_nullCorrMat_allShifts', 'all_xcMat_all', 'all_lags', 'lags', 'binSize');
+C = load(combinedMatFile, 'all_nullCorrMat_allShifts', 'all_xcMat_all', 'all_lags', 'all_binSize');
 
 rawNullShifts = C.all_nullCorrMat_allShifts;
 
@@ -364,12 +364,11 @@ xcVec = squeeze(xcCube(r,c,:));
 
 if isfield(C, 'all_lags') && numel(C.all_lags) >= s && ~isempty(C.all_lags{s})
     lagsVec = C.all_lags{s}(:);
-elseif isfield(C, 'lags') && ~isempty(C.lags)
-    lagsVec = C.lags(:);
-elseif isfield(C, 'binSize') && ~isempty(C.binSize)
+elseif isfield(C, 'all_binSize') && numel(C.all_binSize) >= s && ~isempty(C.all_binSize{s})
+    binSize = C.all_binSize{s};
     nL = numel(xcVec);
     mid = ceil(nL/2);
-    lagsVec = ((1:nL) - mid) * C.binSize;
+    lagsVec = ((1:nL) - mid) * binSize;
 else
     lagsVec = [];
 end
