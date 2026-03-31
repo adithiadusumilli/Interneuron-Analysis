@@ -129,70 +129,64 @@ for s = 1:nSess
     set(gca, 'FontSize', 13);
     box off;
 
-    % ================= PEAK CORRELATION RELATIVE TO SHIFT CONTROL =================
-    sigLagVec = actual.sigLagVec(:);
-    sigCorrVec = actual.realVals(actual.sigFDRMask);
-    sigCorrVec = sigCorrVec(:);
-
-    keep = ~isnan(sigLagVec) & isfinite(sigLagVec) & ~isnan(sigCorrVec) & isfinite(sigCorrVec);
-    sigLagVec = sigLagVec(keep);
-    sigCorrVec = sigCorrVec(keep);
-
-    nullCorrVals = [];
-    for k = find(actual.sigFDRMask(:))'
-        r = actual.rows(k);
-        c = actual.cols(k);
-
-        thisNull = squeeze(rawSess.nullCorrMatAllShifts(r,c,:));
-        thisNull = thisNull(~isnan(thisNull) & isfinite(thisNull));
-
-        nullCorrVals = [nullCorrVals; thisNull(:)]; %#ok<AGROW>
-    end
-
-    figure('Name', sprintf('%s Peak Correlation Relative To Shift Control', animalID), 'Color', 'w');
+    % ================= EXAMPLE PAIR CORR VS LAG RELATIVE TO SHIFT CONTROL =================
+    figure('Name', sprintf('%s Example Pair Corr Versus Lag', animalID), 'Color', 'w');
     hold on;
 
     hCurve = gobjects(1);
+    hPeakLag = gobjects(1);
     hPeak = gobjects(1);
     hCI = gobjects(1);
 
-    if ~isempty(sigLagVec)
-        lagEdges = -0.5:0.01:0.5;
-        lagCenters = lagEdges(1:end-1) + diff(lagEdges)/2;
-        meanCorrByBin = nan(size(lagCenters));
+    sigPairsIdx = find(actual.sigFDRMask(:));
 
-        for iBin = 1:numel(lagCenters)
-            inBin = sigLagVec >= lagEdges(iBin) & sigLagVec < lagEdges(iBin+1);
-            if any(inBin)
-                meanCorrByBin(iBin) = mean(sigCorrVec(inBin), 'omitnan');
-            end
-        end
+    if ~isempty(sigPairsIdx)
+        % choose one significant pair with the largest real peak correlation
+        [~, bestLocal] = max(actual.realVals(sigPairsIdx));
+        exampleIdx = sigPairsIdx(bestLocal);
 
-        goodBins = ~isnan(meanCorrByBin) & isfinite(meanCorrByBin);
-        if any(goodBins)
-            hCurve = plot(lagCenters(goodBins), meanCorrByBin(goodBins), '-', ...
+        r = actual.rows(exampleIdx);
+        c = actual.cols(exampleIdx);
+
+        % get real xc curve for this pair
+        [lagsVec, xcVec] = getNoChunkExampleXC(rawSess, r, c);
+
+        % get shift-control distribution for this same pair
+        thisNull = squeeze(rawSess.nullCorrMatAllShifts(r,c,:));
+        thisNull = thisNull(~isnan(thisNull) & isfinite(thisNull));
+
+        if ~isempty(lagsVec) && ~isempty(xcVec)
+            lagsVec = lagsVec(:);
+            xcVec = xcVec(:);
+
+            % real xc curve
+            hCurve = plot(lagsVec, xcVec, '-', ...
                 'Color', [0.2 0.2 0.2], 'LineWidth', 1.5);
 
-            [peakCorrVal, peakIdx] = max(meanCorrByBin(goodBins));
-            goodLagCenters = lagCenters(goodBins);
-            peakLagVal = goodLagCenters(peakIdx);
+            % actual peak from the black curve
+            [peakCorrVal, peakIdx] = max(xcVec);
+            peakLagVal = lagsVec(peakIdx);
 
+            % mark actual peak lag and actual peak corr
+            hPeakLag = xline(peakLagVal, 'r:', 'LineWidth', 1.8);
             hPeak = plot(peakLagVal, peakCorrVal, 'o', ...
                 'MarkerFaceColor', [0.85 0.33 0.10], ...
                 'MarkerEdgeColor', [0.85 0.33 0.10], ...
                 'MarkerSize', 8);
+
+            % shift-control bounds
+            if ~isempty(thisNull)
+                corrCI = prctile(thisNull, [2.5 97.5]);
+                yline(corrCI(1), 'k--', 'LineWidth', 1.5);
+                hCI = yline(corrCI(2), 'k--', 'LineWidth', 1.5);
+            end
         end
     end
 
-    if ~isempty(nullCorrVals)
-        corrCI = prctile(nullCorrVals, [2.5 97.5]);
-        hCI = yline(corrCI(2), 'k--', 'LineWidth', 1.5);
-    end
+    xlabel('Lag (Seconds)', 'FontSize', 14);
+    ylabel('Correlation', 'FontSize', 14);
 
-    xlabel('Peak Lag (Seconds)', 'FontSize', 14);
-    ylabel('Peak Correlation', 'FontSize', 14);
-
-    title(sprintf('%s Peak Correlation Relative To Shift Control (%d / %d Significant Pairs)', ...
+    title(sprintf('%s Example Pair Corr Versus Lag (%d / %d Significant Pairs)', ...
         animalID, actual.nSigFDR, actual.nPairsNominal), ...
         'FontSize', 16, 'FontWeight', 'bold');
 
@@ -200,16 +194,20 @@ for s = 1:nSess
     legendLabels = {};
 
     if isgraphics(hCurve)
-        legendHandles(end+1) = hCurve; %#ok<AGROW>
-        legendLabels{end+1} = 'Binned Mean Peak Correlation'; %#ok<AGROW>
+        legendHandles(end+1) = hCurve;
+        legendLabels{end+1} = 'Example Pair XC';
+    end
+    if isgraphics(hPeakLag)
+        legendHandles(end+1) = hPeakLag;
+        legendLabels{end+1} = 'Actual Peak Lag';
     end
     if isgraphics(hPeak)
-        legendHandles(end+1) = hPeak; %#ok<AGROW>
-        legendLabels{end+1} = 'Maximum Binned Mean Correlation'; %#ok<AGROW>
+        legendHandles(end+1) = hPeak;
+        legendLabels{end+1} = 'Peak Correlation';
     end
     if isgraphics(hCI)
-        legendHandles(end+1) = hCI; %#ok<AGROW>
-        legendLabels{end+1} = '95% Upper Shift-Control Bound'; %#ok<AGROW>
+        legendHandles(end+1) = hCI;
+        legendLabels{end+1} = '95% Shift-Control Bounds';
     end
     if ~isempty(legendHandles)
         legend(legendHandles, legendLabels, 'FontSize', 12, 'Location', 'best');
@@ -217,7 +215,7 @@ for s = 1:nSess
 
     set(gca, 'FontSize', 13);
     box off;
-
+    
     % ================= SCATTER =================
     if ~isempty(actual.sigLagVec) && ~isempty(actual.realVals)
         sigCorrVec = actual.realVals(actual.sigFDRMask);
