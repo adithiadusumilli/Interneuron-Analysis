@@ -132,41 +132,74 @@ for s = 1:nSess
     box off;
 
     % ================= EXAMPLE PAIR CORR VS LAG RELATIVE TO SHIFT CONTROL =================
+    sigPairsIdx = find(actual.sig3StdMask(:));
 
-    % choose example pair (prefer significant)
+    figure('Name', sprintf('%s Example Pair Corr Versus Lag', animalID), 'Color', 'w');
+    hold on;
+
     if ~isempty(sigPairsIdx)
-        idx = sigPairsIdx(1);
+        % choose one significant pair; here use the one with largest real peak corr
+        [~, bestLocal] = max(actual.realVals(sigPairsIdx));
+        exampleIdx = sigPairsIdx(bestLocal);
+
+        r = actual.rows(exampleIdx);
+        c = actual.cols(exampleIdx);
+
+        % real xc curve
+        [lagsVec, xcVec] = getChunkedExampleXC(C, s, r, c);    % chunked version
+
+        thisNull = squeeze(rawNullXC(r,c,:));                  % chunked version
+
+        thisNull = thisNull(~isnan(thisNull) & isfinite(thisNull));
+
+        if ~isempty(lagsVec) && ~isempty(xcVec)
+            xcVec = xcVec(:);
+            lagsVec = lagsVec(:);
+
+            % peak from the REAL xc curve
+            [peakCorrVal, peakIdx] = max(xcVec);
+            peakLagVal = lagsVec(peakIdx);
+
+            hXC = plot(lagsVec, xcVec, '-', 'Color', [0.2 0.2 0.2], 'LineWidth', 1.8);
+            hPeakLag = xline(peakLagVal, 'r:', 'LineWidth', 1.8);
+            hPeak = plot(peakLagVal, peakCorrVal, 'o', ...
+                'MarkerFaceColor', [0.85 0.33 0.10], ...
+                'MarkerEdgeColor', [0.85 0.33 0.10], ...
+                'MarkerSize', 8);
+
+            legendHandles = [hXC hPeakLag hPeak];
+            legendLabels = {'Example Pair XC', 'Peak Lag', 'Peak Correlation'};
+
+            if ~isempty(thisNull)
+                nullCI = prctile(thisNull, [2.5 97.5]);
+                yline(nullCI(1), 'k--', 'LineWidth', 1.5);
+                hHi = yline(nullCI(2), 'k--', 'LineWidth', 1.5);
+
+                legendHandles = [legendHandles hHi];
+                legendLabels = [legendLabels {'95% Shift-Control Bounds'}];
+            end
+
+            xlabel('Lag (Seconds)', 'FontSize', 14);
+            ylabel('Correlation', 'FontSize', 14);
+
+            title(sprintf('%s Example Pair Corr Versus Lag (%d / %d Significant Pairs)', ...
+                animalID, actual.nSig3Std, actual.nPairsNominal), ...
+                'FontSize', 16, 'FontWeight', 'bold');
+
+            legend(legendHandles, legendLabels, 'FontSize', 12, 'Location', 'best');
+        else
+            histogram(nan);
+            title(sprintf('%s Example Pair Corr Versus Lag (XC unavailable)', animalID), ...
+                'FontSize', 16, 'FontWeight', 'bold');
+        end
     else
-        idx = 1;
+        histogram(nan);
+        title(sprintf('%s Example Pair Corr Versus Lag (No significant pairs)', animalID), ...
+            'FontSize', 16, 'FontWeight', 'bold');
     end
 
-    [i,j] = ind2sub(size(peakCorrs), idx);
-
-    % get REAL xcorr curve (IMPORTANT)
-    xc = squeeze(xcMatAll(i,j,:));   % must be real, not shifted/null
-    lags = lagVec;
-
-    % find peak from REAL curve
-    [peakVal, peakIdx] = max(xc);
-    peakLag = lags(peakIdx);
-
-    figure; hold on;
-
-    % real xcorr
-    plot(lags, xc, 'k', 'LineWidth', 1.5);
-
-    % peak marker ON black curve
-    plot(peakLag, peakVal, 'ro', 'MarkerFaceColor','r');
-
-    % vertical line at actual peak lag
-    xline(peakLag, 'r--', 'LineWidth', 1.5);
-
-    xlabel('Lag (s)');
-    ylabel('Cross-correlation');
-    title(sprintf('Example Pair (i=%d, j=%d)', i, j));
-
-    legend({'Real XC','Peak','Peak Lag'}, 'Location','best');
-    grid on;
+    set(gca, 'FontSize', 13);
+    box off;
 
     % ================= SCATTER =================
     if ~isempty(actual.sigLagVec) && ~isempty(actual.realVals)
