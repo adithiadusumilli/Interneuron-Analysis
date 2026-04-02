@@ -33,7 +33,7 @@ if nargin < 4 || isempty(nNullDraws)
     nNullDraws = 100;
 end
 if nargin < 5 || isempty(corrThresh)
-    corrThresh = 0.02;
+    corrThresh = 0.05;
 end
 
 analysisType = lower(string(analysisType));
