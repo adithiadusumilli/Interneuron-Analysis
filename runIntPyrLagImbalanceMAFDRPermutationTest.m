@@ -1,5 +1,5 @@
 function runIntPyrLagImbalanceMAFDRPermutationTest(saveFile, analysisType, alpha, nNullDraws, corrThresh)
-% runs int-vs-pyr-only storey/mafdr analysis and lag-imbalance permutation testing
+% runs int-vs-pyr-only storey/mafdr analysis and lag-imbalance null-interval testing
 % for either no-chunk or chunked pairwise saved results
 
 % updated logic:
@@ -16,17 +16,17 @@ function runIntPyrLagImbalanceMAFDRPermutationTest(saveFile, analysisType, alpha
 %   - sample the same number of unique pairs from all-vs-all upper-triangle
 %   - sampled pairs may include int-int, pyr-pyr, and int-pyr
 %   - no self-pairs and no duplicate pairs within a draw
-%   - compute p-values, mafdr q-values, significant lags, and lag imbalance
+%   - compute q-significant lags and lag imbalance
 %   - repeat nNullDraws times
+%   - determine significance directly from whether actual lag imbalance falls
+%     outside the central 95% null interval
 
 % inputs
 %   saveFile : combined pairwise .mat file
 %   analysisType : "nochunk" or "chunked"
 %   alpha : q-value threshold (default 0.05)
 %   nNullDraws : number of null lag-imbalance draws (default 100)
-%   corrThresh : minimum peak correlation threshold (default 0.02)
-
-% output: saves results struct and makes plots per session
+%   corrThresh : minimum peak correlation threshold (default 0.05)
 
 if nargin < 3 || isempty(alpha)
     alpha = 0.05;
@@ -63,7 +63,7 @@ switch analysisType
         error('analysisType must be "nochunk" or "chunked".');
 end
 
-rng(0); % reproducible null draws
+rng(0);
 
 results = struct();
 results.sourceFile = saveFile;
@@ -73,6 +73,7 @@ results.nNullDraws = nNullDraws;
 results.corrThresh = corrThresh;
 results.fdrMethod = 'mafdr_storey_all_valid_pvalues_plus_corr_threshold';
 results.directionMetric = 'lagImbalance=(nPositive-nNegative)/(nPositive+nNegative), zero lags ignored';
+results.significanceRule = 'actual lag imbalance outside central 95% null interval';
 results.sessions = cell(1, nSess);
 
 for s = 1:nSess
@@ -126,14 +127,22 @@ for s = 1:nSess
 
     validNullLagImbalance = nullLagImbalance(~isnan(nullLagImbalance) & isfinite(nullLagImbalance));
 
-    if isempty(validNullLagImbalance) || isnan(actual.lagImbalance) || ~isfinite(actual.lagImbalance)
-        lagImbalanceP = NaN;
+    if ~isempty(validNullLagImbalance)
+        lagImbalanceNullCI = prctile(validNullLagImbalance, [2.5 97.5]);
     else
-        lagImbalanceP = (sum(abs(validNullLagImbalance) >= abs(actual.lagImbalance)) + 1) / (numel(validNullLagImbalance) + 1);
+        lagImbalanceNullCI = [NaN NaN];
     end
 
-    fprintf('%s lag imbalance test: actual = %.6f | null n = %d | p = %.6f\n', ...
-        animalID, actual.lagImbalance, numel(validNullLagImbalance), lagImbalanceP);
+    lagImbalanceSigByCI = false;
+    if ~isnan(actual.lagImbalance) && all(~isnan(lagImbalanceNullCI))
+        lagImbalanceSigByCI = ...
+            (actual.lagImbalance < lagImbalanceNullCI(1)) || ...
+            (actual.lagImbalance > lagImbalanceNullCI(2));
+    end
+
+    fprintf('%s lag imbalance test: actual = %.6f | null n = %d | 95%% CI = [%.6f, %.6f] | sig by CI = %d\n', ...
+        animalID, actual.lagImbalance, numel(validNullLagImbalance), ...
+        lagImbalanceNullCI(1), lagImbalanceNullCI(2), lagImbalanceSigByCI);
 
     % ---------------- plots ----------------
 
@@ -169,15 +178,18 @@ for s = 1:nSess
     if ~isempty(validNullLagImbalance)
         histogram(validNullLagImbalance, 30, 'FaceAlpha', 0.8, 'EdgeColor', 'none'); hold on;
         xline(actual.lagImbalance, 'r-', 'LineWidth', 2);
-        legend({'Null lag imbalance', 'Actual lag imbalance'}, 'Location', 'best');
+        xline(lagImbalanceNullCI(1), 'k--', 'LineWidth', 1.5);
+        xline(lagImbalanceNullCI(2), 'k--', 'LineWidth', 1.5);
+        legend({'Null lag imbalance', 'Actual lag imbalance', '95% null interval'}, 'Location', 'best');
     else
         histogram(nan, 30, 'FaceAlpha', 0.8, 'EdgeColor', 'none'); hold on;
-        legend({'Null lag imbalance'}, 'Location', 'best');
+        xline(actual.lagImbalance, 'r-', 'LineWidth', 2);
+        legend({'Null lag imbalance', 'Actual lag imbalance'}, 'Location', 'best');
     end
     xlabel('Lag Imbalance = (nPositive - nNegative) / (nPositive + nNegative)');
     ylabel('Count');
-    title(sprintf('%s lag imbalance null distribution | actual=%.4f | p=%.4f', ...
-        animalID, actual.lagImbalance, lagImbalanceP));
+    title(sprintf('%s lag imbalance null distribution | actual=%.4f | sig by 95%% CI = %d', ...
+        animalID, actual.lagImbalance, lagImbalanceSigByCI));
     grid on;
 
     % ---------------- save session results ----------------
@@ -194,12 +206,14 @@ for s = 1:nSess
 
     R.nullLagImbalance = nullLagImbalance;
     R.validNullLagImbalance = validNullLagImbalance;
+    R.lagImbalanceNullCI = lagImbalanceNullCI;
+    R.lagImbalanceSigByCI = lagImbalanceSigByCI;
+
     R.nullNSigUncorr = nullNSigUncorr;
     R.nullNSigFDR = nullNSigFDR;
     R.nullNValidTests = nullNValidTests;
     R.nullLagCell = nullLagCell;
     R.nullPairTypeCounts = nullPairTypeCounts;
-    R.lagImbalanceP = lagImbalanceP;
 
     results.sessions{s} = R;
 end
@@ -261,8 +275,6 @@ end
 
 % ============================================================
 function out = computePairSetStatsMAFDR(realMat, lagMat, nullMat, rows, cols, alpha, corrThresh)
-% computes pairwise empirical p-values, mafdr q-values on all valid p-values,
-% significance, and lag imbalance for an arbitrary list of selected pairs
 
 nPairs = numel(rows);
 
@@ -287,13 +299,11 @@ for i = 1:nPairs
         continue;
     end
 
-    % right-tailed empirical p-value
     pVals(i) = (sum(thisNull >= thisReal) + 1) / (numel(thisNull) + 1);
 end
 
 validP = ~isnan(pVals) & isfinite(pVals);
 
-% descriptive only
 sigUncorr = false(size(pVals));
 sigUncorr(validP) = pVals(validP) <= alpha;
 
