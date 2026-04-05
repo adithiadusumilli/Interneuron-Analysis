@@ -1,6 +1,4 @@
 function plotSavedIntPyrLagImbalanceMAFDR_Chunked(resultsFile, combinedMatFile)
-% plots saved chunked pairwise significance results from
-% runIntPyrLagImbalanceMAFDRPermutationTest
 
 arguments
     resultsFile (1,1) string
@@ -226,15 +224,11 @@ for s = 1:nSess
 
     % ================= LAG IMBALANCE =================
     validNullLagImbalance = sess.validNullLagImbalance;
+    nullCI = sess.lagImbalanceNullCI;
+    isSig = sess.lagImbalanceSigByCI;
 
     if isempty(validNullLagImbalance)
         validNullLagImbalance = nan(0,1);
-    end
-
-    if ~isempty(validNullLagImbalance)
-        nullCI = prctile(validNullLagImbalance, [2.5 97.5]);
-    else
-        nullCI = [NaN NaN];
     end
 
     summaryActualLagImbalance(s) = actual.lagImbalance;
@@ -264,16 +258,15 @@ for s = 1:nSess
     xlabel('Lag Imbalance = (nPositive - nNegative) / (nPositive + nNegative)', 'FontSize', 14);
     ylabel('Count', 'FontSize', 14);
 
-    title(sprintf('%s Lag Imbalance Relative To Null Distribution', animalID), ...
+    title(sprintf('%s Lag Imbalance Relative To 95%% Null Interval | sig = %d', ...
+        animalID, isSig), ...
         'FontSize', 16, 'FontWeight', 'bold');
 
     set(gca, 'FontSize', 13);
     box off;
 end
 
-% ================= SUMMARY =================
-
-figure('Name', 'Summary Of Lag Imbalance Relative To Null Distribution Across Sessions', 'Color', 'w');
+figure('Name', 'Summary Of Lag Imbalance Relative To 95% Null Interval Across Sessions', 'Color', 'w');
 t = tiledlayout(1, nSess, 'TileSpacing', 'compact', 'Padding', 'compact');
 
 for s = 1:nSess
@@ -321,7 +314,7 @@ for s = 1:nSess
     end
 end
 
-title(t, 'Summary Of Lag Imbalance Relative To Null Distribution', ...
+title(t, 'Summary Of Lag Imbalance Relative To 95% Null Interval', ...
     'FontSize', 18, 'FontWeight', 'bold');
 
 end
