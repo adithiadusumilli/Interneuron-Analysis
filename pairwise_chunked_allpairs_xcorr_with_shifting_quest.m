@@ -8,7 +8,7 @@
 %         (unshifted i) vs (shifted j) for i<j
 %     then mirrors to keep symmetric
 
-clearvars; clc;
+clc;
 
 %% ---------------- settings ----------------
 baseDirs = {
@@ -18,7 +18,7 @@ baseDirs = {
     '/home/asa7288/Transfer/D043'
 };
 
-sessInd = 1; 
+sessInd = 4; 
 baseDirs = baseDirs(sessInd); % reduce to 1 animal
 
 channelsToUse  = 1:4;
