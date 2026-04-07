@@ -10,13 +10,14 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
 %   preSamples     — # of ms to include before each transition
 %   postSamples    — # of ms to include after each transition
 
-    if nargin < 3, baselineDur = 200; end
+    if nargin < 3, baselineDur = 500; end
     if nargin < 4, minSeparation = 500; end
-    if nargin < 5, preSamples = 100; end
-    if nargin < 6, postSamples = 100; end
+    if nargin < 5, preSamples = 500; end
+    if nargin < 6, postSamples = 500; end
 
     load(fullfile(folderPath,'EMG1ms'), 'downsampEMG');  % must contain 8 × n matrix
     [nChannels, nPoints] = size(downsampEMG);
+    nChannels = 4;
     fs = 1000;  % 1 kHz sampling rate
 
     % 8-cell holders for EMG and neural results
@@ -39,7 +40,8 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
     animalFolders = {
         'X:\David\ArenaRecordings\D026-032923-ArenaRecording\ProcessedData', ...
         'Z:\David\ArenaRecordings\NeuropixelsTest\D020-062922-ArenaRecording\ProcessedData', ...
-        'Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData'
+        'Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData' ...
+        'X:\David\ArenaRecordings\D043-020525-ArenaRecording\ProcessedData'
     };
 
     % determine which animal this folderPath corresponds to
@@ -58,9 +60,26 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
     % container for all 8 channels (each cell holds a struct of results)
     allChannels = cell(1, nChannels);
 
+    % storage for shifted EMG transition indices (8x100 cell)
+    validTransitionsShiftedCell = cell(nChannels, 100); % 100 shifts
+
+    % storing shifted neural results
+    validTransitionsNeurShiftedCell = cell(nChannels, 100); % 100 shifts
+    pyrCxWinShiftedCell  = cell(nChannels, 1); % only stores first shift w. full data
+    intCxWinShiftedCell  = cell(nChannels, 1); % only stores first shift w. full data
+    pyrStrWinShiftedCell = cell(nChannels, 1); % only stores first shift w. full data
+    intStrWinShiftedCell = cell(nChannels, 1); % only stores first shift w. full data
+
+    pyrCxWinShiftedMeanCell  = cell(nChannels, 99); % stores average of other 99 shifts
+    intCxWinShiftedMeanCell  = cell(nChannels, 99); % stores average of other 99 shifts
+    pyrStrWinShiftedMeanCell = cell(nChannels, 99); % stores average of other 99 shifts
+    intStrWinShiftedMeanCell = cell(nChannels, 99); % stores average of other 99 shifts
+
     % main loop over emg channels
     for ch = 1:nChannels
+        tic;
         signal = downsampEMG(ch, :);  % get emg signal for current channel
+        allSignal = downsampEMG(1:nChannels, :);
 
         % apply threshold to find where signal is above threshold
         above = signal > threshold;
@@ -77,24 +96,60 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
         validTransitions = [];
         for i = 1:numel(transitionPoints)
             idx = transitionPoints(i);
-            if idx > baselineDur && all(signal(idx-baselineDur:idx-1) < threshold)
+            if idx > baselineDur && all(all(allSignal(idx-baselineDur:idx-1) < threshold))
                 validTransitions(end+1) = idx;
             end
         end
         validTransitionsCell{ch} = validTransitions;
 
-        % extract sample window (before, after, plus crossing)
-        nEvt   = numel(validTransitions);
-        winLen = preSamples + postSamples + 1;
-        emgWin = nan(nEvt, nChannels, winLen);   % events × 8 muscles × time
+        % extract EMG windows for both unshifted and shifted transitions
+        nShifts = 100; % change to 1 for 1 shift
+        minShift = 30000;  % 30 sec in ms
+        emgWindowsShiftedCell = cell(nChannels, nShifts);  % 8 × 100 cell & change from nShifts to 1 for 1 shift
+        totalLength = nPoints;
 
-        for e = 1:nEvt
-            idx = validTransitions(e);
-            if idx > preSamples && idx + postSamples <= nPoints
-                emgWin(e,:,:) = downsampEMG(:, idx-preSamples:idx+postSamples);
+        for s = 1:(nShifts + 1)
+            if s == 1
+                currentTransitions = validTransitions;
+            else
+                while true
+                    randShift = randi([minShift, totalLength - minShift]);
+                    if rand() > 0.5
+                        randShift = -randShift;
+                    end
+                    shifted = validTransitions + randShift;
+
+                    % wrap around: subtract totalLength + 1 if index exceeds nPoints
+                    shifted(shifted > totalLength) = shifted(shifted > totalLength) - (totalLength + 1);
+                    shifted(shifted < 1) = shifted(shifted < 1) + totalLength;
+
+                    % check that they're sufficiently distant from original
+                    if all(abs(shifted - validTransitions) >= minShift)
+                        currentTransitions = shifted;
+                        break;
+                    end
+                end
+                validTransitionsShiftedCell{ch, s - 1} = currentTransitions;
+            end
+
+            % extract sample windows for this s
+            nEvt = numel(currentTransitions);
+            winLen = preSamples + postSamples + 1;
+            emgWin = nan(nEvt, nChannels, winLen);   % events × 8 muscles × time
+
+            for e = 1:nEvt
+                idx = currentTransitions(e);
+                if idx > preSamples && idx + postSamples <= nPoints
+                    emgWin(e,:,:) = downsampEMG(1:nChannels, idx-preSamples:idx+postSamples);
+                end
+            end
+
+            if s == 1
+                emgWindowsCell{ch} = emgWin;
+            else
+                emgWindowsShiftedCell{ch, s - 1} = emgWin;
             end
         end
-        emgWindowsCell{ch} = emgWin; % store per-channel EMG data
 
         % plot emg signal and mark detected threshold crossings
         figure('Name', sprintf('emg channel %d', ch));
@@ -105,57 +160,72 @@ function extractEMGandNeuralWindows(folderPath, threshold, baselineDur, minSepar
 
         % ----------------------- now extracting neural windows below -----------------------
 
-        % convert EMG transition times (20 kHz) to neural sample times (30 kHz)
-        currentDir = pwd;
-        cd(folderPath);
-        neuralIndices = NeurEMGSync(validTransitions*20, frameEMGSamples, frameNeuropixelSamples, 'EMG');
-        cd(currentDir);
-
-         % convert neural indices to 1 kHz (divide by 30 to account for downsampling)
-        neuralIndices1kHz = round(neuralIndices / 30);
-        validTransitionsNeurCell{ch} = neuralIndices1kHz;
-
-        % allocate 3-D matrices for pyramidal/interneuron windows (events × neurons × time)
-        nEvt   = length(neuralIndices1kHz);
-        tAxis  = (-preSamples : postSamples);
-        nTPnts = numel(tAxis);
-
-        pyrCxWin   = nan(nEvt, size(cortexPyr,1),   nTPnts);
-        pyrStrWin  = nan(nEvt, size(striatPyr,1),   nTPnts);
-        intCxWin   = nan(nEvt, size(cortexInt,1),   nTPnts);
-        intStrWin  = nan(nEvt, size(striatInt,1),   nTPnts);
-
-        % loop through all transition events
-        for e = 1:nEvt
-            t = neuralIndices1kHz(e);
-
-            % validate range
-            if isnan(t) || t - preSamples < 1 || t + postSamples > size(cortexFRs,2)
-                continue; % skip invalid or edge-near events
-            end
-            rng = (t - preSamples):(t + postSamples);
-
-            % fix: ensure rng contains only valid positive integers
-            if any(rng < 1) || any(rng > size(cortexFRs,2))
-                continue;
+        for s = 1:(nShifts + 1)
+            if s == 1
+                transitions = validTransitions;
+            else
+                transitions = validTransitionsShiftedCell{ch, s - 1};
             end
 
-            % fill 3-D matrices
-            pyrCxWin(e,:,:)  = cortexPyr(:,  rng);
-            pyrStrWin(e,:,:) = striatPyr(:, rng);
-            intCxWin(e,:,:)  = cortexInt(:, rng);
-            intStrWin(e,:,:) = striatInt(:, rng);
+            % sync to neural time
+            currentDir = pwd;
+            cd(folderPath);
+            neuralIndices = NeurEMGSync(transitions * 20, frameEMGSamples, frameNeuropixelSamples, 'EMG');
+            cd(currentDir);
+            neuralIndices1kHz = round(neuralIndices / 30);
+            validTransitionsNeurShiftedCell{ch, s} = neuralIndices1kHz;
+
+            % allocate matrices
+            nEvt   = length(neuralIndices1kHz);
+            tAxis  = (-preSamples : postSamples);
+            nTPnts = numel(tAxis);
+
+            pyrCxWin   = nan(nEvt, size(cortexPyr,1),   nTPnts);
+            pyrStrWin  = nan(nEvt, size(striatPyr,1),   nTPnts);
+            intCxWin   = nan(nEvt, size(cortexInt,1),   nTPnts);
+            intStrWin  = nan(nEvt, size(striatInt,1),   nTPnts);
+
+            for e = 1:nEvt
+                t = neuralIndices1kHz(e);
+                if isnan(t) || t - preSamples < 1 || t + postSamples > size(cortexFRs,2)
+                    continue;
+                end
+                rng = (t - preSamples):(t + postSamples);
+                if any(rng < 1) || any(rng > size(cortexFRs,2)), continue; end
+                pyrCxWin(e,:,:)  = cortexPyr(:,  rng);
+                pyrStrWin(e,:,:) = striatPyr(:, rng);
+                intCxWin(e,:,:)  = cortexInt(:, rng);
+                intStrWin(e,:,:) = striatInt(:, rng);
+            end
+
+            if s == 1
+                validTransitionsNeurCell{ch} = neuralIndices1kHz;
+                pyrCxWinCell{ch}  = pyrCxWin;
+                intCxWinCell{ch}  = intCxWin;
+                pyrStrWinCell{ch} = pyrStrWin;
+                intStrWinCell{ch} = intStrWin;
+                allChannels{ch} = struct('neuralIndices1kHz', neuralIndices1kHz, 'pyrCx', pyrCxWin, 'pyrStr', pyrStrWin, 'intCx', intCxWin, 'intStr', intStrWin, 'tAxis', tAxis);
+            else
+                if s == 2  % first shift: save full matrices
+                    pyrCxWinShiftedCell{ch,1}  = pyrCxWin;
+                    intCxWinShiftedCell{ch,1}  = intCxWin;
+                    pyrStrWinShiftedCell{ch,1} = pyrStrWin;
+                    intStrWinShiftedCell{ch,1} = intStrWin;
+                else
+                    % for s = 3 to 101 (shifts 2-100), store only the averaged population activity
+                    meanEvt = @(X) squeeze(mean(X, 2, 'omitnan'));  % avg over neurons → events × time
+                    %avgOverEvents = @(X) mean(meanEvt(X), 1, 'omitnan');  % → 1 × time
+
+                    pyrCxWinShiftedMeanCell{ch, s-2}  = meanEvt(pyrCxWin);
+                    intCxWinShiftedMeanCell{ch, s-2}  = meanEvt(intCxWin);
+                    pyrStrWinShiftedMeanCell{ch, s-2} = meanEvt(pyrStrWin);
+                    intStrWinShiftedMeanCell{ch, s-2} = meanEvt(intStrWin);
+                end
+            end
         end
-
-        pyrCxWinCell{ch}  = pyrCxWin;
-        intCxWinCell{ch}  = intCxWin;
-        pyrStrWinCell{ch} = pyrStrWin;
-        intStrWinCell{ch} = intStrWin;
-
-        % save results for this channel
-        allChannels{ch} = struct('neuralIndices1kHz', neuralIndices1kHz,'pyrCx', pyrCxWin, 'pyrStr', pyrStrWin, 'intCx', intCxWin, 'intStr', intStrWin, 'tAxis', tAxis);
+        disp(toc);
     end
 
     % save everything together
-    save(fullfile(folderPath,'EMG_Neural_AllChannels.mat'), 'validTransitionsCell','validTransitionsNeurCell', 'emgWindowsCell', 'pyrCxWinCell','intCxWinCell','pyrStrWinCell','intStrWinCell', 'preSamples','postSamples','threshold','baselineDur','minSeparation','tAxis','-v7.3');
-end
+    save(fullfile(folderPath,'EMG_Neural_AllChannels.mat'), 'validTransitionsCell','validTransitionsNeurCell','validTransitionsShiftedCell','validTransitionsNeurShiftedCell', 'emgWindowsCell','emgWindowsShiftedCell', 'pyrCxWinCell','intCxWinCell','pyrStrWinCell','intStrWinCell', 'pyrCxWinShiftedCell','intCxWinShiftedCell','pyrStrWinShiftedCell','intStrWinShiftedCell', 'pyrCxWinShiftedMeanCell','intCxWinShiftedMeanCell','pyrStrWinShiftedMeanCell','intStrWinShiftedMeanCell', 'allChannels','preSamples','postSamples','threshold','baselineDur','minSeparation','tAxis','-v7.3');
+
