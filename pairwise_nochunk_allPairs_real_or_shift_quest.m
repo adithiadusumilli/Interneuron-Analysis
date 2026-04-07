@@ -7,11 +7,11 @@
 %   runType = "real"  -> jobInd = seed neuron i (1..nAll), computes i vs j for j>i (full lag sweep)
 %   runType = "shift" -> jobInd = shift index (1..100), computes full symmetric nullCorrMatAll where: for each i<j: (unshifted i) vs (shifted j)
 
-clearvars; clc;
+clc;
 
 %% ---------- settings ----------
 
-sessInd = 1;  % 1=D026,2=D020,3=D024,4=D043
+sessInd = 4;  % 1=D026,2=D020,3=D024,4=D043
 
 baseDirs = {
     '/home/asa7288/Transfer/D026', ...
