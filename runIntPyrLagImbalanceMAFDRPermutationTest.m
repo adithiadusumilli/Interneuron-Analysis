@@ -1,25 +1,20 @@
 function runIntPyrLagImbalanceMAFDRPermutationTest(saveFile, analysisType, alpha, nNullDraws, corrThresh)
-% runs int-vs-pyr-only storey/mafdr analysis and lag-imbalance null-interval testing
-% for either no-chunk or chunked pairwise saved results
+% runs int-vs-pyr-only storey/mafdr analysis and lag-imbalance null-interval testing for either no-chunk or chunked pairwise saved results
 
 % updated logic:
 %   - compute empirical p-values for all true int x pyr pairs
 %   - run matlab mafdr on all valid p-values
-%   - call pairs significant if:
-%         q <= alpha
-%         and peak correlation > corrThresh
-%   - compute lag imbalance from q-significant lags:
-%         (# positive lags - # negative lags) / (# positive lags + # negative lags)
-%     zero lags are ignored
+%   - call pairs significant if: q <= alpha and peak correlation > corrThresh
+%   - compute lag imbalance from q-significant lags: (# positive lags - # negative lags) / (# positive lags + # negative lags) , zero lags are ignored
 
 % null test:
 %   - sample the same number of unique pairs from all-vs-all upper-triangle
 %   - sampled pairs may include int-int, pyr-pyr, and int-pyr
 %   - no self-pairs and no duplicate pairs within a draw
+%   - for null draws only, randomly assign each sampled pair a sign of +1 or -1 before using its lag, to account for the fact that reversing pair ordercwould flip the lag sign
 %   - compute q-significant lags and lag imbalance
 %   - repeat nNullDraws times
-%   - determine significance directly from whether actual lag imbalance falls
-%     outside the central 95% null interval
+%   - determine significance directly from whether actual lag imbalance fallscoutside the central 95% null interval
 
 % inputs
 %   saveFile : combined pairwise .mat file
@@ -74,6 +69,7 @@ results.corrThresh = corrThresh;
 results.fdrMethod = 'mafdr_storey_all_valid_pvalues_plus_corr_threshold';
 results.directionMetric = 'lagImbalance=(nPositive-nNegative)/(nPositive+nNegative), zero lags ignored';
 results.significanceRule = 'actual lag imbalance outside central 95% null interval';
+results.nullLagSignHandling = 'null sampled upper-triangle pairs assigned random +/- sign to emulate both pair orientations';
 results.sessions = cell(1, nSess);
 
 for s = 1:nSess
@@ -88,6 +84,7 @@ for s = 1:nSess
     % ---------------- actual int x pyr pairs ----------------
     [actualRows, actualCols] = getIntPyrPairs(nInt, nPyr);
 
+    % actual keeps its consistent int->pyr sign convention
     actual = computePairSetStatsMAFDR(peakCorr, peakLag, nullCorr, actualRows, actualCols, alpha, corrThresh);
 
     fprintf('%s actual: nominal pairs = %d | valid tests = %d | uncorr p<=%.3f = %d | q<=%.3f & corr>%.3f sig = %d | lag imbalance = %.6f\n', ...
@@ -108,19 +105,28 @@ for s = 1:nSess
     nullNValidTests = nan(nNullDraws,1);
     nullLagCell = cell(nNullDraws,1);
     nullPairTypeCounts = nan(nNullDraws, 3); % [int-int, int-pyr, pyr-pyr]
+    nullLagSignVecCell = cell(nNullDraws,1);
 
     for r = 1:nNullDraws
         drawIdx = randperm(numel(poolRows), nActualNominalPairs);
         drawRows = poolRows(drawIdx);
         drawCols = poolCols(drawIdx);
 
-        nullDraw = computePairSetStatsMAFDR(peakCorr, peakLag, nullCorr, drawRows, drawCols, alpha, corrThresh);
+        % key fix:
+        % for null sampled pairs, randomly assign an orientation sign
+        % because using only upper-triangle ordering otherwise biases lag sign
+        lagSignVec = ones(nActualNominalPairs,1);
+        lagSignVec(rand(nActualNominalPairs,1) > 0.5) = -1;
+
+        nullDraw = computePairSetStatsMAFDR( ...
+            peakCorr, peakLag, nullCorr, drawRows, drawCols, alpha, corrThresh, lagSignVec);
 
         nullLagImbalance(r) = nullDraw.lagImbalance;
         nullNSigUncorr(r) = nullDraw.nSigUncorr;
         nullNSigFDR(r) = nullDraw.nSigFDR;
         nullNValidTests(r) = nullDraw.nValidTests;
         nullLagCell{r} = nullDraw.sigLagVec;
+        nullLagSignVecCell{r} = lagSignVec;
 
         nullPairTypeCounts(r,:) = classifySampledPairs(drawRows, drawCols, nInt);
     end
@@ -214,6 +220,7 @@ for s = 1:nSess
     R.nullNValidTests = nullNValidTests;
     R.nullLagCell = nullLagCell;
     R.nullPairTypeCounts = nullPairTypeCounts;
+    R.nullLagSignVecCell = nullLagSignVecCell;
 
     results.sessions{s} = R;
 end
@@ -274,9 +281,17 @@ mask = triu(true(nAll), 1);
 end
 
 % ============================================================
-function out = computePairSetStatsMAFDR(realMat, lagMat, nullMat, rows, cols, alpha, corrThresh)
+function out = computePairSetStatsMAFDR(realMat, lagMat, nullMat, rows, cols, alpha, corrThresh, lagSignVec)
+
+if nargin < 8 || isempty(lagSignVec)
+    lagSignVec = ones(numel(rows),1);
+end
 
 nPairs = numel(rows);
+
+if numel(lagSignVec) ~= nPairs
+    error('lagSignVec must have one entry per selected pair.');
+end
 
 realVals = nan(nPairs,1);
 lagVals = nan(nPairs,1);
@@ -292,7 +307,7 @@ for i = 1:nPairs
     thisNull = thisNull(~isnan(thisNull) & isfinite(thisNull));
 
     realVals(i) = thisReal;
-    lagVals(i) = thisLag;
+    lagVals(i) = lagSignVec(i) * thisLag;
 
     if isnan(thisReal) || ~isfinite(thisReal) || isnan(thisLag) || ~isfinite(thisLag) || numel(thisNull) < 10
         pVals(i) = NaN;
@@ -343,6 +358,7 @@ out.nNegativeLag = sum(sigLagVec < 0);
 out.nZeroLag = sum(sigLagVec == 0);
 out.sigUncorrMask = sigUncorr;
 out.sigFDRMask = sigFDR;
+out.lagSignVec = lagSignVec;
 end
 
 % ============================================================
