@@ -1,22 +1,4 @@
 function plotSavedIntPyrLagSkewMAFDR_NoChunk(resultsFile, combinedMatFile)
-% plots saved no-chunk pairwise significance results from runIntPyrLagSkewMAFDRPermutationTest
-
-% expected inputs:
-%   resultsFile     = output .mat from runIntPyrLagSkewMAFDRPermutationTest
-%                     for analysisType = "nochunk"
-%   combinedMatFile = original combined no-chunk pairwise file containing
-%                     allSessions.sessions(s).nullCorrMatAllShifts
-
-% figures per session:
-%   1. significant pairwise peak lag map
-%   2. distribution of significant peak lags
-%   3. peak correlation relative to shift control
-%   4. peak lag versus peak correlation
-%   5. skew relative to null distribution
-
-% summary figure -- actual skew versus null 95% interval across sessions
-
-% j run: plotSavedIntPyrLagSkewMAFDR_NoChunk("C:\Users\mirilab\Documents\GlobusTransfer\pairwise_nochunk_allPairs_ALL_SESSIONS_COMBINED_intPyrSkewMAFDR_nochunk.mat","C:\Users\mirilab\Documents\GlobusTransfer\pairwise_nochunk_allPairs_ALL_SESSIONS_COMBINED.mat")
 
 arguments
     resultsFile (1,1) string
@@ -73,7 +55,6 @@ for s = 1:nSess
     nInt = sess.nInt;
     nPyr = sess.nPyr;
 
-    % ================= HEATMAP =================
     sigMat = nan(nInt, nPyr);
 
     for k = 1:numel(actual.rows)
@@ -105,7 +86,6 @@ for s = 1:nSess
     set(gca, 'FontSize', 13, 'TickDir', 'out');
     box off;
 
-    % ================= LAG HIST =================
     figure('Name', sprintf('%s Distribution Of Peak Lags', animalID), 'Color', 'w');
     if ~isempty(actual.sigLagVec)
         edges = makeLagEdges(actual.sigLagVec);
@@ -129,94 +109,70 @@ for s = 1:nSess
     set(gca, 'FontSize', 13);
     box off;
 
-    % ================= EXAMPLE PAIR CORR VS LAG RELATIVE TO SHIFT CONTROL =================
+    sigPairsIdx = find(actual.sigFDRMask(:));
+
     figure('Name', sprintf('%s Example Pair Corr Versus Lag', animalID), 'Color', 'w');
     hold on;
 
-    hCurve = gobjects(1);
-    hPeakLag = gobjects(1);
-    hPeak = gobjects(1);
-    hCI = gobjects(1);
-
-    sigPairsIdx = find(actual.sigFDRMask(:));
-
     if ~isempty(sigPairsIdx)
-        % choose one significant pair with the largest real peak correlation
         [~, bestLocal] = max(actual.realVals(sigPairsIdx));
         exampleIdx = sigPairsIdx(bestLocal);
 
         r = actual.rows(exampleIdx);
         c = actual.cols(exampleIdx);
 
-        % get real xc curve for this pair
         [lagsVec, xcVec] = getNoChunkExampleXC(rawSess, r, c);
-
-        % get shift-control distribution for this same pair
         thisNull = squeeze(rawSess.nullCorrMatAllShifts(r,c,:));
         thisNull = thisNull(~isnan(thisNull) & isfinite(thisNull));
 
         if ~isempty(lagsVec) && ~isempty(xcVec)
-            lagsVec = lagsVec(:);
             xcVec = xcVec(:);
+            lagsVec = lagsVec(:);
 
-            % real xc curve
-            hCurve = plot(lagsVec, xcVec, '-', ...
-                'Color', [0.2 0.2 0.2], 'LineWidth', 1.5);
-
-            % actual peak from the black curve
             [peakCorrVal, peakIdx] = max(xcVec);
             peakLagVal = lagsVec(peakIdx);
 
-            % mark actual peak lag and actual peak corr
+            hXC = plot(lagsVec, xcVec, '-', 'Color', [0.2 0.2 0.2], 'LineWidth', 1.8);
             hPeakLag = xline(peakLagVal, 'r:', 'LineWidth', 1.8);
             hPeak = plot(peakLagVal, peakCorrVal, 'o', ...
                 'MarkerFaceColor', [0.85 0.33 0.10], ...
                 'MarkerEdgeColor', [0.85 0.33 0.10], ...
                 'MarkerSize', 8);
 
-            % shift-control bounds
+            legendHandles = [hXC hPeakLag hPeak];
+            legendLabels = {'Example Pair XC', 'Peak Lag', 'Peak Correlation'};
+
             if ~isempty(thisNull)
-                corrCI = prctile(thisNull, [2.5 97.5]);
-                yline(corrCI(1), 'k--', 'LineWidth', 1.5);
-                hCI = yline(corrCI(2), 'k--', 'LineWidth', 1.5);
+                nullCI = prctile(thisNull, [2.5 97.5]);
+                yline(nullCI(1), 'k--', 'LineWidth', 1.5);
+                hHi = yline(nullCI(2), 'k--', 'LineWidth', 1.5);
+
+                legendHandles = [legendHandles hHi];
+                legendLabels = [legendLabels {'95% Shift-Control Bounds'}];
             end
+
+            xlabel('Lag (Seconds)', 'FontSize', 14);
+            ylabel('Correlation', 'FontSize', 14);
+
+            title(sprintf('%s Example Pair Corr Versus Lag (%d / %d Significant Pairs)', ...
+                animalID, actual.nSigFDR, actual.nPairsNominal), ...
+                'FontSize', 16, 'FontWeight', 'bold');
+
+            legend(legendHandles, legendLabels, 'FontSize', 12, 'Location', 'best');
+        else
+            histogram(nan);
+            title(sprintf('%s Example Pair Corr Versus Lag (XC unavailable)', animalID), ...
+                'FontSize', 16, 'FontWeight', 'bold');
         end
-    end
-
-    xlabel('Lag (Seconds)', 'FontSize', 14);
-    ylabel('Correlation', 'FontSize', 14);
-
-    title(sprintf('%s Example Pair Corr Versus Lag (%d / %d Significant Pairs)', ...
-        animalID, actual.nSigFDR, actual.nPairsNominal), ...
-        'FontSize', 16, 'FontWeight', 'bold');
-
-    legendHandles = gobjects(0);
-    legendLabels = {};
-
-    if isgraphics(hCurve)
-        legendHandles(end+1) = hCurve;
-        legendLabels{end+1} = 'Example Pair XC';
-    end
-    if isgraphics(hPeakLag)
-        legendHandles(end+1) = hPeakLag;
-        legendLabels{end+1} = 'Actual Peak Lag';
-    end
-    if isgraphics(hPeak)
-        legendHandles(end+1) = hPeak;
-        legendLabels{end+1} = 'Peak Correlation';
-    end
-    if isgraphics(hCI)
-        legendHandles(end+1) = hCI;
-        legendLabels{end+1} = '95% Shift-Control Bounds';
-    end
-    if ~isempty(legendHandles)
-        legend(legendHandles, legendLabels, 'FontSize', 12, 'Location', 'best');
+    else
+        histogram(nan);
+        title(sprintf('%s Example Pair Corr Versus Lag (No significant pairs)', animalID), ...
+            'FontSize', 16, 'FontWeight', 'bold');
     end
 
     set(gca, 'FontSize', 13);
     box off;
-    
-    % ================= SCATTER =================
+
     if ~isempty(actual.sigLagVec) && ~isempty(actual.realVals)
         sigCorrVec = actual.realVals(actual.sigFDRMask);
         sigCorrVec = sigCorrVec(~isnan(sigCorrVec) & isfinite(sigCorrVec));
@@ -226,13 +182,6 @@ for s = 1:nSess
             scatterhist(actual.sigLagVec(:), sigCorrVec(:), ...
                 'Direction', 'out', 'Marker', '.');
 
-            hold on;
-
-            hThresh = gobjects(1);
-            if isfield(R, 'corrThresh') && ~isempty(R.corrThresh) && ~isnan(R.corrThresh)
-                hThresh = yline(R.corrThresh, 'r--', 'LineWidth', 1.5);
-            end
-
             xlabel('Peak Lag (Seconds)', 'FontSize', 14);
             ylabel('Peak Correlation', 'FontSize', 14);
 
@@ -240,15 +189,10 @@ for s = 1:nSess
                 animalID, actual.nSigFDR, actual.nPairsNominal), ...
                 'FontSize', 16, 'FontWeight', 'bold');
 
-            if isgraphics(hThresh)
-                legend(hThresh, 'Correlation Threshold', 'FontSize', 12, 'Location', 'best');
-            end
-
             set(gca, 'FontSize', 13);
         end
     end
 
-    % ================= SKEW =================
     validNullSkews = sess.validNullSkews;
 
     if isempty(validNullSkews)
@@ -277,7 +221,7 @@ for s = 1:nSess
 
         hNullDummy = patch(nan, nan, nullColor);
         legend([hNullDummy hActual hCI], ...
-            {'Null Skew Distribution', 'Actual Skew', '95% Null Skew Interval'}, ...
+            {'Null Skew Distribution', 'Actual Skew', '95% Null Interval'}, ...
             'FontSize', 12, 'Location', 'best');
     else
         histogram(nan);
@@ -295,7 +239,6 @@ for s = 1:nSess
     box off;
 end
 
-% ================= SUMMARY =================
 figure('Name', 'Summary Of Skew Relative To Null Distribution Across Sessions', 'Color', 'w');
 t = tiledlayout(1, nSess, 'TileSpacing', 'compact', 'Padding', 'compact');
 
@@ -311,10 +254,8 @@ for s = 1:nSess
         hCI = line([xNull xNull], summaryNullCI(s,:), ...
             'Color', [0.5 0.5 0.5], 'LineWidth', 4);
 
-        plot(xNull, summaryNullCI(s,1), '_', 'Color', [0.3 0.3 0.3], ...
-            'MarkerSize', 18, 'LineWidth', 2);
-        plot(xNull, summaryNullCI(s,2), '_', 'Color', [0.3 0.3 0.3], ...
-            'MarkerSize', 18, 'LineWidth', 2);
+        plot(xNull, summaryNullCI(s,1), '_', 'Color', [0.3 0.3 0.3], 'MarkerSize', 18, 'LineWidth', 2);
+        plot(xNull, summaryNullCI(s,2), '_', 'Color', [0.3 0.3 0.3], 'MarkerSize', 18, 'LineWidth', 2);
     end
 
     hDot = plot(xActual, summaryActualSkew(s), ...
@@ -338,7 +279,7 @@ for s = 1:nSess
 
     if s == 1 && isgraphics(hCI)
         lgd = legend([hDot hCI], ...
-            {'Actual Skew', '95% Null Skew Interval'}, ...
+            {'Actual Skew', '95% Null Interval'}, ...
             'Location', 'southoutside', 'FontSize', 16);
         lgd.Layout.Tile = 'south';
     end
@@ -353,30 +294,28 @@ function [lagsVec, xcVec] = getNoChunkExampleXC(rawSess, r, c)
 lagsVec = [];
 xcVec = [];
 
-if isfield(rawSess, 'lagsSec') && ~isempty(rawSess.lagsSec)
-    lagsVec = rawSess.lagsSec(:);
-elseif isfield(rawSess, 'lags') && ~isempty(rawSess.lags)
-    lagsVec = rawSess.lags(:);
+if isfield(rawSess, 'lagsSec')
+    lagsVec = rawSess.lagsSec;
+elseif isfield(rawSess, 'lags')
+    lagsVec = rawSess.lags;
 end
 
-if isfield(rawSess, 'xcMatAll') && ~isempty(rawSess.xcMatAll)
+if isfield(rawSess, 'xcMatAll')
     xcCube = rawSess.xcMatAll;
-elseif isfield(rawSess, 'xcMat_all') && ~isempty(rawSess.xcMat_all)
+elseif isfield(rawSess, 'xcMat_all')
     xcCube = rawSess.xcMat_all;
 else
     xcCube = [];
 end
 
 if isempty(xcCube)
-    xcVec = [];
-    lagsVec = [];
     return;
 end
 
 xcVec = squeeze(xcCube(r,c,:));
 
 if isempty(lagsVec)
-    lagsVec = (1:numel(xcVec))';
+    lagsVec = 1:numel(xcVec);
 end
 end
 
