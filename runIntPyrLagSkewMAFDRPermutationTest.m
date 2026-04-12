@@ -1,30 +1,5 @@
 function runIntPyrLagSkewMAFDRPermutationTest(saveFile, analysisType, alpha, nNullDraws, corrThresh)
-% runs int-vs-pyr-only storey/mafdr analysis and skew permutation testing
-% for either no-chunk or chunked pairwise saved results
-
-% updated logic:
-%   - compute empirical p-values for all true int x pyr pairs
-%   - run matlab mafdr on all valid p-values
-%   - call pairs significant if:
-%         q <= alpha
-%         and peak correlation > corrThresh
-%   - compute skew = (mean - median) / std from q-significant lags
-
-% null test:
-%   - sample the same number of unique pairs from all-vs-all upper-triangle
-%   - sampled pairs may include int-int, pyr-pyr, and int-pyr
-%   - no self-pairs and no duplicate pairs within a draw
-%   - compute p-values, mafdr q-values, significant lags, and skew
-%   - repeat nNullDraws times
-
-% inputs
-%   saveFile : combined pairwise .mat file
-%   analysisType : "nochunk" or "chunked"
-%   alpha : q-value threshold (default 0.05)
-%   nNullDraws : number of null skew draws (default 100)
-%   corrThresh : minimum peak correlation threshold (default 0.02)
-
-% output: saves results struct and makes plots per session
+% runs int-vs-pyr-only storey/mafdr analysis and skew permutation testing for either no-chunk or chunked pairwise saved results
 
 if nargin < 3 || isempty(alpha)
     alpha = 0.05;
@@ -61,7 +36,7 @@ switch analysisType
         error('analysisType must be "nochunk" or "chunked".');
 end
 
-rng(0); % reproducible null draws
+rng(0);
 
 results = struct();
 results.sourceFile = saveFile;
@@ -70,6 +45,9 @@ results.alpha = alpha;
 results.nNullDraws = nNullDraws;
 results.corrThresh = corrThresh;
 results.fdrMethod = 'mafdr_storey_all_valid_pvalues_plus_corr_threshold';
+results.directionMetric = 'skew=(mean-median)/std of significant lag distribution';
+results.significanceRule = 'actual skew outside central 95% null interval';
+results.nullLagSignHandling = 'null sampled upper-triangle pairs assigned random +/- sign to emulate both pair orientations';
 results.sessions = cell(1, nSess);
 
 for s = 1:nSess
@@ -81,17 +59,14 @@ for s = 1:nSess
     fprintf('nInt = %d | nPyr = %d | nAll = %d\n', nInt, nPyr, nAll);
     fprintf('=============================\n');
 
-    % ---------------- actual int x pyr pairs ----------------
     [actualRows, actualCols] = getIntPyrPairs(nInt, nPyr);
 
-    actual = computePairSetStatsMAFDR(peakCorr, peakLag, nullCorr, actualRows, actualCols, alpha, corrThresh);
+    actual = computePairSetStatsMAFDRSkew(peakCorr, peakLag, nullCorr, actualRows, actualCols, alpha, corrThresh);
 
     fprintf('%s actual: nominal pairs = %d | valid tests = %d | uncorr p<=%.3f = %d | q<=%.3f & corr>%.3f sig = %d | skew = %.6f\n', ...
         animalID, numel(actualRows), actual.nValidTests, alpha, actual.nSigUncorr, alpha, corrThresh, actual.nSigFDR, actual.skew);
 
-    % ---------------- null draws from all-vs-all upper triangle ----------------
     [poolRows, poolCols] = getAllUpperPairs(nAll);
-
     nActualNominalPairs = numel(actualRows);
 
     if nActualNominalPairs > numel(poolRows)
@@ -103,80 +78,47 @@ for s = 1:nSess
     nullNSigFDR = nan(nNullDraws,1);
     nullNValidTests = nan(nNullDraws,1);
     nullLagCell = cell(nNullDraws,1);
-    nullPairTypeCounts = nan(nNullDraws, 3); % [int-int, int-pyr, pyr-pyr]
+    nullPairTypeCounts = nan(nNullDraws, 3);
+    nullLagSignVecCell = cell(nNullDraws,1);
 
     for r = 1:nNullDraws
         drawIdx = randperm(numel(poolRows), nActualNominalPairs);
         drawRows = poolRows(drawIdx);
         drawCols = poolCols(drawIdx);
 
-        nullDraw = computePairSetStatsMAFDR(peakCorr, peakLag, nullCorr, drawRows, drawCols, alpha, corrThresh);
+        lagSignVec = ones(nActualNominalPairs,1);
+        lagSignVec(rand(nActualNominalPairs,1) > 0.5) = -1;
+
+        nullDraw = computePairSetStatsMAFDRSkew( ...
+            peakCorr, peakLag, nullCorr, drawRows, drawCols, alpha, corrThresh, lagSignVec);
 
         nullSkews(r) = nullDraw.skew;
         nullNSigUncorr(r) = nullDraw.nSigUncorr;
         nullNSigFDR(r) = nullDraw.nSigFDR;
         nullNValidTests(r) = nullDraw.nValidTests;
         nullLagCell{r} = nullDraw.sigLagVec;
+        nullLagSignVecCell{r} = lagSignVec;
 
         nullPairTypeCounts(r,:) = classifySampledPairs(drawRows, drawCols, nInt);
     end
 
     validNullSkews = nullSkews(~isnan(nullSkews) & isfinite(nullSkews));
 
-    if isempty(validNullSkews) || isnan(actual.skew) || ~isfinite(actual.skew)
-        skewP = NaN;
-    else
-        skewP = (sum(validNullSkews >= actual.skew) + 1) / (numel(validNullSkews) + 1);
-    end
-
-    fprintf('%s skew test: actual skew = %.6f | null n = %d | skew p = %.6f\n', ...
-        animalID, actual.skew, numel(validNullSkews), skewP);
-
-    % ---------------- plots ----------------
-
-    figure('Name', sprintf('%s actual int-pyr significant lags (mafdr)', animalID), 'Color', 'w');
-    if ~isempty(actual.sigLagVec)
-        lagEdgesActual = makeLagEdges(actual.sigLagVec);
-        histogram(actual.sigLagVec, 'BinEdges', lagEdgesActual, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
-    else
-        histogram(nan, 'BinEdges', -0.201:0.001:0.201, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
-    end
-    xlabel('Peak Lag (s)');
-    ylabel('Count');
-    title(sprintf('%s actual int-pyr q<=%.3f & corr>%.3f lags | uncorr=%d | sig=%d | skew=%.4f', ...
-        animalID, alpha, corrThresh, actual.nSigUncorr, actual.nSigFDR, actual.skew));
-    grid on;
-
-    pooledNullLags = vertcat(nullLagCell{:});
-    pooledNullLags = pooledNullLags(~isnan(pooledNullLags) & isfinite(pooledNullLags));
-
-    figure('Name', sprintf('%s null significant lags (mafdr)', animalID), 'Color', 'w');
-    if ~isempty(pooledNullLags)
-        lagEdgesNull = makeLagEdges(pooledNullLags);
-        histogram(pooledNullLags, 'BinEdges', lagEdgesNull, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
-    else
-        histogram(nan, 'BinEdges', -0.201:0.001:0.201, 'FaceAlpha', 0.8, 'EdgeColor', 'none');
-    end
-    xlabel('Peak Lag (s)');
-    ylabel('Count');
-    title(sprintf('%s pooled null significant lags across %d draws', animalID, nNullDraws));
-    grid on;
-
-    figure('Name', sprintf('%s skew null distribution (mafdr)', animalID), 'Color', 'w');
     if ~isempty(validNullSkews)
-        histogram(validNullSkews, 30, 'FaceAlpha', 0.8, 'EdgeColor', 'none'); hold on;
-        xline(actual.skew, 'r-', 'LineWidth', 2);
-        legend({'Null skews', 'Actual skew'}, 'Location', 'best');
+        skewNullCI = prctile(validNullSkews, [2.5 97.5]);
     else
-        histogram(nan, 30, 'FaceAlpha', 0.8, 'EdgeColor', 'none'); hold on;
-        legend({'Null skews'}, 'Location', 'best');
+        skewNullCI = [NaN NaN];
     end
-    xlabel('Skew = (mean - median) / std');
-    ylabel('Count');
-    title(sprintf('%s skew null distribution | actual=%.4f | p=%.4f', animalID, actual.skew, skewP));
-    grid on;
 
-    % ---------------- save session results ----------------
+    skewSigByCI = false;
+    if ~isnan(actual.skew) && all(~isnan(skewNullCI))
+        skewSigByCI = (actual.skew < skewNullCI(1)) || (actual.skew > skewNullCI(2));
+    end
+
+    fprintf('%s skew test: actual = %.6f | null n = %d | 95%% CI = [%.6f, %.6f] | sig by CI = %d\n', ...
+        animalID, actual.skew, numel(validNullSkews), ...
+        skewNullCI(1), skewNullCI(2), skewSigByCI);
+
     R = struct();
     R.animalID = animalID;
     R.nInt = nInt;
@@ -190,12 +132,15 @@ for s = 1:nSess
 
     R.nullSkews = nullSkews;
     R.validNullSkews = validNullSkews;
+    R.skewNullCI = skewNullCI;
+    R.skewSigByCI = skewSigByCI;
+
     R.nullNSigUncorr = nullNSigUncorr;
     R.nullNSigFDR = nullNSigFDR;
     R.nullNValidTests = nullNValidTests;
     R.nullLagCell = nullLagCell;
     R.nullPairTypeCounts = nullPairTypeCounts;
-    R.skewP = skewP;
+    R.nullLagSignVecCell = nullLagSignVecCell;
 
     results.sessions{s} = R;
 end
@@ -256,11 +201,17 @@ mask = triu(true(nAll), 1);
 end
 
 % ============================================================
-function out = computePairSetStatsMAFDR(realMat, lagMat, nullMat, rows, cols, alpha, corrThresh)
-% computes pairwise empirical p-values, mafdr q-values on all valid p-values,
-% significance, and skew for an arbitrary list of selected pairs
+function out = computePairSetStatsMAFDRSkew(realMat, lagMat, nullMat, rows, cols, alpha, corrThresh, lagSignVec)
+
+if nargin < 8 || isempty(lagSignVec)
+    lagSignVec = ones(numel(rows),1);
+end
 
 nPairs = numel(rows);
+
+if numel(lagSignVec) ~= nPairs
+    error('lagSignVec must have one entry per selected pair.');
+end
 
 realVals = nan(nPairs,1);
 lagVals = nan(nPairs,1);
@@ -276,20 +227,18 @@ for i = 1:nPairs
     thisNull = thisNull(~isnan(thisNull) & isfinite(thisNull));
 
     realVals(i) = thisReal;
-    lagVals(i) = thisLag;
+    lagVals(i) = lagSignVec(i) * thisLag;
 
     if isnan(thisReal) || ~isfinite(thisReal) || isnan(thisLag) || ~isfinite(thisLag) || numel(thisNull) < 10
         pVals(i) = NaN;
         continue;
     end
 
-    % right-tailed empirical p-value
     pVals(i) = (sum(thisNull >= thisReal) + 1) / (numel(thisNull) + 1);
 end
 
 validP = ~isnan(pVals) & isfinite(pVals);
 
-% descriptive only
 sigUncorr = false(size(pVals));
 sigUncorr(validP) = pVals(validP) <= alpha;
 
@@ -326,6 +275,7 @@ out.sigLagVec = sigLagVec;
 out.skew = computeSkew(sigLagVec);
 out.sigUncorrMask = sigUncorr;
 out.sigFDRMask = sigFDR;
+out.lagSignVec = lagSignVec;
 end
 
 % ============================================================
@@ -344,30 +294,6 @@ if sd == 0 || isnan(sd)
 end
 
 skewVal = (mean(x, 'omitnan') - median(x, 'omitnan')) / sd;
-end
-
-% ============================================================
-function edges = makeLagEdges(x)
-x = x(~isnan(x) & isfinite(x));
-
-if isempty(x)
-    edges = -0.201:0.001:0.201;
-    return;
-end
-
-xmin = floor(min(x)*1000)/1000;
-xmax = ceil(max(x)*1000)/1000;
-
-if xmin == xmax
-    xmin = xmin - 0.001;
-    xmax = xmax + 0.001;
-end
-
-edges = xmin:0.001:xmax;
-
-if numel(edges) < 2
-    edges = [xmin-0.001 xmax+0.001];
-end
 end
 
 % ============================================================
