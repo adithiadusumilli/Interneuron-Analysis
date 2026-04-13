@@ -205,7 +205,7 @@ for s = 1:nSess
             hCorr97 = yline(corrCI(2), '--', 'Color', corrCIColor, 'LineWidth', 1.4);
         end
 
-        hPeak = xline(peakLag, '--', 'Color', peakLagColor, 'LineWidth', 1.8);
+        hPeak = xline(peakLag, '-', 'Color', peakLagColor, 'LineWidth', 1.8);
 
         hLag1 = gobjects(1);
         if ~isempty(lagCI) && ~any(isnan(lagCI))
@@ -226,7 +226,7 @@ for s = 1:nSess
             if isgraphics(hCorr25), legHandles(end+1) = hCorr25; legLabels{end+1} = '2.5% Shift Control Correlation'; end
             if isgraphics(hCorr97), legHandles(end+1) = hCorr97; legLabels{end+1} = '97.5% Shift Control Correlation'; end
             legHandles(end+1) = hPeak; legLabels{end+1} = 'Actual Peak Lag';
-            if isgraphics(hLag1), legHandles(end+1) = hLag1; legLabels{end+1} = 'Lag 95% CI (Permutation)'; end
+            if isgraphics(hLag1), legHandles(end+1) = hLag1; legLabels{end+1} = '95% Permutation Lag Bounds'; end
 
             lgd = legend(legHandles, legLabels, 'Orientation', 'horizontal');
             lgd.Layout.Tile = 'south';
