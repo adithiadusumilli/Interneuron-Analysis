@@ -74,7 +74,7 @@ for iDir = 1:nSess
     hOrig = plot(sess.lagsSec, sess.xc, 'Color', origColor, 'LineWidth', 2);
     hCorr25 = yline(sess.corrCI(1), '--', 'Color', corrCIColor, 'LineWidth', 1.4);
     hCorr97 = yline(sess.corrCI(2), '--', 'Color', corrCIColor, 'LineWidth', 1.4);
-    hPeak = xline(sess.peakLag, '--', 'Color', peakLagColor, 'LineWidth', 1.8);
+    hPeak = xline(sess.peakLag, '-', 'Color', peakLagColor, 'LineWidth', 1.8);
 
     hLagCI = gobjects(1,2);
     if ~any(isnan(sess.lagCI))
@@ -94,7 +94,7 @@ for iDir = 1:nSess
              '2.5% Shift Control Correlation', ...
              '97.5% Shift Control Correlation', ...
              'Actual Peak Lag', ...
-             'Lag 95% CI (Permutation)'}, ...
+             '95% Permutation Lag Bounds'}, ...
             'Orientation', 'horizontal');
         lgd.Layout.Tile = 'south';
         lgd.FontSize = legendFont;
