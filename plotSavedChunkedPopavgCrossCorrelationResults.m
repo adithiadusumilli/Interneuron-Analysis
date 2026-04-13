@@ -98,7 +98,7 @@ for iDir = 1:nSess
         hCorr97 = yline(corrCI(2), '--', 'Color', corrCIColor, 'LineWidth', 1.4);
     end
 
-    hPeak = xline(peakLag, '--', 'Color', peakLagColor, 'LineWidth', 1.8);
+    hPeak = xline(peakLag, '-', 'Color', peakLagColor, 'LineWidth', 1.8);
 
     hLagCI = gobjects(1,2);
     if ~any(isnan(lagCI))
@@ -130,7 +130,7 @@ for iDir = 1:nSess
 
         if isgraphics(hLagCI(1))
             legendHandles(end+1) = hLagCI(1); %#ok<AGROW>
-            legendLabels{end+1} = 'Lag 95% CI (Permutation)'; %#ok<AGROW>
+            legendLabels{end+1} = '95% Permutation Lag Bounds'; %#ok<AGROW>
         end
 
         lgd = legend(legendHandles, legendLabels, 'Orientation', 'horizontal');
@@ -141,7 +141,7 @@ for iDir = 1:nSess
 end
 
 %% ---- summary figure: peak lag + ci per animal ----
-figure('Name','Cortex peak lag summary with permutation CI', 'Color', 'w');
+figure('Name','Cortex peak lag summary with 95% Permutation Lag Bounds', 'Color', 'w');
 hold on;
 
 xPos = 1:nSess;
@@ -161,7 +161,7 @@ ylabel('Peak Lag (Seconds)', 'FontSize', labelFont);
 xticks(xPos);
 xticklabels(cellstr(animalIDs));
 
-title('Cortex Peak Lags with 95% Permutation CI', 'FontSize', titleFont);
+title('Cortex Peak Lags with 95% Permutation Lag Bounds', 'FontSize', titleFont);
 box off;
 grid on;
 set(gca, 'FontSize', tickFont, 'LineWidth', 1, 'TickDir', 'out');
