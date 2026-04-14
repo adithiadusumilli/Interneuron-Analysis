@@ -115,67 +115,79 @@ for s = 1:nSess
 
     sigPairsIdx = find(actual.sigFDRMask(:));
 
-    figure('Name', sprintf('%s Example Pair Corr Versus Lag', animalID), 'Color', 'w');
-    hold on;
+    % ================= NOW PLOT 10 EXAMPLE PAIRS =================
+    sigPairsIdx = find(actual.sigFDRMask(:));
 
     if ~isempty(sigPairsIdx)
-        [~, bestLocal] = max(actual.realVals(sigPairsIdx));
-        exampleIdx = sigPairsIdx(bestLocal);
-
-        r = actual.rows(exampleIdx);
-        c = actual.cols(exampleIdx);
-
-        [lagsVec, xcVec] = getChunkedExampleXC(C, s, r, c);
-        thisNull = squeeze(rawNullXC(r,c,:));
-        thisNull = thisNull(~isnan(thisNull) & isfinite(thisNull));
-
-        if ~isempty(lagsVec) && ~isempty(xcVec)
-            xcVec = xcVec(:);
-            lagsVec = lagsVec(:);
-
-            [peakCorrVal, peakIdx] = max(xcVec);
-            peakLagVal = lagsVec(peakIdx);
-
-            hXC = plot(lagsVec, xcVec, '-', 'Color', [0.2 0.2 0.2], 'LineWidth', 1.8);
-            hPeakLag = xline(peakLagVal, 'r:', 'LineWidth', 1.8);
-            hPeak = plot(peakLagVal, peakCorrVal, 'o', ...
-                'MarkerFaceColor', [0.85 0.33 0.10], ...
-                'MarkerEdgeColor', [0.85 0.33 0.10], ...
-                'MarkerSize', 8);
-
-            legendHandles = [hXC hPeakLag hPeak];
-            legendLabels = {'Example Pair XC', 'Peak Lag', 'Peak Correlation'};
-
-            if ~isempty(thisNull)
-                nullCI = prctile(thisNull, [2.5 97.5]);
-                yline(nullCI(1), 'k--', 'LineWidth', 1.5);
-                hHi = yline(nullCI(2), 'k--', 'LineWidth', 1.5);
-
-                legendHandles = [legendHandles hHi];
-                legendLabels = [legendLabels {'95% Shift-Control Bounds'}];
+        [~, sortIdx] = sort(actual.realVals(sigPairsIdx), 'descend');
+        nExamples = min(10, numel(sortIdx));
+        exampleIdxList = sigPairsIdx(sortIdx(1:nExamples));
+    
+        for ii = 1:nExamples
+    
+            exampleIdx = exampleIdxList(ii);
+    
+            r = actual.rows(exampleIdx);
+            c = actual.cols(exampleIdx);
+    
+            [lagsVec, xcVec] = getChunkedExampleXC(C, s, r, c);
+            thisNull = squeeze(rawNullXC(r,c,:));
+            thisNull = thisNull(~isnan(thisNull) & isfinite(thisNull));
+    
+            figure('Name', sprintf('%s Example Pair %d Corr Versus Lag', animalID, ii), 'Color', 'w');
+            hold on;
+    
+            if ~isempty(lagsVec) && ~isempty(xcVec)
+                xcVec = xcVec(:);
+                lagsVec = lagsVec(:);
+    
+                [peakCorrVal, peakIdx] = max(xcVec);
+                peakLagVal = lagsVec(peakIdx);
+    
+                hXC = plot(lagsVec, xcVec, '-', 'Color', [0.2 0.2 0.2], 'LineWidth', 1.8);
+                hPeakLag = xline(peakLagVal, 'r:', 'LineWidth', 1.8);
+                hPeak = plot(peakLagVal, peakCorrVal, 'o', ...
+                    'MarkerFaceColor', [0.85 0.33 0.10], ...
+                    'MarkerEdgeColor', [0.85 0.33 0.10], ...
+                    'MarkerSize', 8);
+    
+                legendHandles = [hXC hPeakLag hPeak];
+                legendLabels = {'Example Pair XC', 'Peak Lag', 'Peak Correlation'};
+    
+                if ~isempty(thisNull)
+                    nullCI = prctile(thisNull, [2.5 97.5]);
+                    yline(nullCI(1), 'k--', 'LineWidth', 1.5);
+                    hHi = yline(nullCI(2), 'k--', 'LineWidth', 1.5);
+    
+                    legendHandles = [legendHandles hHi];
+                    legendLabels = [legendLabels {'95% Shift-Control Bounds'}];
+                end
+    
+                xlabel('Lag (Seconds)', 'FontSize', 14);
+                ylabel('Correlation', 'FontSize', 14);
+    
+                title(sprintf('%s Example Pair %d (I%d–P%d)', ...
+                    animalID, ii, r, c-nInt), ...
+                    'FontSize', 16, 'FontWeight', 'bold');
+    
+                legend(legendHandles, legendLabels, 'FontSize', 12, 'Location', 'best');
+    
+            else
+                histogram(nan);
+                title(sprintf('%s Example Pair %d (XC unavailable)', animalID, ii), ...
+                    'FontSize', 16, 'FontWeight', 'bold');
             end
-
-            xlabel('Lag (Seconds)', 'FontSize', 14);
-            ylabel('Correlation', 'FontSize', 14);
-
-            title(sprintf('%s Example Pair Corr Versus Lag (%d / %d Significant Pairs)', ...
-                animalID, actual.nSigFDR, actual.nPairsNominal), ...
-                'FontSize', 16, 'FontWeight', 'bold');
-
-            legend(legendHandles, legendLabels, 'FontSize', 12, 'Location', 'best');
-        else
-            histogram(nan);
-            title(sprintf('%s Example Pair Corr Versus Lag (XC unavailable)', animalID), ...
-                'FontSize', 16, 'FontWeight', 'bold');
+    
+            set(gca, 'FontSize', 13);
+            box off;
         end
+    
     else
+        figure;
         histogram(nan);
         title(sprintf('%s Example Pair Corr Versus Lag (No significant pairs)', animalID), ...
             'FontSize', 16, 'FontWeight', 'bold');
     end
-
-    set(gca, 'FontSize', 13);
-    box off;
 
     if ~isempty(actual.sigLagVec) && ~isempty(actual.realVals)
         sigCorrVec = actual.realVals(actual.sigFDRMask);
