@@ -194,16 +194,26 @@ for s = 1:nSess
 
         if numel(sigCorrVec) == numel(actual.sigLagVec)
             figure('Name', sprintf('%s Peak Lag Versus Peak Correlation', animalID), 'Color', 'w');
-            scatterhist(actual.sigLagVec(:), sigCorrVec(:), ...
-                'Direction', 'out', 'Marker', '.');
 
+            h = scatterhist(actual.sigLagVec(:), sigCorrVec(:), 'Direction', 'out', 'Marker', '.');
+            hold on;
+            
+            % get main scatter axis
+            ax = gca;
+            
+            % add corr threshold line
+            hThresh = yline(R.corrThresh, 'r--', 'LineWidth', 1.5);
+            
             xlabel('Peak Lag (Seconds)', 'FontSize', 14);
             ylabel('Peak Correlation', 'FontSize', 14);
-
+            
             title(sprintf('%s Peak Lag Versus Peak Correlation (%d / %d Significant Pairs)', ...
                 animalID, actual.nSigFDR, actual.nPairsNominal), ...
                 'FontSize', 16, 'FontWeight', 'bold');
-
+            
+            % legend (ONLY include threshold line to avoid clutter)
+            legend(hThresh, 'Correlation Threshold', 'Location', 'best');
+            
             set(gca, 'FontSize', 13);
         end
     end
