@@ -1,6 +1,7 @@
 function spikeStats = checkChunkedSpikeCounts(dataFile, channelsToUse)
 % checks whether shifted EMG-aligned neural windows have different spike/activity counts than unshifted windows
 % assuming tAxis is in ms
+% j run: checkChunkedSpikeCounts("Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData\EMG_Neural_AllChannels.mat",1:4)
 
 if nargin < 2 || isempty(channelsToUse)
     channelsToUse = 1:4;
