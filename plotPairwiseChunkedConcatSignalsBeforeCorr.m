@@ -46,12 +46,6 @@ intConcat = intConcat(validIdx);
 maxPlotSamples = min(numel(pyrConcat), 10000);
 plotIdx = 1:maxPlotSamples;
 
-figure('Color','w','Name','Concatenated Signals Before Pairwise XCorr');
-plot(plotIdx, pyrConcat(plotIdx), 'b', 'LineWidth', 1.2); hold on;
-plot(plotIdx, intConcat(plotIdx), 'r', 'LineWidth', 1.2);
-
-xlabel('Concatenated time samples');
-ylabel('Firing rate');
 if doBaselineNorm
     normTxt = 'baseline-subtracted';
 else
@@ -64,9 +58,62 @@ else
     shiftTxt = 'unshifted interneuron vs unshifted pyramidal';
 end
 
-title(sprintf('Before XCorr: %s, %s, Int %d vs Pyr %d', shiftTxt, normTxt, intIdx, pyrIdx));
-legend({'Pyramidal','Interneuron'}, 'Location','best');
+% ---------------- plot concatenated signals separately ----------------
+figure('Color','w','Name','Concatenated Signals Before Pairwise XCorr');
+
+tl = tiledlayout(2,1,'TileSpacing','compact','Padding','compact');
+
+% use same axis limits for both
+xVals = plotIdx;
+
+allY = [pyrConcat(plotIdx); intConcat(plotIdx)];
+yMin = min(allY);
+yMax = max(allY);
+
+% ---- pyramidal subplot ----
+ax1 = nexttile;
+plot(xVals, pyrConcat(plotIdx), 'b', 'LineWidth', 1.2);
+
+ylabel('Pyramidal FR');
+title('Pyramidal Concatenated Signal');
+
+ylim([yMin yMax]);
+xlim([xVals(1) xVals(end)]);
+
+set(gca, ...
+    'FontSize', 13, ...
+    'LineWidth', 1, ...
+    'TickDir', 'out');
+
 box off;
+
+% ---- interneuron subplot ----
+ax2 = nexttile;
+plot(xVals, intConcat(plotIdx), 'r', 'LineWidth', 1.2);
+
+ylabel('Interneuron FR');
+xlabel('Concatenated Time Samples');
+
+title('Interneuron Concatenated Signal');
+
+ylim([yMin yMax]);
+xlim([xVals(1) xVals(end)]);
+
+set(gca, ...
+    'FontSize', 13, ...
+    'LineWidth', 1, ...
+    'TickDir', 'out');
+
+box off;
+
+% link axes so zoom/pan stay matched
+linkaxes([ax1 ax2], 'xy');
+
+sgtitle(sprintf( ...
+    'Before XCorr: %s | %s | Int %d vs Pyr %d', ...
+    shiftTxt, normTxt, intIdx, pyrIdx), ...
+    'FontSize', 16, ...
+    'FontWeight', 'bold');
 
 fprintf('\n===== concatenated signal check =====\n');
 fprintf('intIdx = %d | pyrIdx = %d\n', intIdx, pyrIdx);
