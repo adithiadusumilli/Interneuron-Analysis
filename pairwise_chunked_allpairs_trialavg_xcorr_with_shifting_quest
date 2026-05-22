@@ -1,0 +1,406 @@
+% pairwise_chunked_allpairs_trialavg_xcorr_with_shifting_quest.m
+
+clc;
+
+%% ---------------- settings ----------------
+baseDirs = {
+    '/home/asa7288/Transfer/D026', ...
+    '/home/asa7288/Transfer/D020', ...
+    '/home/asa7288/Transfer/D024', ...
+    '/home/asa7288/Transfer/D043'
+};
+
+sessInd = 1; 
+baseDirs = baseDirs(sessInd);
+
+channelsToUse  = 1:4;
+chunkHalf = 300;   % -300 to +300 ms
+maxLagSecs = 0.2;  % -200 to +200 ms
+doBaselineNorm = true;
+
+%% ---------------- main loop ----------------
+assert(exist('jobInd','var')==1, 'define jobInd before running (0=real, 1..100=shift)');
+assert(jobInd >= 0 && jobInd <= 100, 'jobInd must be 0..100');
+isShiftedJob = (jobInd > 0);
+
+for iDir = 1:numel(baseDirs)
+    baseDir = baseDirs{iDir};
+    fprintf('\nprocessing cortex session %d: %s (job %d)\n', iDir, baseDir, jobInd);
+
+    S = load(fullfile(baseDir, 'EMG_Neural_AllChannels.mat'), ...
+        'pyrCxWinCell', 'intCxWinCell', 'tAxis', ...
+        'validTransitionsNeurCell', 'validTransitionsNeurShiftedCell');
+
+    if ~isfield(S,'tAxis') || ~isfield(S,'pyrCxWinCell') || ~isfield(S,'intCxWinCell')
+        fprintf('missing required vars in %s, skipping\n', baseDir);
+        continue;
+    end
+
+    if isShiftedJob
+        if ~isfield(S,'validTransitionsNeurShiftedCell')
+            fprintf('missing validTransitionsNeurShiftedCell in %s, skipping shifted job\n', baseDir);
+            continue;
+        end
+        if size(S.validTransitionsNeurShiftedCell,2) < 101
+            error('expected validTransitionsNeurShiftedCell to have 101 columns.');
+        end
+    end
+
+    %% -------- window geometry --------
+    tAxis = S.tAxis(:)';
+    binSize = 0.001;
+    T = numel(tAxis);
+
+    [~, cIdx] = min(abs(tAxis - 0));
+    chunkStart = cIdx - chunkHalf;
+    chunkEnd   = cIdx + chunkHalf;
+
+    if chunkStart < 1 || chunkEnd > T
+        error('chunkHalf=%d does not fit in window length=%d.', chunkHalf, T);
+    end
+
+    reqMaxLagBins = round(maxLagSecs / binSize);
+    maxLagLeft = chunkStart - 1;
+    maxLagRight = T - chunkEnd;
+    maxLagBins = min([reqMaxLagBins, maxLagLeft, maxLagRight]);
+
+    lags = -maxLagBins:maxLagBins;
+    nL = numel(lags); %#ok<NASGU>
+
+    %% ============================================================
+    % build trial-averaged UNshifted per-neuron traces
+    % output: nAll x time
+    %% ============================================================
+    pyrAll_unshift_evt = [];
+    intAll_unshift_evt = [];
+    nPyr_ref = nan;
+    nInt_ref = nan;
+
+    for ci = 1:numel(channelsToUse)
+        ch = channelsToUse(ci);
+
+        pyrWin = S.pyrCxWinCell{ch};
+        intWin = S.intCxWinCell{ch};
+
+        if isempty(pyrWin) || isempty(intWin)
+            continue;
+        end
+
+        nEvt = min(size(pyrWin,1), size(intWin,1));
+        pyrWin = pyrWin(1:nEvt,:,:);
+        intWin = intWin(1:nEvt,:,:);
+
+        if isnan(nPyr_ref), nPyr_ref = size(pyrWin,2); end
+        if isnan(nInt_ref), nInt_ref = size(intWin,2); end
+
+        nPyr_ref = min(nPyr_ref, size(pyrWin,2));
+        nInt_ref = min(nInt_ref, size(intWin,2));
+
+        pyrWin = pyrWin(:,1:nPyr_ref,:);
+        intWin = intWin(:,1:nInt_ref,:);
+
+        if doBaselineNorm
+            pyrWin = subtractTrialBaseline3d(pyrWin, tAxis, -500, -450);
+            intWin = subtractTrialBaseline3d(intWin, tAxis, -500, -450);
+        end
+
+        pyrAll_unshift_evt = cat(1, pyrAll_unshift_evt, pyrWin);
+        intAll_unshift_evt = cat(1, intAll_unshift_evt, intWin);
+    end
+
+    if isempty(pyrAll_unshift_evt) || isempty(intAll_unshift_evt)
+        fprintf('no valid channels found, skipping\n');
+        continue;
+    end
+
+    nEvt_un = min(size(pyrAll_unshift_evt,1), size(intAll_unshift_evt,1));
+    pyrAll_unshift_evt = pyrAll_unshift_evt(1:nEvt_un,:,:);
+    intAll_unshift_evt = intAll_unshift_evt(1:nEvt_un,:,:);
+
+    % trial average each neuron: events x neurons x time -> neurons x time
+    pyrAvg_unshift = squeeze(mean(pyrAll_unshift_evt, 1, 'omitnan'));
+    intAvg_unshift = squeeze(mean(intAll_unshift_evt, 1, 'omitnan'));
+
+    allAvg_unshift = cat(1, pyrAvg_unshift, intAvg_unshift); % nAll x time
+    nAll = size(allAvg_unshift,1);
+
+    neuronType = [zeros(1,nPyr_ref), ones(1,nInt_ref)];
+    pyrIdx = 1:nPyr_ref;
+    intIdx = (nPyr_ref+1):nAll;
+
+    %% ============================================================
+    % shifted jobs: build trial-averaged SHIFTED per-neuron traces
+    %% ============================================================
+    if isShiftedJob
+        [cortexIntFR, okI] = loadCortexIntFR(baseDir);
+        [cortexPyrFR, okP] = loadCortexPyrFR(baseDir);
+
+        if ~okI || ~okP
+            fprintf('failed to load cortex pyr/int FR for %s, skipping\n', baseDir);
+            continue;
+        end
+
+        shiftCol = jobInd + 1;
+
+        pyrAll_shift_evt = [];
+        intAll_shift_evt = [];
+
+        for ci = 1:numel(channelsToUse)
+            ch = channelsToUse(ci);
+
+            idx1k = S.validTransitionsNeurShiftedCell{ch, shiftCol};
+            if isempty(idx1k)
+                continue;
+            end
+
+            pyrWinShift = extractWindowsFromFR(cortexPyrFR, idx1k, tAxis);
+            intWinShift = extractWindowsFromFR(cortexIntFR, idx1k, tAxis);
+
+            pyrWinShift = pyrWinShift(:,1:nPyr_ref,:);
+            intWinShift = intWinShift(:,1:nInt_ref,:);
+
+            if doBaselineNorm
+                pyrWinShift = subtractTrialBaseline3d(pyrWinShift, tAxis, -500, -450);
+                intWinShift = subtractTrialBaseline3d(intWinShift, tAxis, -500, -450);
+            end
+
+            pyrAll_shift_evt = cat(1, pyrAll_shift_evt, pyrWinShift);
+            intAll_shift_evt = cat(1, intAll_shift_evt, intWinShift);
+        end
+
+        if isempty(pyrAll_shift_evt) || isempty(intAll_shift_evt)
+            fprintf('no shifted events found for jobInd=%d, skipping\n', jobInd);
+            continue;
+        end
+
+        nEvt_sh = min(size(pyrAll_shift_evt,1), size(intAll_shift_evt,1));
+        pyrAll_shift_evt = pyrAll_shift_evt(1:nEvt_sh,:,:);
+        intAll_shift_evt = intAll_shift_evt(1:nEvt_sh,:,:);
+
+        pyrAvg_shift = squeeze(mean(pyrAll_shift_evt, 1, 'omitnan'));
+        intAvg_shift = squeeze(mean(intAll_shift_evt, 1, 'omitnan'));
+
+        allAvg_shift = cat(1, pyrAvg_shift, intAvg_shift);
+
+        nAll = min(size(allAvg_unshift,1), size(allAvg_shift,1));
+        allAvg_unshift = allAvg_unshift(1:nAll,:);
+        allAvg_shift   = allAvg_shift(1:nAll,:);
+
+        fprintf('shift job trial-avg: nAll=%d (nPyr=%d, nInt=%d)\n', ...
+            nAll, nPyr_ref, nInt_ref);
+    else
+        fprintf('real job trial-avg: nAll=%d (nPyr=%d, nInt=%d)\n', ...
+            nAll, nPyr_ref, nInt_ref);
+    end
+
+    %% ============================================================
+    % compute metrics
+    %% ============================================================
+    tic
+
+    if ~isShiftedJob
+        [xcMat_all, peakCorrMat_all, peakLagSecMat_all] = ...
+            lagSweepPairwise_fullxc_trialavg_allpairs(allAvg_unshift, lags, chunkStart, chunkEnd, T, binSize);
+
+        runtimeSec = toc;
+        disp(['real trial-avg all-pairs done, time: ' num2str(runtimeSec) ' s'])
+    else
+        nullCorrMat_all = pairwise_zeroLag_trialavg_allpairs_unshift_vs_shift( ...
+            allAvg_unshift, allAvg_shift, chunkStart, chunkEnd);
+
+        runtimeSec = toc;
+        disp(['shift trial-avg all-pairs done, time: ' num2str(runtimeSec) ' s'])
+    end
+
+    %% ============================================================
+    % save
+    %% ============================================================
+    outDir = fullfile(baseDir, 'quest_runs');
+    if ~exist(outDir,'dir'), mkdir(outDir); end
+
+    if ~isShiftedJob
+        outFile = fullfile(outDir, sprintf('pairwiseChunkedTrialAvgXCorr_ALLPAIRS_unshifted_sess%02d_fullxc.mat', sessInd));
+        save(outFile, ...
+            'lags','binSize','tAxis', ...
+            'xcMat_all','peakCorrMat_all','peakLagSecMat_all', ...
+            'chunkHalf','channelsToUse','doBaselineNorm', ...
+            'jobInd','baseDir','sessInd', ...
+            'nPyr_ref','nInt_ref','nAll','neuronType','pyrIdx','intIdx', ...
+            'runtimeSec','-v7.3');
+    else
+        outFile = fullfile(outDir, sprintf('pairwiseChunkedTrialAvgXCorr_ALLPAIRS_sess%02d_shift_%03d_zerolag.mat', sessInd, jobInd));
+        save(outFile, ...
+            'binSize','tAxis', ...
+            'nullCorrMat_all', ...
+            'chunkHalf','channelsToUse','doBaselineNorm', ...
+            'jobInd','baseDir','sessInd', ...
+            'nPyr_ref','nInt_ref','nAll','neuronType','pyrIdx','intIdx', ...
+            'runtimeSec','-v7.3');
+    end
+
+    fprintf('saved: %s\n', outFile);
+end
+
+%% ===================== helpers =====================
+
+function Wout = subtractTrialBaseline3d(Win, tAxis, tStart, tEnd)
+    [~, iStart] = min(abs(tAxis - tStart));
+    [~, iEnd]   = min(abs(tAxis - tEnd));
+
+    if iEnd < iStart
+        tmp = iStart;
+        iStart = iEnd;
+        iEnd = tmp;
+    end
+
+    base = mean(Win(:,:,iStart:iEnd), 3, 'omitnan');
+    Wout = Win - base;
+end
+
+function [xcMat, peakCorrMat, peakLagSecMat] = lagSweepPairwise_fullxc_trialavg_allpairs(allAvg, lags, chunkStart, chunkEnd, T, binSize)
+% allAvg: nAll x time
+% computes only upper triangle j>i
+
+    nAll = size(allAvg,1);
+    nL = numel(lags);
+
+    xcMat = nan(nAll, nAll, nL);
+    peakCorrMat = nan(nAll, nAll);
+    peakLagSecMat = nan(nAll, nAll);
+
+    for i = 1:nAll
+        for j = (i+1):nAll
+
+            bestR = -inf;
+            bestLagSec = nan;
+
+            for iL = 1:nL
+                L = lags(iL);
+
+                jStart = chunkStart - L;
+                jEnd   = chunkEnd   - L;
+
+                if jStart < 1 || jEnd > T
+                    continue;
+                end
+
+                aseg = allAvg(i, chunkStart:chunkEnd);
+                bseg = allAvg(j, jStart:jEnd);
+
+                valid = ~isnan(aseg) & ~isnan(bseg);
+
+                if nnz(valid) > 10
+                    r = corr(aseg(valid)', bseg(valid)');
+                    xcMat(i,j,iL) = r;
+
+                    if ~isnan(r) && r > bestR
+                        bestR = r;
+                        bestLagSec = L * binSize;
+                    end
+                end
+            end
+
+            if isfinite(bestR)
+                peakCorrMat(i,j) = bestR;
+                peakLagSecMat(i,j) = bestLagSec;
+            end
+        end
+    end
+end
+
+function nullCorrMat = pairwise_zeroLag_trialavg_allpairs_unshift_vs_shift(allUnshift, allShift, chunkStart, chunkEnd)
+% for each i<j:
+%   unshifted neuron i trial-avg trace vs shifted neuron j trial-avg trace
+% mirrors to keep symmetric null matrix
+
+    nAll = min(size(allUnshift,1), size(allShift,1));
+    nullCorrMat = nan(nAll, nAll);
+
+    for i = 1:nAll
+        for j = (i+1):nAll
+
+            aseg = allUnshift(i, chunkStart:chunkEnd);
+            bseg = allShift(j, chunkStart:chunkEnd);
+
+            valid = ~isnan(aseg) & ~isnan(bseg);
+
+            if nnz(valid) > 10
+                r = corr(aseg(valid)', bseg(valid)');
+                nullCorrMat(i,j) = r;
+                nullCorrMat(j,i) = r;
+            end
+        end
+    end
+end
+
+function W = extractWindowsFromFR(frMat, neuralIdx1k, tAxis)
+    nEvt  = numel(neuralIdx1k);
+    nNeur = size(frMat,1);
+    nTime = numel(tAxis);
+    Ttot  = size(frMat,2);
+
+    W = nan(nEvt, nNeur, nTime);
+
+    for e = 1:nEvt
+        t0 = neuralIdx1k(e);
+        if isnan(t0), continue; end
+
+        rng = t0 + tAxis;
+
+        if any(rng < 1) || any(rng > Ttot)
+            continue;
+        end
+
+        W(e,:,:) = frMat(:, rng);
+    end
+end
+
+function [cortexIntFR, ok] = loadCortexIntFR(folderPath)
+    ok = false; cortexIntFR = [];
+
+    try
+        frFile = fullfile(folderPath, 'NeuralFiringRates1msBins10msGauss.mat');
+        load(frFile, 'cortexFRs','cortexInds');
+
+        clsFile = fullfile('/home/asa7288/Transfer', 'AA_classifications.mat');
+        load(clsFile, 'classifications');
+
+        if contains(folderPath,'D026'), matchRow=1;
+        elseif contains(folderPath,'D020'), matchRow=2;
+        elseif contains(folderPath,'D024'), matchRow=3;
+        elseif contains(folderPath,'D043'), matchRow=4;
+        else, error('unknown session folder'); end
+
+        cls = classifications{matchRow,1}(cortexInds);
+        cortexIntFR = cortexFRs(cls==1, :);
+        ok = true;
+    catch ME
+        warning(ME.message);
+        ok = false;
+    end
+end
+
+function [cortexPyrFR, ok] = loadCortexPyrFR(folderPath)
+    ok = false; cortexPyrFR = [];
+
+    try
+        frFile = fullfile(folderPath, 'NeuralFiringRates1msBins10msGauss.mat');
+        load(frFile, 'cortexFRs','cortexInds');
+
+        clsFile = fullfile('/home/asa7288/Transfer', 'AA_classifications.mat');
+        load(clsFile, 'classifications');
+
+        if contains(folderPath,'D026'), matchRow=1;
+        elseif contains(folderPath,'D020'), matchRow=2;
+        elseif contains(folderPath,'D024'), matchRow=3;
+        elseif contains(folderPath,'D043'), matchRow=4;
+        else, error('unknown session folder'); end
+
+        cls = classifications{matchRow,1}(cortexInds);
+        cortexPyrFR = cortexFRs(cls==0, :);
+        ok = true;
+    catch ME
+        warning(ME.message);
+        ok = false;
+    end
+end
