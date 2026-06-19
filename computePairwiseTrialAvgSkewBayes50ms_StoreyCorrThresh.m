@@ -1,27 +1,20 @@
-function computePairwiseTrialAvgSkewBayes50ms_StoreyCorrThresh(alpha, corrThresh, nNullSkewDraws)
-% Pairwise trial-avg chunked Bayes-style skew analysis
+function computePairwiseTrialAvgSkewBayes50ms_StoreyCorrThresh(alpha, corrThresh, nNullDraws)
+% pairwise trial-averaged chunked Bayes using the skew metric
 
-% REAL:
-%   original int-pyr pairwise peak lags/corrs
-%   -> Storey/mafdr + corrThresh significant pairs
-%   -> actual skew
+% goal:
+%   1) Get real skew from significant int-pyr pairs
+%   2) Build regular H0 null skew dist
+%   3) Build H50 null skew dist after shifting interneuron traces by 50 ms
+%   4) Compare same real skew to both null skew dists
 
-% H0 NULL:
-%   regular all-vs-all null pair peak lags/corrs
-%   -> Storey/mafdr + corrThresh
-%   -> null skew distribution
-
-% H50 NULL:
-%   shift interneuron trial-avg traces back by 50 ms
-%   -> recompute all-vs-all null pair peak lags/corrs
-%   -> Storey/mafdr + corrThresh
-%   -> shifted null skew distribution
-
-% Evidence ratio: evidenceRatio_H0_over_H50 = pValH0 / pValH50
+% Important:
+%   - keeps analysis trial-averaged
+%   - Storey/mafdr + corrThresh is applied before calculating skew
+%   - 50 ms shift happens before recomputing pairwise peak lags/corrs
 
 if nargin < 1 || isempty(alpha), alpha = 0.05; end
 if nargin < 2 || isempty(corrThresh), corrThresh = 0.05; end
-if nargin < 3 || isempty(nNullSkewDraws), nNullSkewDraws = 1000; end
+if nargin < 3 || isempty(nNullDraws), nNullDraws = 100; end
 
 baseDirs = {
     '/home/asa7288/Transfer/D026', ...
@@ -36,21 +29,26 @@ maxLagSecs = 0.2;
 doBaselineNorm = true;
 lagShiftSec = 0.050;
 
-rng(1);
+rng(0);
 
 results = struct();
+results.alpha = alpha;
+results.corrThresh = corrThresh;
+results.nNullDraws = nNullDraws;
+results.lagShiftSec = lagShiftSec;
+results.analysisNote = 'trial-avg pairwise skew Bayes; significant pairs selected by Storey/mafdr + corrThresh';
 
 for sessInd = 1:numel(baseDirs)
 
     baseDir = baseDirs{sessInd};
-    outDir = fullfile(baseDir, 'quest_runs');
+    animalID = regexp(baseDir, 'D\d+', 'match', 'once');
 
     fprintf('\n=============================\n');
-    fprintf('processing %s\n', baseDir);
+    fprintf('processing %s\n', animalID);
     fprintf('=============================\n');
 
-    %% ---------------- build trial-avg traces ----------------
-    [allAvg, neuronType, pyrIdx, intIdx, tAxis, binSize, ok] = ...
+    %% build the trial-averaged traces I actually want to analyze
+    [allAvg, nInt, nPyr, nAll, tAxis, binSize, ok] = ...
         buildTrialAvgAllTraces(baseDir, channelsToUse, doBaselineNorm);
 
     if ~ok
@@ -60,101 +58,91 @@ for sessInd = 1:numel(baseDirs)
 
     T = numel(tAxis);
     [~, cIdx] = min(abs(tAxis - 0));
+
     chunkStart = cIdx - chunkHalf;
-    chunkEnd   = cIdx + chunkHalf;
+    chunkEnd = cIdx + chunkHalf;
 
     reqMaxLagBins = round(maxLagSecs / binSize);
-    maxLagLeft  = chunkStart - 1;
+    maxLagLeft = chunkStart - 1;
     maxLagRight = T - chunkEnd;
     maxLagBins = min([reqMaxLagBins, maxLagLeft, maxLagRight]);
+
     lags = -maxLagBins:maxLagBins;
 
-    %% ---------------- real int-pyr pairwise values ----------------
-    [realLagVals, realCorrVals] = computeRealIntPyrPairVals( ...
-        allAvg, pyrIdx, intIdx, lags, chunkStart, chunkEnd, T, binSize);
+    %% H0/original pairwise matrices from trial-averaged traces
+    [peakCorrH0, peakLagH0] = computeAllPairMatrices(allAvg, lags, chunkStart, chunkEnd, T, binSize);
 
-    nPairsNominal = numel(realLagVals);
+    %% H50 pairwise matrices: shift interneuron traces by 50 ms first, then recompute pairwise
+    allAvgH50 = shiftInterneuronsBy50ms(allAvg, nPyr, lagShiftSec, binSize);
 
-    %% ---------------- regular H0 null from saved null files ----------------
-    [nullLagH0_raw, nullCorrH0_raw] = loadRegularNullPairs(outDir, sessInd);
+    [peakCorrH50, peakLagH50] = computeAllPairMatrices(allAvgH50, lags, chunkStart, chunkEnd, T, binSize);
 
-    if isempty(nullLagH0_raw) || isempty(nullCorrH0_raw)
-        warning('missing regular null pair values for %s', baseDir);
+    %% load regular null correlation values from the saved pairwise trial-avg null jobs
+    [nullCorrH0, okNull] = loadTrialAvgNullCorrValues(baseDir, sessInd);
+
+    if ~okNull
+        warning('missing null corr files for %s', animalID);
         continue;
     end
 
-    %% ---------------- H50 null: shift int traces back by 50 ms and recompute all-vs-all ----------------
-    lagBin50 = round(lagShiftSec / binSize);
+    %% recompute H50 null correlations from the shifted-int trial-avg traces
+    [~, nullCorrH50] = computeAllOrderedPairNullVals(allAvgH50, lags, chunkStart, chunkEnd, T, binSize);
 
-    allAvgShift50 = allAvg;
-    for ii = 1:numel(intIdx)
-        r = intIdx(ii);
-        shiftedTrace = nan(size(allAvg(r,:)));
-        shiftedTrace(1:end-lagBin50) = allAvg(r, 1+lagBin50:end);
-        allAvgShift50(r,:) = shiftedTrace;
-    end
+    %% real int-pyr pair set
+    [actualRows, actualCols] = getIntPyrPairs(nInt, nPyr);
 
-    [nullLagH50_raw, nullCorrH50_raw] = computeAllOrderedPairNullVals( ...
-        allAvgShift50, lags, chunkStart, chunkEnd, T, binSize);
+    actual = computePairSetStatsMAFDRSkew_GlobalNull(peakCorrH0, peakLagH0, nullCorrH0, actualRows, actualCols, alpha, corrThresh);
 
-    %% ---------------- actual significant skew under original data ----------------
-    pReal = corrPvalsFromNull(realCorrVals, nullCorrH0_raw);
-    qReal = mafdrSafe(pReal);
+    fprintf('%s real: sig pairs = %d / %d | skew = %.6f\n', animalID, actual.nSigFDR, actual.nPairsNominal, actual.skew);
 
-    sigRealMask = qReal <= alpha & realCorrVals > corrThresh;
+    %% null skew H0: sample random all-vs-all pairs from original trial-avg matrices
+    nullSkewH0 = computeNullSkewsFromPairPool(peakCorrH0, peakLagH0, nullCorrH0, nInt, nAll, numel(actualRows), nNullDraws, alpha, corrThresh);
 
-    sigRealLags = realLagVals(sigRealMask);
-    actualSkew = computeSkewMetric(sigRealLags);
-
-    %% ---------------- H0 null skew distribution ----------------
-    nullSkewH0 = computeNullSkewDistribution( ...
-        nullLagH0_raw, nullCorrH0_raw, nullCorrH0_raw, ...
-        nPairsNominal, nNullSkewDraws, alpha, corrThresh);
-
-    %% ---------------- H50 null skew distribution ----------------
-    nullSkewH50 = computeNullSkewDistribution( ...
-        nullLagH50_raw, nullCorrH50_raw, nullCorrH50_raw, ...
-        nPairsNominal, nNullSkewDraws, alpha, corrThresh);
+    %% null skew H50: sample random all-vs-all pairs from shifted-int matrices
+    nullSkewH50 = computeNullSkewsFromPairPool(peakCorrH50, peakLagH50, nullCorrH50, nInt, nAll, numel(actualRows), nNullDraws, alpha, corrThresh);
 
     validH0 = nullSkewH0(~isnan(nullSkewH0) & isfinite(nullSkewH0));
     validH50 = nullSkewH50(~isnan(nullSkewH50) & isfinite(nullSkewH50));
 
-    %% ---------------- p-values and evidence ratio ----------------
-    pValH0 = (sum(abs(validH0) >= abs(actualSkew)) + 1) / (numel(validH0) + 1);
-    pValH50 = (sum(abs(validH50) >= abs(actualSkew)) + 1) / (numel(validH50) + 1);
+    %% Bayes-style p-values from skew distributions
+    pValH0 = (sum(abs(validH0) >= abs(actual.skew)) + 1) / (numel(validH0) + 1);
+    pValH50 = (sum(abs(validH50) >= abs(actual.skew)) + 1) / (numel(validH50) + 1);
 
     evidenceRatio_H0_over_H50 = pValH0 / pValH50;
 
-    %% ---------------- store ----------------
-    results(sessInd).baseDir = baseDir;
-    results(sessInd).sessInd = sessInd;
-    results(sessInd).alpha = alpha;
-    results(sessInd).corrThresh = corrThresh;
-    results(sessInd).nNullSkewDraws = nNullSkewDraws;
-    results(sessInd).lagShiftSec = lagShiftSec;
+    %% save everything useful
+    R = struct();
+    R.animalID = animalID;
+    R.baseDir = baseDir;
+    R.sessInd = sessInd;
 
-    results(sessInd).nPairsNominal = nPairsNominal;
-    results(sessInd).nSigReal = sum(sigRealMask);
-    results(sessInd).sigRealMask = sigRealMask;
-    results(sessInd).sigRealLags = sigRealLags;
-    results(sessInd).actualSkew = actualSkew;
+    R.nInt = nInt;
+    R.nPyr = nPyr;
+    R.nAll = nAll;
 
-    results(sessInd).nullSkewH0 = nullSkewH0;
-    results(sessInd).nullSkewH50 = nullSkewH50;
+    R.alpha = alpha;
+    R.corrThresh = corrThresh;
+    R.nNullDraws = nNullDraws;
+    R.lagShiftSec = lagShiftSec;
 
-    results(sessInd).pValH0 = pValH0;
-    results(sessInd).pValH50 = pValH50;
-    results(sessInd).evidenceRatio_H0_over_H50 = evidenceRatio_H0_over_H50;
+    R.actual = actual;
+    R.nullSkewH0 = nullSkewH0;
+    R.nullSkewH50 = nullSkewH50;
+    R.validNullSkewH0 = validH0;
+    R.validNullSkewH50 = validH50;
 
-    results(sessInd).realLagVals = realLagVals;
-    results(sessInd).realCorrVals = realCorrVals;
-    results(sessInd).pReal = pReal;
-    results(sessInd).qReal = qReal;
+    R.pValH0 = pValH0;
+    R.pValH50 = pValH50;
+    R.evidenceRatio_H0_over_H50 = evidenceRatio_H0_over_H50;
 
-    fprintf('actual skew = %.6f\n', actualSkew);
-    fprintf('significant real pairs = %d / %d\n', sum(sigRealMask), nPairsNominal);
-    fprintf('pValH0 = %.6f | pValH50 = %.6f\n', pValH0, pValH50);
-    fprintf('evidenceRatio H0/H50 = %.6f\n', evidenceRatio_H0_over_H50);
+    R.peakCorrH0 = peakCorrH0;
+    R.peakLagH0 = peakLagH0;
+    R.peakCorrH50 = peakCorrH50;
+    R.peakLagH50 = peakLagH50;
+
+    results.sessions{sessInd} = R;
+
+    fprintf('%s Bayes skew: pH0 = %.6f | pH50 = %.6f | ratio H0/H50 = %.6f\n', animalID, pValH0, pValH50, evidenceRatio_H0_over_H50);
 end
 
 outFile = '/home/asa7288/pairwiseTrialAvgSkewBayes50ms_StoreyCorrThresh.mat';
@@ -162,24 +150,15 @@ save(outFile, 'results', '-v7.3');
 
 fprintf('\nsaved:\n%s\n', outFile);
 
-%% ---------------- quick plots ----------------
-plotSkewBayesResults(results);
-
 end
 
 %% ========================================================================
-%% helper functions
+%% helpers
 %% ========================================================================
 
-function [allAvg, neuronType, pyrIdx, intIdx, tAxis, binSize, ok] = ...
-    buildTrialAvgAllTraces(baseDir, channelsToUse, doBaselineNorm)
+function [allAvg, nInt, nPyr, nAll, tAxis, binSize, ok] = buildTrialAvgAllTraces(baseDir, channelsToUse, doBaselineNorm)
 
 ok = false;
-allAvg = [];
-neuronType = [];
-pyrIdx = [];
-intIdx = [];
-tAxis = [];
 binSize = 0.001;
 
 S = load(fullfile(baseDir, 'EMG_Neural_AllChannels.mat'), ...
@@ -193,24 +172,26 @@ nIntList = [];
 
 for ci = 1:numel(channelsToUse)
     ch = channelsToUse(ci);
-    pyrWin = S.pyrCxWinCell{ch};
-    intWin = S.intCxWinCell{ch};
 
-    if isempty(pyrWin) || isempty(intWin)
+    if isempty(S.pyrCxWinCell{ch}) || isempty(S.intCxWinCell{ch})
         continue;
     end
 
     validCh(end+1) = ch;
-    nPyrList(end+1) = size(pyrWin,2);
-    nIntList(end+1) = size(intWin,2);
+    nPyrList(end+1) = size(S.pyrCxWinCell{ch}, 2);
+    nIntList(end+1) = size(S.intCxWinCell{ch}, 2);
 end
 
 if isempty(validCh)
+    allAvg = [];
+    nInt = NaN;
+    nPyr = NaN;
+    nAll = NaN;
     return;
 end
 
-nPyr_ref = min(nPyrList);
-nInt_ref = min(nIntList);
+nPyr = min(nPyrList);
+nInt = min(nIntList);
 
 pyrAll = [];
 intAll = [];
@@ -222,8 +203,9 @@ for ci = 1:numel(validCh)
     intWin = S.intCxWinCell{ch};
 
     nEvt = min(size(pyrWin,1), size(intWin,1));
-    pyrWin = pyrWin(1:nEvt,1:nPyr_ref,:);
-    intWin = intWin(1:nEvt,1:nInt_ref,:);
+
+    pyrWin = pyrWin(1:nEvt, 1:nPyr, :);
+    intWin = intWin(1:nEvt, 1:nInt, :);
 
     if doBaselineNorm
         pyrWin = subtractTrialBaseline3d(pyrWin, tAxis, -500, -450);
@@ -238,20 +220,20 @@ nEvt = min(size(pyrAll,1), size(intAll,1));
 pyrAll = pyrAll(1:nEvt,:,:);
 intAll = intAll(1:nEvt,:,:);
 
+% trial average happens here: events/windows are averaged before pairwise xcorr
 pyrAvg = squeeze(mean(pyrAll, 1, 'omitnan'));
 intAvg = squeeze(mean(intAll, 1, 'omitnan'));
 
-allAvg = cat(1, pyrAvg, intAvg);
+% ordering is [interneurons, pyramidal] to match my older pairwise code
+allAvg = cat(1, intAvg, pyrAvg);
 
-pyrIdx = 1:nPyr_ref;
-intIdx = (nPyr_ref+1):(nPyr_ref+nInt_ref);
-neuronType = [zeros(1,nPyr_ref), ones(1,nInt_ref)];
-
+nAll = nInt + nPyr;
 ok = true;
 
 end
 
 function Wout = subtractTrialBaseline3d(Win, tAxis, tStart, tEnd)
+
 [~, iStart] = min(abs(tAxis - tStart));
 [~, iEnd] = min(abs(tAxis - tEnd));
 
@@ -263,65 +245,47 @@ end
 
 base = mean(Win(:,:,iStart:iEnd), 3, 'omitnan');
 Wout = Win - base;
+
 end
 
-function [lagVals, corrVals] = computeRealIntPyrPairVals(allAvg, pyrIdx, intIdx, lags, chunkStart, chunkEnd, T, binSize)
+function allAvgH50 = shiftInterneuronsBy50ms(allAvg, nPyr, lagShiftSec, binSize)
 
-nPairs = numel(pyrIdx) * numel(intIdx);
-lagVals = nan(nPairs,1);
-corrVals = nan(nPairs,1);
+% allAvg is ordered [int, pyr], so interneurons are the first nInt rows.
+% I shift interneuron traces earlier by 50 ms so this represents the H50 model.
 
-w = 0;
+lagBin50 = round(lagShiftSec / binSize);
 
-for ii = 1:numel(intIdx)
-    intNeuron = intIdx(ii);
+nAll = size(allAvg,1);
+nInt = nAll - nPyr;
 
-    for pp = 1:numel(pyrIdx)
-        pyrNeuron = pyrIdx(pp);
+allAvgH50 = allAvg;
 
-        w = w + 1;
+for r = 1:nInt
+    shiftedTrace = nan(size(allAvg(r,:)));
+    shiftedTrace(1:end-lagBin50) = allAvg(r, 1+lagBin50:end);
+    allAvgH50(r,:) = shiftedTrace;
+end
 
-        % use pyr as first trace and int as shifted trace
-        % positive lag means interneuron leads pyramidal
+end
+
+function [peakCorrMat, peakLagMat] = computeAllPairMatrices(allAvg, lags, chunkStart, chunkEnd, T, binSize)
+
+nAll = size(allAvg,1);
+
+peakCorrMat = nan(nAll, nAll);
+peakLagMat = nan(nAll, nAll);
+
+for i = 1:nAll
+    for j = (i+1):nAll
+
         [~, peakLagSec, peakCorr] = onePairLagSweep( ...
-            allAvg(pyrNeuron,:), allAvg(intNeuron,:), ...
+            allAvg(i,:), allAvg(j,:), ...
             lags, chunkStart, chunkEnd, T, binSize);
 
-        lagVals(w) = peakLagSec;
-        corrVals(w) = peakCorr;
+        peakCorrMat(i,j) = peakCorr;
+        peakLagMat(i,j) = peakLagSec;
     end
 end
-
-valid = ~isnan(lagVals) & ~isnan(corrVals) & isfinite(lagVals) & isfinite(corrVals);
-lagVals = lagVals(valid);
-corrVals = corrVals(valid);
-
-end
-
-function [nullLag, nullCorr] = loadRegularNullPairs(outDir, sessInd)
-
-nullFiles = dir(fullfile(outDir, ...
-    sprintf('pairwiseChunkedTrialAvgXCorr_ALLPAIRS_sess%02d_permNull_*.mat', sessInd)));
-
-nullLag = [];
-nullCorr = [];
-
-for k = 1:numel(nullFiles)
-    D = load(fullfile(outDir, nullFiles(k).name), ...
-        'nullPeakLagVec','nullPeakCorrVec');
-
-    if isfield(D, 'nullPeakLagVec')
-        nullLag = [nullLag; D.nullPeakLagVec(:)];
-    end
-
-    if isfield(D, 'nullPeakCorrVec')
-        nullCorr = [nullCorr; D.nullPeakCorrVec(:)];
-    end
-end
-
-valid = ~isnan(nullLag) & ~isnan(nullCorr) & isfinite(nullLag) & isfinite(nullCorr);
-nullLag = nullLag(valid);
-nullCorr = nullCorr(valid);
 
 end
 
@@ -337,6 +301,7 @@ w = 0;
 
 for i = 1:nAll
     for j = 1:nAll
+
         if i == j
             continue;
         end
@@ -363,10 +328,11 @@ function [xc, peakLagSec, peakCorr] = onePairLagSweep(aTrace, bTrace, lags, chun
 xc = nan(1, numel(lags));
 
 for iL = 1:numel(lags)
+
     L = lags(iL);
 
     bStart = chunkStart - L;
-    bEnd = chunkEnd - L;
+    bEnd   = chunkEnd   - L;
 
     if bStart < 1 || bEnd > T
         continue;
@@ -387,158 +353,168 @@ peakLagSec = lags(peakIdx) * binSize;
 
 end
 
-function pVals = corrPvalsFromNull(realCorrVals, nullCorrDist)
+function [rows, cols] = getIntPyrPairs(nInt, nPyr)
 
-nullCorrDist = nullCorrDist(~isnan(nullCorrDist) & isfinite(nullCorrDist));
-pVals = nan(size(realCorrVals));
+% allAvg is [int, pyr], so int rows are 1:nInt and pyr rows are nInt+1:nAll
 
-for k = 1:numel(realCorrVals)
-    pVals(k) = (sum(nullCorrDist >= realCorrVals(k)) + 1) / (numel(nullCorrDist) + 1);
+[rr, cc] = ndgrid(1:nInt, nInt + (1:nPyr));
+rows = rr(:);
+cols = cc(:);
+
 end
 
+function [rows, cols] = getAllUpperPairs(nAll)
+
+mask = triu(true(nAll), 1);
+[rows, cols] = find(mask);
+
 end
 
-function qVals = mafdrSafe(pVals)
+function [nullCorr, ok] = loadTrialAvgNullCorrValues(baseDir, sessInd)
 
-pVals = pVals(:);
+outDir = fullfile(baseDir, 'quest_runs');
+
+nullFiles = dir(fullfile(outDir, ...
+    sprintf('pairwiseChunkedTrialAvgXCorr_ALLPAIRS_sess%02d_permNull_*.mat', sessInd)));
+
+nullCorr = [];
+
+for k = 1:numel(nullFiles)
+    D = load(fullfile(outDir, nullFiles(k).name), 'nullPeakCorrVec');
+
+    if isfield(D, 'nullPeakCorrVec')
+        nullCorr = [nullCorr; D.nullPeakCorrVec(:)];
+    end
+end
+
+nullCorr = nullCorr(~isnan(nullCorr) & isfinite(nullCorr));
+ok = ~isempty(nullCorr);
+
+end
+
+function out = computePairSetStatsMAFDRSkew_GlobalNull(realMat, lagMat, nullCorr, rows, cols, alpha, corrThresh, lagSignVec)
+
+% This mirrors my old Storey/corrThresh function, except here the trial-avg
+% pairwise null is a global all-vs-all null correlation distribution.
+
+if nargin < 8 || isempty(lagSignVec)
+    lagSignVec = ones(numel(rows),1);
+end
+
+nPairs = numel(rows);
+
+realVals = nan(nPairs,1);
+lagVals = nan(nPairs,1);
+pVals = nan(nPairs,1);
+
+nullCorr = nullCorr(~isnan(nullCorr) & isfinite(nullCorr));
+
+for i = 1:nPairs
+
+    r = rows(i);
+    c = cols(i);
+
+    thisReal = realMat(r,c);
+    thisLag = lagMat(r,c);
+
+    realVals(i) = thisReal;
+    lagVals(i) = lagSignVec(i) * thisLag;
+
+    if isnan(thisReal) || isnan(thisLag) || isempty(nullCorr)
+        continue;
+    end
+
+    pVals(i) = (sum(nullCorr >= thisReal) + 1) / (numel(nullCorr) + 1);
+end
+
+validP = ~isnan(pVals) & isfinite(pVals);
+
+sigUncorr = false(size(pVals));
+sigUncorr(validP) = pVals(validP) <= alpha;
+
 qVals = nan(size(pVals));
+pFDRVals = nan(size(pVals));
 
-valid = ~isnan(pVals) & isfinite(pVals);
+if any(validP)
+    [pFDRtmp, qTmp] = mafdr(pVals(validP));
+    pFDRVals(validP) = pFDRtmp;
+    qVals(validP) = qTmp;
+end
 
-if nnz(valid) < 1
+sigFDR = false(size(pVals));
+sigFDR(validP) = (qVals(validP) <= alpha) & (realVals(validP) > corrThresh);
+
+sigLagVec = lagVals(sigFDR);
+sigLagVec = sigLagVec(~isnan(sigLagVec) & isfinite(sigLagVec));
+
+out = struct();
+out.rows = rows;
+out.cols = cols;
+out.realVals = realVals;
+out.lagVals = lagVals;
+out.pVals = pVals;
+out.pFDRVals = pFDRVals;
+out.qVals = qVals;
+out.qAlpha = alpha;
+out.corrThresh = corrThresh;
+out.nPairsNominal = nPairs;
+out.nValidTests = nnz(validP);
+out.nSigUncorr = nnz(sigUncorr);
+out.nSigFDR = nnz(sigFDR);
+out.sigLagVec = sigLagVec;
+out.skew = computeSkew(sigLagVec);
+out.sigUncorrMask = sigUncorr;
+out.sigFDRMask = sigFDR;
+out.lagSignVec = lagSignVec;
+
+end
+
+function nullSkews = computeNullSkewsFromPairPool(peakCorr, peakLag, nullCorr, nInt, nAll, nSamplePairs, nNullDraws, alpha, corrThresh)
+
+[poolRows, poolCols] = getAllUpperPairs(nAll);
+
+if nSamplePairs > numel(poolRows)
+    error('number of requested sampled pairs exceeds all upper-triangle pairs');
+end
+
+nullSkews = nan(nNullDraws,1);
+
+for d = 1:nNullDraws
+
+    drawIdx = randperm(numel(poolRows), nSamplePairs);
+
+    drawRows = poolRows(drawIdx);
+    drawCols = poolCols(drawIdx);
+
+    % I randomly flip the lag sign like in the older code so the sampled
+    % all-vs-all null can represent both pair orientations.
+    lagSignVec = ones(nSamplePairs,1);
+    lagSignVec(rand(nSamplePairs,1) > 0.5) = -1;
+
+    nullDraw = computePairSetStatsMAFDRSkew_GlobalNull( ...
+        peakCorr, peakLag, nullCorr, ...
+        drawRows, drawCols, alpha, corrThresh, lagSignVec);
+
+    nullSkews(d) = nullDraw.skew;
+end
+
+end
+
+function skewVal = computeSkew(x)
+
+x = x(~isnan(x) & isfinite(x));
+
+if numel(x) < 2
+    skewVal = NaN;
     return;
 end
 
-try
-    qVals(valid) = mafdr(pVals(valid));
-catch
-    qVals(valid) = bhFDR(pVals(valid));
-end
+sd = std(x, 0, 'omitnan');
 
-end
-
-function q = bhFDR(p)
-
-p = p(:);
-[ps, sortIdx] = sort(p);
-m = numel(p);
-
-qs = ps .* m ./ (1:m)';
-qs = flipud(cummin(flipud(qs)));
-qs(qs > 1) = 1;
-
-q = nan(size(p));
-q(sortIdx) = qs;
-
-end
-
-function nullSkews = computeNullSkewDistribution(nullLagRaw, nullCorrRaw, nullCorrDistForP, ...
-    nPairsNominal, nNullSkewDraws, alpha, corrThresh)
-
-nullLagRaw = nullLagRaw(:);
-nullCorrRaw = nullCorrRaw(:);
-
-valid = ~isnan(nullLagRaw) & ~isnan(nullCorrRaw) & isfinite(nullLagRaw) & isfinite(nullCorrRaw);
-nullLagRaw = nullLagRaw(valid);
-nullCorrRaw = nullCorrRaw(valid);
-
-nAvailable = numel(nullLagRaw);
-nullSkews = nan(nNullSkewDraws,1);
-
-if nAvailable < 1
-    return;
-end
-
-for d = 1:nNullSkewDraws
-
-    idx = randi(nAvailable, nPairsNominal, 1);
-
-    lagDraw = nullLagRaw(idx);
-    corrDraw = nullCorrRaw(idx);
-
-    pDraw = corrPvalsFromNull(corrDraw, nullCorrDistForP);
-    qDraw = mafdrSafe(pDraw);
-
-    sigMask = qDraw <= alpha & corrDraw > corrThresh;
-
-    sigLags = lagDraw(sigMask);
-
-    nullSkews(d) = computeSkewMetric(sigLags);
-end
-
-end
-
-function sk = computeSkewMetric(lagVals)
-
-lagVals = lagVals(~isnan(lagVals) & isfinite(lagVals));
-
-if numel(lagVals) < 3
-    sk = NaN;
-    return;
-end
-
-sd = std(lagVals, 'omitnan');
-
-if isnan(sd) || sd == 0
-    sk = NaN;
+if sd == 0 || isnan(sd)
+    skewVal = NaN;
 else
-    sk = (mean(lagVals, 'omitnan') - median(lagVals, 'omitnan')) / sd;
+    skewVal = (mean(x, 'omitnan') - median(x, 'omitnan')) / sd;
 end
-
-end
-
-function plotSkewBayesResults(results)
-
-nSess = numel(results);
-
-animalIDs = strings(nSess,1);
-actualSkew = nan(nSess,1);
-pH0 = nan(nSess,1);
-pH50 = nan(nSess,1);
-BF = nan(nSess,1);
-
-for s = 1:nSess
-    [~, tag] = fileparts(results(s).baseDir);
-    animalIDs(s) = string(tag);
-    actualSkew(s) = results(s).actualSkew;
-    pH0(s) = results(s).pValH0;
-    pH50(s) = results(s).pValH50;
-    BF(s) = results(s).evidenceRatio_H0_over_H50;
-end
-
-figure('Color','w','Name','Pairwise Skew Bayes Evidence Ratio');
-bar(BF);
-hold on;
-yline(1,'k--','LineWidth',1.5);
-xticks(1:nSess);
-xticklabels(animalIDs);
-ylabel('Evidence Ratio H0 / H50');
-xlabel('Animal');
-title('Pairwise Skew Bayes Evidence Ratio');
-box off;
-set(gca,'FontSize',14,'LineWidth',1,'TickDir','out');
-
-figure('Color','w','Name','Pairwise Skew Bayes p-values');
-bar([pH0 pH50]);
-xticks(1:nSess);
-xticklabels(animalIDs);
-ylabel('p-value');
-xlabel('Animal');
-legend({'H0 regular null skew','H50 shifted-int null skew'}, 'Location','best');
-title('Pairwise Skew p-values');
-box off;
-set(gca,'FontSize',14,'LineWidth',1,'TickDir','out');
-
-figure('Color','w','Name','Actual Pairwise Skew');
-bar(actualSkew);
-hold on;
-yline(0,'k--','LineWidth',1.5);
-xticks(1:nSess);
-xticklabels(animalIDs);
-ylabel('Actual skew');
-xlabel('Animal');
-title('Actual Skew From Significant Int-Pyr Pairs');
-box off;
-set(gca,'FontSize',14,'LineWidth',1,'TickDir','out');
 
 end
