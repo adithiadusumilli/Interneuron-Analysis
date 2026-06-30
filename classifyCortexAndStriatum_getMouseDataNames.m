@@ -13,13 +13,13 @@ function classifyCortexAndStriatum_getMouseDataNames(mouseIDs, baseSessionNames,
 %   4. Apply those global boundaries to classify neurons per animal
 
 % Outputs saved to AA_classifications.mat include:
-%   - classifications:        {nFiles x 2} cell of per-neuron labels (0=wide, 1=narrow, NaN=wrong region OR unclassified)
+%   - classifications: {nFiles x 2} cell of per-neuron labels (0=wide, 1=narrow, NaN=wrong region OR unclassified)
 %   - classificationsWithGap: same but unclassified gap neurons marked -1 instead of NaN (use to identify/count them)
-%   - fileWidths:             {nFiles x 2} cell of per-neuron widths
+%   - fileWidths: {nFiles x 2} cell of per-neuron widths
 %   - intersectionPointCortex / intersectionPointStriat: GMM intersection (for reference)
-%   - lowerBoundCortex / upperBoundCortex:  misclassification boundaries
+%   - lowerBoundCortex / upperBoundCortex: misclassification boundaries
 %   - lowerBoundStriat / upperBoundStriat
-%   - gmmParamsCortex / gmmParamsStriat:    struct with mu, sigma, weights
+%   - gmmParamsCortex / gmmParamsStriat: struct with mu, sigma, weights
 
 % order for new AA_classifications:
 %   1 D026
@@ -89,9 +89,9 @@ for fileIndex = 1:numFiles
 
         ap = waveform(:, biggestChan);
 
-        [~, mn] = min(ap);           % trough
-        [~, mx] = max(ap(mn:end));   % subsequent peak after trough
-        mx = mx + mn - 1;            % adjust index to full waveform
+        [~, mn] = min(ap); % trough
+        [~, mx] = max(ap(mn:end)); % subsequent peak after trough
+        mx = mx + mn - 1; % adjust index to full waveform
 
         cortexWidths(i) = (mx - mn) / 30000;  % seconds
     end
@@ -405,7 +405,7 @@ end
 function [lowerBound, upperBound] = calculateMisclassificationBounds(means, stdDevs, thresh)
 % Finds two asymmetric classification boundaries matching Miri et al. 2017 (Neuron) exactly.
 % Equations from the paper (no mixture weights — assumes equal priors):
-
+%
 %   lowerBound b_L : mN(b_L) <= thresh
 %     fraction of "narrow"-classified neurons that are actually wide
 %     mN(b) = cdfW(b) / (cdfW(b) + cdfN(b))
@@ -413,7 +413,7 @@ function [lowerBound, upperBound] = calculateMisclassificationBounds(means, stdD
 %   upperBound b_U : mW(b_U) <= thresh
 %     fraction of "wide"-classified neurons that are actually narrow
 %     mW(b) = (1-cdfN(b)) / ((1-cdfN(b)) + (1-cdfW(b)))
-
+%
 % means(1), stdDevs(1) = narrow distribution (smaller mean)
 % means(2), stdDevs(2) = wide distribution (larger mean)
 
@@ -431,7 +431,14 @@ mW_eq = @(b) (1 - cdfN(b)) / ((1 - cdfN(b)) + (1 - cdfW(b))) - thresh;
 
 x0 = mean(means);
 
-lowerBound = fzero(mN_eq, x0);  % narrow cutoff: below here = narrow
-upperBound = fzero(mW_eq, x0);  % wide cutoff:   above here = wide
+bNarrowEq = fzero(mN_eq, x0);  % root of the narrow-side equation
+bWideEq   = fzero(mW_eq, x0);  % root of the wide-side equation
+
+% fzero can converge to either side depending on equation shape, so don't
+% assume which root is smaller — sort them explicitly to get the true
+% lower (narrow cutoff) and upper (wide cutoff) bounds, guaranteeing a
+% gap between them whenever one exists
+lowerBound = min(bNarrowEq, bWideEq);
+upperBound = max(bNarrowEq, bWideEq);
 
 end
