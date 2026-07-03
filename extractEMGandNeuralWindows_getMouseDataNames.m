@@ -39,6 +39,37 @@ function extractEMGandNeuralWindows_getMouseDataNames(mouseID, baseSessionName, 
     nChannels = 4;
     fs = 1000; %#ok<NASGU> % 1 kHz sampling rate
 
+    %% ---------------- identify good/bad EMG channels ----------------
+    % badEMGChans is saved in UMAP.mat. I only care about channels 1:4 here.
+    % The extraction below still runs exactly the same across all 4 channels.
+    % At the very end, I save the usual variable names using only good channels,
+    % and save the original all-channel versions separately as GoodAndBad variables.
+    if isfile(dataNames.UMAPFile)
+        U = load(dataNames.UMAPFile, 'badEMGChans');
+
+        if isfield(U, 'badEMGChans') && ~isempty(U.badEMGChans)
+            badEMGChans = U.badEMGChans(:)';
+        else
+            badEMGChans = [];
+        end
+    else
+        warning('UMAP.mat not found, assuming no bad EMG channels.');
+        badEMGChans = [];
+    end
+
+    badEMGChans = intersect(badEMGChans, 1:nChannels);
+    goodEMGChans = setdiff(1:nChannels, badEMGChans);
+
+    if isempty(goodEMGChans)
+        error('All EMG channels 1:4 are marked bad. Cannot save good-channel-only windows.');
+    end
+
+    fprintf('bad EMG channels among 1:4: ');
+    disp(badEMGChans);
+    fprintf('good EMG channels used for main saved variables: ');
+    disp(goodEMGChans);
+
+
     % 8-cell holders for EMG and neural results
     validTransitionsCell = cell(nChannels,1); % {ch} = [events]
     emgWindowsCell = cell(nChannels,1); % {ch} = events x 8 x timePts
@@ -257,6 +288,63 @@ function extractEMGandNeuralWindows_getMouseDataNames(mouseID, baseSessionName, 
         disp(toc);
     end
 
+
+    %% ---------------- keep all-channel copies, then prune main vars to good channels ----------------
+    % GoodAndBad versions keep all 4 channels exactly as extracted.
+    % Main variable names get pruned to only good channels so downstream code uses good data by default.
+
+    validTransitionsCellGoodAndBad = validTransitionsCell;
+    validTransitionsNeurCellGoodAndBad = validTransitionsNeurCell;
+    validTransitionsShiftedCellGoodAndBad = validTransitionsShiftedCell;
+    validTransitionsNeurShiftedCellGoodAndBad = validTransitionsNeurShiftedCell;
+
+    emgWindowsCellGoodAndBad = emgWindowsCell;
+    emgWindowsShiftedCellGoodAndBad = emgWindowsShiftedCell;
+
+    pyrCxWinCellGoodAndBad = pyrCxWinCell;
+    intCxWinCellGoodAndBad = intCxWinCell;
+    pyrStrWinCellGoodAndBad = pyrStrWinCell;
+    intStrWinCellGoodAndBad = intStrWinCell;
+
+    pyrCxWinShiftedCellGoodAndBad = pyrCxWinShiftedCell;
+    intCxWinShiftedCellGoodAndBad = intCxWinShiftedCell;
+    pyrStrWinShiftedCellGoodAndBad = pyrStrWinShiftedCell;
+    intStrWinShiftedCellGoodAndBad = intStrWinShiftedCell;
+
+    pyrCxWinShiftedMeanCellGoodAndBad = pyrCxWinShiftedMeanCell;
+    intCxWinShiftedMeanCellGoodAndBad = intCxWinShiftedMeanCell;
+    pyrStrWinShiftedMeanCellGoodAndBad = pyrStrWinShiftedMeanCell;
+    intStrWinShiftedMeanCellGoodAndBad = intStrWinShiftedMeanCell;
+
+    allChannelsGoodAndBad = allChannels;
+
+    % Now overwrite the usual variable names with good-channel-only versions.
+    validTransitionsCell = validTransitionsCell(goodEMGChans);
+    validTransitionsNeurCell = validTransitionsNeurCell(goodEMGChans);
+    validTransitionsShiftedCell = validTransitionsShiftedCell(goodEMGChans, :);
+    validTransitionsNeurShiftedCell = validTransitionsNeurShiftedCell(goodEMGChans, :);
+
+    emgWindowsCell = emgWindowsCell(goodEMGChans);
+    emgWindowsShiftedCell = emgWindowsShiftedCell(goodEMGChans, :);
+
+    pyrCxWinCell = pyrCxWinCell(goodEMGChans);
+    intCxWinCell = intCxWinCell(goodEMGChans);
+    pyrStrWinCell = pyrStrWinCell(goodEMGChans);
+    intStrWinCell = intStrWinCell(goodEMGChans);
+
+    pyrCxWinShiftedCell = pyrCxWinShiftedCell(goodEMGChans, :);
+    intCxWinShiftedCell = intCxWinShiftedCell(goodEMGChans, :);
+    pyrStrWinShiftedCell = pyrStrWinShiftedCell(goodEMGChans, :);
+    intStrWinShiftedCell = intStrWinShiftedCell(goodEMGChans, :);
+
+    pyrCxWinShiftedMeanCell = pyrCxWinShiftedMeanCell(goodEMGChans, :);
+    intCxWinShiftedMeanCell = intCxWinShiftedMeanCell(goodEMGChans, :);
+    pyrStrWinShiftedMeanCell = pyrStrWinShiftedMeanCell(goodEMGChans, :);
+    intStrWinShiftedMeanCell = intStrWinShiftedMeanCell(goodEMGChans, :);
+
+    allChannels = allChannels(goodEMGChans);
+    savedEMGChans = goodEMGChans;
+
     %% ---------------- save everything together ----------------
     save(fullfile(folderPath,'EMG_Neural_AllChannels.mat'), ...
         'validTransitionsCell', 'validTransitionsNeurCell', ...
@@ -265,7 +353,19 @@ function extractEMGandNeuralWindows_getMouseDataNames(mouseID, baseSessionName, 
         'pyrCxWinCell', 'intCxWinCell', 'pyrStrWinCell', 'intStrWinCell', ...
         'pyrCxWinShiftedCell', 'intCxWinShiftedCell', 'pyrStrWinShiftedCell', 'intStrWinShiftedCell', ...
         'pyrCxWinShiftedMeanCell', 'intCxWinShiftedMeanCell', 'pyrStrWinShiftedMeanCell', 'intStrWinShiftedMeanCell', ...
-        'allChannels', 'preSamples', 'postSamples', 'threshold', 'baselineDur', 'minSeparation', 'tAxis', ...
+        'allChannels', ...
+        'validTransitionsCellGoodAndBad', 'validTransitionsNeurCellGoodAndBad', ...
+        'validTransitionsShiftedCellGoodAndBad', 'validTransitionsNeurShiftedCellGoodAndBad', ...
+        'emgWindowsCellGoodAndBad', 'emgWindowsShiftedCellGoodAndBad', ...
+        'pyrCxWinCellGoodAndBad', 'intCxWinCellGoodAndBad', ...
+        'pyrStrWinCellGoodAndBad', 'intStrWinCellGoodAndBad', ...
+        'pyrCxWinShiftedCellGoodAndBad', 'intCxWinShiftedCellGoodAndBad', ...
+        'pyrStrWinShiftedCellGoodAndBad', 'intStrWinShiftedCellGoodAndBad', ...
+        'pyrCxWinShiftedMeanCellGoodAndBad', 'intCxWinShiftedMeanCellGoodAndBad', ...
+        'pyrStrWinShiftedMeanCellGoodAndBad', 'intStrWinShiftedMeanCellGoodAndBad', ...
+        'allChannelsGoodAndBad', ...
+        'badEMGChans', 'goodEMGChans', 'savedEMGChans', ...
+        'preSamples', 'postSamples', 'threshold', 'baselineDur', 'minSeparation', 'tAxis', ...
         'mouseID', 'baseSessionName', 'probeRegion', 'folderPath', 'matchRow', ...
         '-v7.3');
 
