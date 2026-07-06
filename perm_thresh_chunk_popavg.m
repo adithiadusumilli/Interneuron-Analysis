@@ -1,16 +1,11 @@
 % chunked trial-averaged population cross-correlation
 % averages across neurons, baseline-subtracts each event/window,
 % averages across trials/windows, then cross-correlates population averages
-%
+
 % jobInd meaning:
-%   0         -> unpermuted real
-%   1:100     -> permutation jobs
-%   101:200   -> shifted-control jobs (shift #1..100)
-%
-% permutation update:
-%   for perm jobs, rerun the permutation until the permuted peak correlation
-%   is >= the 95th percentile of shifted-control zero-lag correlations
-%   for that animal/session, or until maxPermTries is reached
+%   0 -> unpermuted real
+%   1:100 -> permutation jobs
+%   101:200 -> shifted-control jobs (shift #1..100)
 
 clc;
 
@@ -19,14 +14,16 @@ baseDirs = {
     '/home/asa7288/Transfer/D026', ...
     '/home/asa7288/Transfer/D020', ...
     '/home/asa7288/Transfer/D024', ...
-    '/home/asa7288/Transfer/D043'
+    '/home/asa7288/Transfer/D043', ...
+    '/home/asa7288/Transfer/D050', ...
+    '/home/asa7288/Transfer/D054'
 };
 
 rng(jobInd)
 
-channelsToUse  = 1:4;
-chunkHalf      = 300;   % -300 to +300 ms
-maxLagSecs     = 0.2;   % -200 to +200 ms
+channelsToUse  = 1:4;  % default, but each session gets reset below based on saved good channels
+chunkHalf = 300;  % -300 to +300 ms
+maxLagSecs = 0.2;  % -200 to +200 ms
 doBaselineNorm = true;
 
 maxPermTries = 1000;
@@ -59,6 +56,10 @@ for iDir = 1:numel(baseDirs)
         S = load(fullfile(baseDir, 'EMG_Neural_AllChannels.mat'), ...
             'pyrCxWinCell','intCxWinCell','tAxis');
     end
+
+    % if EMG_Neural_AllChannels.mat was saved with good channels only,
+    % use however many channels are actually in the saved cell arrays
+    channelsToUseThisSess = 1:numel(S.pyrCxWinCell);
 
     tAxis = S.tAxis(:)';
     binSize = 0.001;
@@ -99,7 +100,7 @@ for iDir = 1:numel(baseDirs)
             tryCount = tryCount + 1;
 
             [pyr_byCh, int_byCh] = buildEventsByChannel( ...
-                S, channelsToUse, tAxis, doBaselineNorm, jobType);
+                S, channelsToUseThisSess, tAxis, doBaselineNorm, jobType);
 
             [pyrAvgTrace, intAvgTrace, nTrialsUsed] = averageAcrossTrialsAndChannels(pyr_byCh, int_byCh);
 
@@ -113,6 +114,8 @@ for iDir = 1:numel(baseDirs)
 
             if isnan(shiftCorrUpper95) || permPeakCorr >= shiftCorrUpper95
                 acceptedPerm = true;
+            else
+                acceptedPerm = false;
             end
         end
 
@@ -123,7 +126,7 @@ for iDir = 1:numel(baseDirs)
 
     elseif jobType == "shift"
         [pyr_byCh, int_byCh] = buildShiftEventsByChannel( ...
-            S, baseDir, channelsToUse, tAxis, doBaselineNorm, shiftInd);
+            S, baseDir, channelsToUseThisSess, tAxis, doBaselineNorm, shiftInd);
 
         [pyrAvgTrace, intAvgTrace, nTrialsUsed] = averageAcrossTrialsAndChannels(pyr_byCh, int_byCh);
 
@@ -139,10 +142,12 @@ for iDir = 1:numel(baseDirs)
         tryCount = NaN;
         acceptedPerm = NaN;
         permPeakCorr = NaN;
+        xc = NaN;
+        peakLagSec = NaN;
 
     else
         [pyr_byCh, int_byCh] = buildEventsByChannel( ...
-            S, channelsToUse, tAxis, doBaselineNorm, jobType);
+            S, channelsToUseThisSess, tAxis, doBaselineNorm, jobType);
 
         [pyrAvgTrace, intAvgTrace, nTrialsUsed] = averageAcrossTrialsAndChannels(pyr_byCh, int_byCh);
 
@@ -167,21 +172,21 @@ for iDir = 1:numel(baseDirs)
     if jobType == "real"
         outFile = fullfile(outDir, 'concatCrossCorr_trialavg_chunked_popavg_unperm.mat');
         save(outFile, ...
-            'lags','binSize','xc','peakLagSec','chunkHalf','channelsToUse', ...
+            'lags','binSize','xc','peakLagSec','chunkHalf','channelsToUse','channelsToUseThisSess', ...
             'doBaselineNorm','jobInd','permInd','shiftInd','jobType','baseDir', ...
             'runtimeSec','pyrAvgTrace','intAvgTrace','nTrialsUsed', ...
             'tryCount','acceptedPerm','permPeakCorr','shiftCorrUpper95');
     elseif jobType == "perm"
         outFile = fullfile(outDir, sprintf('concatCrossCorr_trialavg_chunked_popavg_perm_%03d.mat', permInd));
         save(outFile, ...
-            'lags','binSize','xc','peakLagSec','chunkHalf','channelsToUse', ...
+            'lags','binSize','xc','peakLagSec','chunkHalf','channelsToUse','channelsToUseThisSess', ...
             'doBaselineNorm','jobInd','permInd','shiftInd','jobType','baseDir', ...
             'runtimeSec','pyrAvgTrace','intAvgTrace','nTrialsUsed', ...
             'tryCount','acceptedPerm','permPeakCorr','shiftCorrUpper95','maxPermTries');
     else
         outFile = fullfile(outDir, sprintf('concatCrossCorr_trialavg_chunked_popavg_shift_%03d_zerolag.mat', shiftInd));
         save(outFile, ...
-            'binSize','xcZeroLag','chunkHalf','channelsToUse', ...
+            'binSize','xcZeroLag','chunkHalf','channelsToUse','channelsToUseThisSess', ...
             'doBaselineNorm','jobInd','permInd','shiftInd','jobType','baseDir', ...
             'runtimeSec','pyrAvgTrace','intAvgTrace','nTrialsUsed');
     end
@@ -435,11 +440,20 @@ function [cortexIntFR, ok] = loadCortexIntFR(folderPath)
         if ~isfile(clsFile), return; end
         load(clsFile, 'classifications');
 
-        if contains(folderPath,'D026'), matchRow = 1;
-        elseif contains(folderPath,'D020'), matchRow = 2;
-        elseif contains(folderPath,'D024'), matchRow = 3;
-        elseif contains(folderPath,'D043'), matchRow = 4;
-        else, return;
+        if contains(folderPath,'D026')
+            matchRow = 1;
+        elseif contains(folderPath,'D020')
+            matchRow = 2;
+        elseif contains(folderPath,'D024')
+            matchRow = 3;
+        elseif contains(folderPath,'D043')
+            matchRow = 4;
+        elseif contains(folderPath,'D050')
+            matchRow = 5;
+        elseif contains(folderPath,'D054')
+            matchRow = 6;
+        else
+            return;
         end
 
         clsRow = classifications(matchRow, :);
