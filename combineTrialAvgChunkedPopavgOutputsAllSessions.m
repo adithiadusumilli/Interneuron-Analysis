@@ -1,17 +1,6 @@
 function combineTrialAvgChunkedPopavgOutputsAllSessions()
 % combines the trial-averaged chunked population-averaged cross-correlation output files
-% across all 4 sessions into one master .mat file
-
-% expected per-session files in each quest_runs folder:
-%   concatCrossCorr_trialavg_chunked_popavg_unperm.mat
-%   concatCrossCorr_trialavg_chunked_popavg_perm_001.mat ... perm_100.mat
-%   concatCrossCorr_trialavg_chunked_popavg_shift_001_zerolag.mat ... shift_100_zerolag.mat
-
-% output:
-%   /home/asa7288/concatCrossCorr_trialavg_chunked_popavg_ALL_SESSIONS.mat
-
-% j run:
-%   combineTrialAvgChunkedPopavgOutputsAllSessions
+% across all 6 sessions into one master .mat file
 
 clc;
 
@@ -20,8 +9,12 @@ baseDirs = {
     '/home/asa7288/Transfer/D026', ...
     '/home/asa7288/Transfer/D020', ...
     '/home/asa7288/Transfer/D024', ...
-    '/home/asa7288/Transfer/D043'
+    '/home/asa7288/Transfer/D043', ...
+    '/home/asa7288/Transfer/D050', ...
+    '/home/asa7288/Transfer/D054'
 };
+
+mouseIDs = {'D026','D020','D024','D043','D050','D054'};
 
 outFile = '/home/asa7288/concatCrossCorr_trialavg_chunked_popavg_ALL_SESSIONS.mat';
 
@@ -30,13 +23,17 @@ nSess = numel(baseDirs);
 %% ---------------- initialize master struct ----------------
 allSessions = struct();
 allSessions.baseDirs = baseDirs;
+allSessions.mouseIDs = mouseIDs;
+
 allSessions.sessions = repmat(struct( ...
     'baseDir', '', ...
+    'mouseID', '', ...
     'sessionTag', '', ...
     'lags', [], ...
     'binSize', [], ...
     'chunkHalf', [], ...
     'channelsToUse', [], ...
+    'channelsToUseThisSess', [], ...
     'doBaselineNorm', [], ...
     'real_xc', [], ...
     'real_peakLagSec', [], ...
@@ -60,8 +57,9 @@ for iDir = 1:nSess
     fprintf('combining session %d: %s\n', iDir, baseDir);
     fprintf('==============================\n');
 
-    sess = struct();
+    sess = allSessions.sessions(iDir);
     sess.baseDir = baseDir;
+    sess.mouseID = mouseIDs{iDir};
     sess.sessionTag = localShortTag(baseDir);
 
     %% ---------- load unpermuted real ----------
@@ -71,13 +69,14 @@ for iDir = 1:nSess
         warning('missing real file for %s', baseDir);
     else
         R = load(realFile, ...
-            'lags','binSize','xc','peakLagSec','chunkHalf','channelsToUse', ...
+            'lags','binSize','xc','peakLagSec','chunkHalf','channelsToUse','channelsToUseThisSess', ...
             'doBaselineNorm','pyrAvgTrace','intAvgTrace','nTrialsUsed');
 
         sess.lags = R.lags;
         sess.binSize = R.binSize;
         sess.chunkHalf = R.chunkHalf;
-        sess.channelsToUse = R.channelsToUse;
+        sess.channelsToUse = getFieldOrEmpty(R,'channelsToUse');
+        sess.channelsToUseThisSess = getFieldOrEmpty(R,'channelsToUseThisSess');
         sess.doBaselineNorm = R.doBaselineNorm;
         sess.real_xc = R.xc;
         sess.real_peakLagSec = R.peakLagSec;
@@ -110,12 +109,13 @@ for iDir = 1:nSess
 
         if isempty(sess.lags)
             tmp = load(fullfile(outDir, permFiles(1).name), ...
-                'lags', 'binSize', 'chunkHalf', 'channelsToUse', 'doBaselineNorm');
+                'lags','binSize','chunkHalf','channelsToUse','channelsToUseThisSess','doBaselineNorm');
 
             sess.lags = tmp.lags;
             sess.binSize = tmp.binSize;
             sess.chunkHalf = tmp.chunkHalf;
-            sess.channelsToUse = tmp.channelsToUse;
+            sess.channelsToUse = getFieldOrEmpty(tmp,'channelsToUse');
+            sess.channelsToUseThisSess = getFieldOrEmpty(tmp,'channelsToUseThisSess');
             sess.doBaselineNorm = tmp.doBaselineNorm;
         end
 
@@ -188,6 +188,7 @@ for iDir = 1:nSess
     %% ---------- store ----------
     allSessions.sessions(iDir) = sess;
 
+    fprintf('animal: %s\n', sess.mouseID);
     fprintf('real loaded: %d\n', ~isempty(sess.real_xc));
     fprintf('perm files found: %d\n', numel(sess.perm_inds_found));
     fprintf('shift files found: %d\n', numel(sess.shift_inds_found));
@@ -199,7 +200,7 @@ fprintf('\nsaved combined master file:\n%s\n', outFile);
 
 end
 
-%% ================= helper =================
+%% ================= helpers =================
 function tag = localShortTag(baseDir)
     [~, folderName] = fileparts(baseDir);
     m = regexp(folderName, 'D\d+', 'match', 'once');
@@ -208,5 +209,13 @@ function tag = localShortTag(baseDir)
         tag = folderName;
     else
         tag = m;
+    end
+end
+
+function val = getFieldOrEmpty(S, fieldName)
+    if isfield(S, fieldName)
+        val = S.(fieldName);
+    else
+        val = [];
     end
 end
