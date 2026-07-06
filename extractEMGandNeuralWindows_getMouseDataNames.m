@@ -408,4 +408,4 @@ function extractEMGandNeuralWindows_getMouseDataNames(mouseID, baseSessionName, 
 
     fprintf('\nsaved good-channel-only downstream file to:\n%s\n', goodFile);
 
-en
+end
