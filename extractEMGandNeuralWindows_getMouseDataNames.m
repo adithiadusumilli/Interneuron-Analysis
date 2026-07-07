@@ -289,66 +289,108 @@ function extractEMGandNeuralWindows_getMouseDataNames(mouseID, baseSessionName, 
     end
 
 
-    %% ---------------- keep all-channel copies, then prune main vars to good channels ----------------
-    % GoodAndBad versions keep all 4 channels exactly as extracted.
-    % Main variable names get pruned to only good channels so downstream code uses good data by default.
+    %% ---------------- keep all 4-channel variables before saving separate files ----------------
+    % These All variables are just temporary copies in memory so I can save bad-only and good-only
+    % versions with the SAME variable names in separate files. They are NOT saved as duplicate variables.
+    validTransitionsCellAll = validTransitionsCell;
+    validTransitionsNeurCellAll = validTransitionsNeurCell;
+    validTransitionsShiftedCellAll = validTransitionsShiftedCell;
+    validTransitionsNeurShiftedCellAll = validTransitionsNeurShiftedCell;
 
-    validTransitionsCellGoodAndBad = validTransitionsCell;
-    validTransitionsNeurCellGoodAndBad = validTransitionsNeurCell;
-    validTransitionsShiftedCellGoodAndBad = validTransitionsShiftedCell;
-    validTransitionsNeurShiftedCellGoodAndBad = validTransitionsNeurShiftedCell;
+    emgWindowsCellAll = emgWindowsCell;
+    emgWindowsShiftedCellAll = emgWindowsShiftedCell;
 
-    emgWindowsCellGoodAndBad = emgWindowsCell;
-    emgWindowsShiftedCellGoodAndBad = emgWindowsShiftedCell;
+    pyrCxWinCellAll = pyrCxWinCell;
+    intCxWinCellAll = intCxWinCell;
+    pyrStrWinCellAll = pyrStrWinCell;
+    intStrWinCellAll = intStrWinCell;
 
-    pyrCxWinCellGoodAndBad = pyrCxWinCell;
-    intCxWinCellGoodAndBad = intCxWinCell;
-    pyrStrWinCellGoodAndBad = pyrStrWinCell;
-    intStrWinCellGoodAndBad = intStrWinCell;
+    pyrCxWinShiftedCellAll = pyrCxWinShiftedCell;
+    intCxWinShiftedCellAll = intCxWinShiftedCell;
+    pyrStrWinShiftedCellAll = pyrStrWinShiftedCell;
+    intStrWinShiftedCellAll = intStrWinShiftedCell;
 
-    pyrCxWinShiftedCellGoodAndBad = pyrCxWinShiftedCell;
-    intCxWinShiftedCellGoodAndBad = intCxWinShiftedCell;
-    pyrStrWinShiftedCellGoodAndBad = pyrStrWinShiftedCell;
-    intStrWinShiftedCellGoodAndBad = intStrWinShiftedCell;
+    pyrCxWinShiftedMeanCellAll = pyrCxWinShiftedMeanCell;
+    intCxWinShiftedMeanCellAll = intCxWinShiftedMeanCell;
+    pyrStrWinShiftedMeanCellAll = pyrStrWinShiftedMeanCell;
+    intStrWinShiftedMeanCellAll = intStrWinShiftedMeanCell;
 
-    pyrCxWinShiftedMeanCellGoodAndBad = pyrCxWinShiftedMeanCell;
-    intCxWinShiftedMeanCellGoodAndBad = intCxWinShiftedMeanCell;
-    pyrStrWinShiftedMeanCellGoodAndBad = pyrStrWinShiftedMeanCell;
-    intStrWinShiftedMeanCellGoodAndBad = intStrWinShiftedMeanCell;
+    allChannelsAll = allChannels;
 
-    allChannelsGoodAndBad = allChannels;
+    %% ---------------- save bad channels and good channels separately ----------------
+    % Important: I am NOT saving duplicated GoodAndBad variables in one huge file anymore.
+    % Instead:
+    %   1) EMG_Neural_AllChannels_BadOnly.mat = bad channels only, same variable names
+    %   2) EMG_Neural_AllChannels.mat         = good channels only, same variable names downstream uses
+    %
+    % This keeps the downstream code unchanged because the regular filename still contains
+    % pyrCxWinCell, intCxWinCell, validTransitionsCell, etc. — just pruned to good EMG chans.
+    % It also avoids the huge duplicated file that was probably causing save corruption.
 
-    % Now overwrite the usual variable names with good-channel-only versions.
-    validTransitionsCell = validTransitionsCell(goodEMGChans);
-    validTransitionsNeurCell = validTransitionsNeurCell(goodEMGChans);
-    validTransitionsShiftedCell = validTransitionsShiftedCell(goodEMGChans, :);
-    validTransitionsNeurShiftedCell = validTransitionsNeurShiftedCell(goodEMGChans, :);
+    %% ---------------- save bad channels separately ----------------
+    badFile = fullfile(folderPath,'EMG_Neural_AllChannels_BadOnly.mat');
 
-    emgWindowsCell = emgWindowsCell(goodEMGChans);
-    emgWindowsShiftedCell = emgWindowsShiftedCell(goodEMGChans, :);
+    if isempty(badEMGChans)
+        % no bad channels for this animal, but I still save an empty metadata file
+        % so it is obvious that bad channels were checked and none existed.
+        savedEMGChans = badEMGChans;
 
-    pyrCxWinCell = pyrCxWinCell(goodEMGChans);
-    intCxWinCell = intCxWinCell(goodEMGChans);
-    pyrStrWinCell = pyrStrWinCell(goodEMGChans);
-    intStrWinCell = intStrWinCell(goodEMGChans);
+        validTransitionsCell = cell(0,1);
+        validTransitionsNeurCell = cell(0,1);
+        validTransitionsShiftedCell = cell(0,100);
+        validTransitionsNeurShiftedCell = cell(0,100);
 
-    pyrCxWinShiftedCell = pyrCxWinShiftedCell(goodEMGChans, :);
-    intCxWinShiftedCell = intCxWinShiftedCell(goodEMGChans, :);
-    pyrStrWinShiftedCell = pyrStrWinShiftedCell(goodEMGChans, :);
-    intStrWinShiftedCell = intStrWinShiftedCell(goodEMGChans, :);
+        emgWindowsCell = cell(0,1);
+        emgWindowsShiftedCell = cell(0,100);
 
-    pyrCxWinShiftedMeanCell = pyrCxWinShiftedMeanCell(goodEMGChans, :);
-    intCxWinShiftedMeanCell = intCxWinShiftedMeanCell(goodEMGChans, :);
-    pyrStrWinShiftedMeanCell = pyrStrWinShiftedMeanCell(goodEMGChans, :);
-    intStrWinShiftedMeanCell = intStrWinShiftedMeanCell(goodEMGChans, :);
+        pyrCxWinCell = cell(0,1);
+        intCxWinCell = cell(0,1);
+        pyrStrWinCell = cell(0,1);
+        intStrWinCell = cell(0,1);
 
-    allChannels = allChannels(goodEMGChans);
-    savedEMGChans = goodEMGChans;
+        pyrCxWinShiftedCell = cell(0,1);
+        intCxWinShiftedCell = cell(0,1);
+        pyrStrWinShiftedCell = cell(0,1);
+        intStrWinShiftedCell = cell(0,1);
 
-    %% ---------------- save all 4 channels first ----------------
-    goodBadFile = fullfile(folderPath,'EMG_Neural_AllChannels_GoodBad.mat');
+        pyrCxWinShiftedMeanCell = cell(0,99);
+        intCxWinShiftedMeanCell = cell(0,99);
+        pyrStrWinShiftedMeanCell = cell(0,99);
+        intStrWinShiftedMeanCell = cell(0,99);
 
-    save(goodBadFile, ...
+        allChannels = cell(1,0);
+
+    else
+        % make bad-channel-only versions using the original all-channel variables
+        savedEMGChans = badEMGChans;
+
+        validTransitionsCell = validTransitionsCellAll(badEMGChans);
+        validTransitionsNeurCell = validTransitionsNeurCellAll(badEMGChans);
+        validTransitionsShiftedCell = validTransitionsShiftedCellAll(badEMGChans, :);
+        validTransitionsNeurShiftedCell = validTransitionsNeurShiftedCellAll(badEMGChans, :);
+
+        emgWindowsCell = emgWindowsCellAll(badEMGChans);
+        emgWindowsShiftedCell = emgWindowsShiftedCellAll(badEMGChans, :);
+
+        pyrCxWinCell = pyrCxWinCellAll(badEMGChans);
+        intCxWinCell = intCxWinCellAll(badEMGChans);
+        pyrStrWinCell = pyrStrWinCellAll(badEMGChans);
+        intStrWinCell = intStrWinCellAll(badEMGChans);
+
+        pyrCxWinShiftedCell = pyrCxWinShiftedCellAll(badEMGChans, :);
+        intCxWinShiftedCell = intCxWinShiftedCellAll(badEMGChans, :);
+        pyrStrWinShiftedCell = pyrStrWinShiftedCellAll(badEMGChans, :);
+        intStrWinShiftedCell = intStrWinShiftedCellAll(badEMGChans, :);
+
+        pyrCxWinShiftedMeanCell = pyrCxWinShiftedMeanCellAll(badEMGChans, :);
+        intCxWinShiftedMeanCell = intCxWinShiftedMeanCellAll(badEMGChans, :);
+        pyrStrWinShiftedMeanCell = pyrStrWinShiftedMeanCellAll(badEMGChans, :);
+        intStrWinShiftedMeanCell = intStrWinShiftedMeanCellAll(badEMGChans, :);
+
+        allChannels = allChannelsAll(badEMGChans);
+    end
+
+    save(badFile, ...
         'validTransitionsCell', 'validTransitionsNeurCell', ...
         'validTransitionsShiftedCell', 'validTransitionsNeurShiftedCell', ...
         'emgWindowsCell', 'emgWindowsShiftedCell', ...
@@ -356,42 +398,43 @@ function extractEMGandNeuralWindows_getMouseDataNames(mouseID, baseSessionName, 
         'pyrCxWinShiftedCell', 'intCxWinShiftedCell', 'pyrStrWinShiftedCell', 'intStrWinShiftedCell', ...
         'pyrCxWinShiftedMeanCell', 'intCxWinShiftedMeanCell', 'pyrStrWinShiftedMeanCell', 'intStrWinShiftedMeanCell', ...
         'allChannels', ...
-        'badEMGChans', 'goodEMGChans', ...
+        'badEMGChans', 'goodEMGChans', 'savedEMGChans', ...
         'preSamples', 'postSamples', 'threshold', 'baselineDur', 'minSeparation', 'tAxis', ...
         'mouseID', 'baseSessionName', 'probeRegion', 'folderPath', 'matchRow', ...
         '-v7.3');
 
-    fprintf('\nsaved all-channel good+bad file to:\n%s\n', goodBadFile);
-
-    %% ---------------- now prune to good channels only ----------------
-    validTransitionsCell = validTransitionsCell(goodEMGChans);
-    validTransitionsNeurCell = validTransitionsNeurCell(goodEMGChans);
-    validTransitionsShiftedCell = validTransitionsShiftedCell(goodEMGChans, :);
-    validTransitionsNeurShiftedCell = validTransitionsNeurShiftedCell(goodEMGChans, :);
-
-    emgWindowsCell = emgWindowsCell(goodEMGChans);
-    emgWindowsShiftedCell = emgWindowsShiftedCell(goodEMGChans, :);
-
-    pyrCxWinCell = pyrCxWinCell(goodEMGChans);
-    intCxWinCell = intCxWinCell(goodEMGChans);
-    pyrStrWinCell = pyrStrWinCell(goodEMGChans);
-    intStrWinCell = intStrWinCell(goodEMGChans);
-
-    pyrCxWinShiftedCell = pyrCxWinShiftedCell(goodEMGChans, :);
-    intCxWinShiftedCell = intCxWinShiftedCell(goodEMGChans, :);
-    pyrStrWinShiftedCell = pyrStrWinShiftedCell(goodEMGChans, :);
-    intStrWinShiftedCell = intStrWinShiftedCell(goodEMGChans, :);
-
-    pyrCxWinShiftedMeanCell = pyrCxWinShiftedMeanCell(goodEMGChans, :);
-    intCxWinShiftedMeanCell = intCxWinShiftedMeanCell(goodEMGChans, :);
-    pyrStrWinShiftedMeanCell = pyrStrWinShiftedMeanCell(goodEMGChans, :);
-    intStrWinShiftedMeanCell = intStrWinShiftedMeanCell(goodEMGChans, :);
-    
-    allChannels = allChannels(goodEMGChans);
-    savedEMGChans = goodEMGChans;
+    fprintf('\nsaved bad-channel-only file to:\n%s\n', badFile);
 
     %% ---------------- save good channels to regular downstream filename ----------------
     goodFile = fullfile(folderPath,'EMG_Neural_AllChannels.mat');
+
+    % make good-channel-only versions using the original all-channel variables
+    savedEMGChans = goodEMGChans;
+
+    validTransitionsCell = validTransitionsCellAll(goodEMGChans);
+    validTransitionsNeurCell = validTransitionsNeurCellAll(goodEMGChans);
+    validTransitionsShiftedCell = validTransitionsShiftedCellAll(goodEMGChans, :);
+    validTransitionsNeurShiftedCell = validTransitionsNeurShiftedCellAll(goodEMGChans, :);
+
+    emgWindowsCell = emgWindowsCellAll(goodEMGChans);
+    emgWindowsShiftedCell = emgWindowsShiftedCellAll(goodEMGChans, :);
+
+    pyrCxWinCell = pyrCxWinCellAll(goodEMGChans);
+    intCxWinCell = intCxWinCellAll(goodEMGChans);
+    pyrStrWinCell = pyrStrWinCellAll(goodEMGChans);
+    intStrWinCell = intStrWinCellAll(goodEMGChans);
+
+    pyrCxWinShiftedCell = pyrCxWinShiftedCellAll(goodEMGChans, :);
+    intCxWinShiftedCell = intCxWinShiftedCellAll(goodEMGChans, :);
+    pyrStrWinShiftedCell = pyrStrWinShiftedCellAll(goodEMGChans, :);
+    intStrWinShiftedCell = intStrWinShiftedCellAll(goodEMGChans, :);
+
+    pyrCxWinShiftedMeanCell = pyrCxWinShiftedMeanCellAll(goodEMGChans, :);
+    intCxWinShiftedMeanCell = intCxWinShiftedMeanCellAll(goodEMGChans, :);
+    pyrStrWinShiftedMeanCell = pyrStrWinShiftedMeanCellAll(goodEMGChans, :);
+    intStrWinShiftedMeanCell = intStrWinShiftedMeanCellAll(goodEMGChans, :);
+
+    allChannels = allChannelsAll(goodEMGChans);
 
     save(goodFile, ...
         'validTransitionsCell', 'validTransitionsNeurCell', ...
