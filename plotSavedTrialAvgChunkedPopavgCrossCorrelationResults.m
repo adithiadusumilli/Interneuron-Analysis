@@ -27,13 +27,23 @@ lagCIAll = nan(nSess,2);
 permLagCell = cell(nSess,1);
 
 animalIDs = strings(1, nSess);
+
 for iDir = 1:nSess
     sess = sessions(iDir);
-    animalID = regexp(sess.baseDir, 'D\d+', 'match', 'once');
-    if isempty(animalID)
-        animalID = sprintf('Animal %d', iDir);
+
+    if isfield(sess, 'mouseID') && ~isempty(sess.mouseID)
+        animalIDs(iDir) = string(sess.mouseID);
+    elseif isfield(sess, 'sessionTag') && ~isempty(sess.sessionTag)
+        animalIDs(iDir) = string(sess.sessionTag);
+    else
+        animalID = regexp(sess.baseDir, 'D\d+', 'match', 'once');
+
+        if isempty(animalID)
+            animalID = sprintf('Animal %d', iDir);
+        end
+
+        animalIDs(iDir) = string(animalID);
     end
-    animalIDs(iDir) = string(animalID);
 end
 
 %% ---- tiled cross-correlation figure ----
