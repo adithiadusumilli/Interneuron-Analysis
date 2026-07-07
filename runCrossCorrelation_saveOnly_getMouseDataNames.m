@@ -3,6 +3,12 @@ function runCrossCorrelation_saveOnly_getMouseDataNames(mouseIDs, baseSessionNam
 % uses new AA_classifications.mat ordering:
 % 1 D026, 2 D020, 3 D024, 4 D043, 5 D050, 6 D054
 
+% updated:
+% label permutation null now uses the same perm-threshold idea as chunked:
+%   shiftCorrUpper95 = 95th percentile of circular-shift control correlations
+%   keep drawing label permutations until permPeakCorr >= shiftCorrUpper95
+%   or until maxPermTries is reached
+
 binSize = 0.001;
 maxLagSecs = 0.5;
 
@@ -22,6 +28,10 @@ lagCIAll = nan(nSess, 2);
 permLagCell = cell(nSess, 1);
 animalLabels = mouseIDs(:);
 
+numShifts = 100;
+numPerms = 100;
+maxPermTries = 1000;
+
 xcorrResults = struct();
 xcorrResults.mouseIDs = mouseIDs;
 xcorrResults.baseSessionNames = baseSessionNames;
@@ -29,18 +39,14 @@ xcorrResults.probeRegions = probeRegions;
 xcorrResults.regionName = regionName;
 xcorrResults.binSize = binSize;
 xcorrResults.maxLagSecs = maxLagSecs;
-xcorrResults.sessions = repmat(struct( ...
-    'mouseID', '', ...
-    'baseSessionName', '', ...
-    'processedDataFolder', '', ...
-    'animalLabel', '', ...
-    'lagsSec', [], ...
-    'xc', [], ...
-    'peakLag', NaN, ...
-    'peakCorr', NaN, ...
-    'corrCI', [NaN NaN], ...
-    'lagCI', [NaN NaN], ...
-    'permPeakLags', []), nSess, 1);
+xcorrResults.numShifts = numShifts;
+xcorrResults.numPerms = numPerms;
+xcorrResults.maxPermTries = maxPermTries;
+
+xcorrResults.sessions = repmat(struct('mouseID', '', 'baseSessionName', '', 'processedDataFolder', '', ...
+    'animalLabel', '', 'lagsSec', [], 'xc', [], 'peakLag', NaN, 'peakCorr', NaN, 'corrCI', [NaN NaN], ...
+    'shiftCorrUpper95', NaN, 'controlCorrs', [], 'lagCI', [NaN NaN],  'permPeakLags', [], 'permPeakCorrs', [], ...
+    'permTryCounts', [], 'permAccepted', []), nSess, 1);
 
 consolidatedDataFolder = 'X:\David\AnalysesData';
 load(fullfile(consolidatedDataFolder, 'AA_classifications.mat'), 'classifications');
@@ -78,7 +84,7 @@ for iDir = 1:nSess
     regionClass = neuronType(regionInds);
 
     interneuronFRs = frMatrix(regionClass == 1, :);
-    pyramidalFRs   = frMatrix(regionClass == 0, :);
+    pyramidalFRs = frMatrix(regionClass == 0, :);
 
     if isempty(interneuronFRs) || isempty(pyramidalFRs)
         warning('no valid interneuron or pyramidal data in session %d (%s). skipping.', iDir, mouseID);
@@ -95,7 +101,6 @@ for iDir = 1:nSess
     peakCorrs(iDir) = peakCorr;
 
     % circular-shift control for correlation
-    numShifts = 100;
     minShiftBins = round(30 / binSize);
     maxShiftBinsOk = length(meanIntRaw) - minShiftBins;
 
@@ -111,40 +116,75 @@ for iDir = 1:nSess
         end
     end
 
-    prc25 = prctile(controlCorrs, 2.5);
-    prc975 = prctile(controlCorrs, 97.5);
+    goodShift = ~isnan(controlCorrs) & isfinite(controlCorrs);
 
-    % label permutation null for peak lag
-    numPerms = 100;
-    permPeakCorrs = nan(1, numPerms);
-    permPeakLags = nan(1, numPerms);
-
-    for p = 1:numPerms
-        permLabels = regionClass(randperm(numel(regionClass)));
-
-        permIntFRs = frMatrix(permLabels == 1, :);
-        permPyrFRs = frMatrix(permLabels == 0, :);
-
-        if isempty(permIntFRs) || isempty(permPyrFRs)
-            continue;
-        end
-
-        permMeanInt = nanmean(permIntFRs, 1);
-        permMeanPyr = nanmean(permPyrFRs, 1);
-
-        [~, ~, permPeakLag, permPeakCorr] = computeManualXCorr(permMeanInt, permMeanPyr, binSize, maxLagSecs);
-
-        permPeakCorrs(p) = permPeakCorr;
-        permPeakLags(p) = permPeakLag;
+    if any(goodShift)
+        prc25 = prctile(controlCorrs(goodShift), 2.5);
+        prc975 = prctile(controlCorrs(goodShift), 97.5);
+        shiftCorrUpper95 = prctile(controlCorrs(goodShift), 95);
+    else
+        prc25 = NaN;
+        prc975 = NaN;
+        shiftCorrUpper95 = NaN;
     end
 
-    goodPerms = ~isnan(permPeakCorrs) & ~isnan(permPeakLags);
+    fprintf('shiftCorrUpper95 for %s = %.6f\n', mouseID, shiftCorrUpper95);
+
+    % label permutation null for peak lag, with perm-threshold filtering
+    permPeakCorrs = nan(1, numPerms);
+    permPeakLags = nan(1, numPerms);
+    permTryCounts = nan(1, numPerms);
+    permAccepted = false(1, numPerms);
+
+    for p = 1:numPerms
+
+        tryCount = 0;
+        acceptedPerm = false;
+
+        while ~acceptedPerm && tryCount < maxPermTries
+            tryCount = tryCount + 1;
+
+            permLabels = regionClass(randperm(numel(regionClass)));
+
+            permIntFRs = frMatrix(permLabels == 1, :);
+            permPyrFRs = frMatrix(permLabels == 0, :);
+
+            if isempty(permIntFRs) || isempty(permPyrFRs)
+                continue;
+            end
+
+            permMeanInt = nanmean(permIntFRs, 1);
+            permMeanPyr = nanmean(permPyrFRs, 1);
+
+            [~, ~, permPeakLag, permPeakCorr] = computeManualXCorr( ...
+                permMeanInt, permMeanPyr, binSize, maxLagSecs);
+
+            % Match chunked code logic:
+            % accept permutation if its peak corr reaches the 95th percentile shift-control threshold
+            if isnan(shiftCorrUpper95) || permPeakCorr >= shiftCorrUpper95
+                acceptedPerm = true;
+
+                permPeakCorrs(p) = permPeakCorr;
+                permPeakLags(p) = permPeakLag;
+            end
+        end
+
+        permTryCounts(p) = tryCount;
+        permAccepted(p) = acceptedPerm;
+
+        if ~acceptedPerm
+            warning('Permutation %d for %s was not accepted after %d tries.', ...
+                p, mouseID, maxPermTries);
+        end
+    end
+
+    goodPerms = ~isnan(permPeakCorrs) & ~isnan(permPeakLags) & permAccepted;
 
     if any(goodPerms)
         lagCI = prctile(permPeakLags(goodPerms), [2.5 97.5]);
         permLagCell{iDir} = permPeakLags(goodPerms);
     else
-        warning('no valid permutations for session %d; lag CI not computed.', iDir);
+        warning('no valid accepted permutations for session %d; lag CI not computed.', iDir);
         lagCI = [NaN NaN];
         permLagCell{iDir} = [];
     end
@@ -160,11 +200,16 @@ for iDir = 1:nSess
     xcorrResults.sessions(iDir).peakLag = peakLag;
     xcorrResults.sessions(iDir).peakCorr = peakCorr;
     xcorrResults.sessions(iDir).corrCI = [prc25 prc975];
+    xcorrResults.sessions(iDir).shiftCorrUpper95 = shiftCorrUpper95;
+    xcorrResults.sessions(iDir).controlCorrs = controlCorrs;
     xcorrResults.sessions(iDir).lagCI = lagCI;
     xcorrResults.sessions(iDir).permPeakLags = permLagCell{iDir};
+    xcorrResults.sessions(iDir).permPeakCorrs = permPeakCorrs;
+    xcorrResults.sessions(iDir).permTryCounts = permTryCounts;
+    xcorrResults.sessions(iDir).permAccepted = permAccepted;
 
-    fprintf('→ %s — %s peak lag: %.3f s | peak corr: %.3f\n', ...
-        regionName, mouseID, peakLag, peakCorr);
+    fprintf('→ %s — %s peak lag: %.3f s | peak corr: %.3f | accepted perms: %d/%d | median tries: %.1f\n', ...
+        regionName, mouseID, peakLag, peakCorr, sum(permAccepted), numPerms, median(permTryCounts, 'omitnan'));
 end
 
 fprintf('\n========== summary cortex ==========\n');
@@ -181,13 +226,7 @@ end
 
 savePath = fullfile(saveDir, 'runCrossCorrelation_savedOutputs_all6Animals.mat');
 
-save(savePath, ...
-    'xcorrResults', ...
-    'peakLags', ...
-    'peakCorrs', ...
-    'lagCIAll', ...
-    'permLagCell', ...
-    'animalLabels');
+save(savePath, 'xcorrResults', 'peakLags', 'peakCorrs', 'lagCIAll', 'permLagCell', 'animalLabels');
 
 fprintf('\nsaved plotting-ready outputs to:\n%s\n', savePath);
 
