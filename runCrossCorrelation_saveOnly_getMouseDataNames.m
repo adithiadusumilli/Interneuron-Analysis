@@ -29,8 +29,13 @@ permLagCell = cell(nSess, 1);
 animalLabels = mouseIDs(:);
 
 numShifts = 100;
-numPerms = 100;
+numPermsPerHypothesis = 100;
+numPerms = 3 * numPermsPerHypothesis;  % 300 total accepted permutations
 maxPermTries = 1000;
+
+permIndsH0 = 1:numPermsPerHypothesis;
+permIndsH50 = (numPermsPerHypothesis + 1):(2 * numPermsPerHypothesis);
+permIndsHneg50 = (2 * numPermsPerHypothesis + 1):(3 * numPermsPerHypothesis);
 
 xcorrResults = struct();
 xcorrResults.mouseIDs = mouseIDs;
@@ -42,11 +47,17 @@ xcorrResults.maxLagSecs = maxLagSecs;
 xcorrResults.numShifts = numShifts;
 xcorrResults.numPerms = numPerms;
 xcorrResults.maxPermTries = maxPermTries;
+xcorrResults.numPermsPerHypothesis = numPermsPerHypothesis;
+xcorrResults.permIndsH0 = permIndsH0;
+xcorrResults.permIndsH50 = permIndsH50;
+xcorrResults.permIndsHneg50 = permIndsHneg50;
 
 xcorrResults.sessions = repmat(struct('mouseID', '', 'baseSessionName', '', 'processedDataFolder', '', ...
     'animalLabel', '', 'lagsSec', [], 'xc', [], 'peakLag', NaN, 'peakCorr', NaN, 'corrCI', [NaN NaN], ...
     'shiftCorrUpper95', NaN, 'controlCorrs', [], 'lagCI', [NaN NaN],  'permPeakLags', [], 'permPeakCorrs', [], ...
-    'permTryCounts', [], 'permAccepted', []), nSess, 1);
+    'permTryCounts', [], 'permAccepted', [], 'permPeakLagsAll300', [], 'permPeakCorrsAll300', [], ...
+    'permAcceptedAll300', [], 'permTryCountsAll300', [], 'permIndsH0', [], 'permIndsH50', [], ...
+    'permIndsHneg50', [], 'permPeakLagsH0_raw', [], 'permPeakLagsH50_raw', [], 'permPeakLagsHneg50_raw', []), nSess, 1););
 
 consolidatedDataFolder = 'X:\David\AnalysesData';
 load(fullfile(consolidatedDataFolder, 'AA_classifications.mat'), 'classifications');
@@ -178,13 +189,28 @@ for iDir = 1:nSess
         end
     end
 
-    goodPerms = ~isnan(permPeakCorrs) & ~isnan(permPeakLags) & permAccepted;
+    %% ---------- define valid permutations by hypothesis block ----------
 
-    if any(goodPerms)
-        lagCI = prctile(permPeakLags(goodPerms), [2.5 97.5]);
-        permLagCell{iDir} = permPeakLags(goodPerms);
+    goodPermsAll = ...
+        ~isnan(permPeakCorrs) & ...
+        ~isnan(permPeakLags) & ...
+        permAccepted;
+
+    goodPermsH0 = false(1, numPerms);
+    goodPermsH0(permIndsH0) = goodPermsAll(permIndsH0);
+
+    goodPermsH50 = false(1, numPerms);
+    goodPermsH50(permIndsH50) = goodPermsAll(permIndsH50);
+
+    goodPermsHneg50 = false(1, numPerms);
+    goodPermsHneg50(permIndsHneg50) = goodPermsAll(permIndsHneg50);
+
+    % Keep the existing permutation lag CI based on H0 only.
+    if any(goodPermsH0)
+        lagCI = prctile(permPeakLags(goodPermsH0), [2.5 97.5]);
+        permLagCell{iDir} = permPeakLags(goodPermsH0);
     else
-        warning('no valid accepted permutations for session %d; lag CI not computed.', iDir);
+        warning('no valid accepted H0 permutations for session %d; lag CI not computed.', iDir);
         lagCI = [NaN NaN];
         permLagCell{iDir} = [];
     end
@@ -208,8 +234,34 @@ for iDir = 1:nSess
     xcorrResults.sessions(iDir).permTryCounts = permTryCounts;
     xcorrResults.sessions(iDir).permAccepted = permAccepted;
 
+    % Preserve the exact ordered 300-element arrays for the post hoc analysis.
+    % Do not remove NaNs or compress accepted entries, because the index blocks
+    % 1:100, 101:200, and 201:300 define H0, H+50, and H-50.
+    xcorrResults.sessions(iDir).permPeakLagsAll300 = permPeakLags;
+    xcorrResults.sessions(iDir).permPeakCorrsAll300 = permPeakCorrs;
+    xcorrResults.sessions(iDir).permAcceptedAll300 = permAccepted;
+    xcorrResults.sessions(iDir).permTryCountsAll300 = permTryCounts;
+
+    xcorrResults.sessions(iDir).permIndsH0 = permIndsH0;
+    xcorrResults.sessions(iDir).permIndsH50 = permIndsH50;
+    xcorrResults.sessions(iDir).permIndsHneg50 = permIndsHneg50;
+
+    % These are raw, unshifted peak lags.
+    xcorrResults.sessions(iDir).permPeakLagsH0_raw = ...
+        permPeakLags(permIndsH0);
+
+    xcorrResults.sessions(iDir).permPeakLagsH50_raw = ...
+        permPeakLags(permIndsH50);
+
+    xcorrResults.sessions(iDir).permPeakLagsHneg50_raw = ...
+        permPeakLags(permIndsHneg50);
+
     fprintf('→ %s — %s peak lag: %.3f s | peak corr: %.3f | accepted perms: %d/%d | median tries: %.1f\n', ...
         regionName, mouseID, peakLag, peakCorr, sum(permAccepted), numPerms, median(permTryCounts, 'omitnan'));
+    fprintf('  accepted by block: H0=%d/100 | H+50=%d/100 | H-50=%d/100\n', ...
+    sum(permAccepted(permIndsH0)), ...
+    sum(permAccepted(permIndsH50)), ...
+    sum(permAccepted(permIndsHneg50)));
 end
 
 fprintf('\n========== summary cortex ==========\n');
@@ -226,7 +278,7 @@ end
 
 savePath = fullfile(saveDir, 'runCrossCorrelation_savedOutputs_all6Animals.mat');
 
-save(savePath, 'xcorrResults', 'peakLags', 'peakCorrs', 'lagCIAll', 'permLagCell', 'animalLabels');
+save(savePath, 'xcorrResults', 'peakLags', 'peakCorrs', 'lagCIAll', 'permLagCell', 'animalLabels', '-v7.3');
 
 fprintf('\nsaved plotting-ready outputs to:\n%s\n', savePath);
 
