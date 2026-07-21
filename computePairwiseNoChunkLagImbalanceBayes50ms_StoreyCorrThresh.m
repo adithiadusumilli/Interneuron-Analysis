@@ -45,7 +45,7 @@ function computePairwiseNoChunkLagImbalanceBayes50ms_StoreyCorrThresh(alpha, cor
 %         evidence ratio H0/H-50 = pH0 / pHneg50
 
 % RUN: computePairwiseNoChunkLagImbalanceBayes50ms_StoreyCorrThresh
-% or: computePairwiseNoChunkLagImbalanceBayes50ms_StoreyCorrThresh(0.05, 0.05, 100, 10000)
+% or: computePairwiseNoChunkLagImbalanceBayes50ms_StoreyCorrThresh(0.05, 0.05, 100, 1000)
 
 if nargin < 1 || isempty(alpha)
     alpha = 0.05;
@@ -60,7 +60,7 @@ if nargin < 3 || isempty(nNullDraws)
 end
 
 if nargin < 4 || isempty(maxPermutationTries)
-    maxPermutationTries = 10000;
+    maxPermutationTries = 1000;
 end
 
 if exist('mafdr', 'file') ~= 2
@@ -76,7 +76,9 @@ outFile = '/home/asa7288/pairwiseNoChunkLagImbalanceBayes50ms_StoreyCorrThresh.m
 lagShiftSec = 0.050;
 
 % Reproducible overall run.
-% H0, H+50, and H-50 still use independent draws because each helper call continues advancing the random-number stream (0);
+% H0, H+50, and H-50 still use independent draws because each helper call
+% continues advancing the random-number stream.
+rng(0);
 
 %% ---------------- load combined results ----------------
 
@@ -270,17 +272,17 @@ for sessInd = 1:nSess
 
     fprintf('\nbuilding H0 permutation distribution...\n');
 
-    [nullLagImbalanceH0, permutationTriesH0, selectedLagCountsH0, selectedPositiveCountsH0, selectedNegativeCountsH0, selectedZeroCountsH0] = ...
+    [nullLagImbalanceH0, permutationTriesH0, selectedLagCountsH0, selectedPositiveCountsH0, selectedNegativeCountsH0, selectedZeroCountsH0, matchedTargetH0, bestEligibleCountsH0] = ...
         computeLabelPermutationLagImbalanceDistribution(peakLagMat, sigUpperMask, nInt, nPyr, nActualSigIntPyr, nNullDraws, 0, maxPermutationTries);
 
     fprintf('\nbuilding H+50 permutation distribution...\n');
-    [nullLagImbalanceH50, permutationTriesH50, selectedLagCountsH50, selectedPositiveCountsH50, selectedNegativeCountsH50, selectedZeroCountsH50] = ...
+    [nullLagImbalanceH50, permutationTriesH50, selectedLagCountsH50, selectedPositiveCountsH50, selectedNegativeCountsH50, selectedZeroCountsH50, matchedTargetH50, bestEligibleCountsH50] = ...
         computeLabelPermutationLagImbalanceDistribution(peakLagMat, sigUpperMask, nInt, nPyr, nActualSigIntPyr, nNullDraws, +lagShiftSec, maxPermutationTries);
 
     fprintf('\nbuilding H-50 permutation distribution...\n');
 
     [nullLagImbalanceHneg50, permutationTriesHneg50, selectedLagCountsHneg50, selectedPositiveCountsHneg50, selectedNegativeCountsHneg50, ...
-     selectedZeroCountsHneg50] = computeLabelPermutationLagImbalanceDistribution(peakLagMat, sigUpperMask, nInt, nPyr, nActualSigIntPyr, ...
+     selectedZeroCountsHneg50, matchedTargetHneg50, bestEligibleCountsHneg50] = computeLabelPermutationLagImbalanceDistribution(peakLagMat, sigUpperMask, nInt, nPyr, nActualSigIntPyr, ...
             nNullDraws, -lagShiftSec, maxPermutationTries);
 
     %% ====================================================================
@@ -390,10 +392,20 @@ for sessInd = 1:nSess
     R.permutationTriesH50 = permutationTriesH50;
     R.permutationTriesHneg50 = permutationTriesHneg50;
 
-    % These should equal nActualSigIntPyr for every accepted draw
+    % These equal nActualSigIntPyr when matchedTarget is true; fallback draws may use fewer pairs
     R.selectedLagCountsH0 = selectedLagCountsH0;
     R.selectedLagCountsH50 = selectedLagCountsH50;
     R.selectedLagCountsHneg50 = selectedLagCountsHneg50;
+
+    % Whether each draw matched the real significant-pair count exactly
+    R.matchedTargetH0 = matchedTargetH0;
+    R.matchedTargetH50 = matchedTargetH50;
+    R.matchedTargetHneg50 = matchedTargetHneg50;
+
+    % Largest eligible significant-pair count found within the search
+    R.bestEligibleCountsH0 = bestEligibleCountsH0;
+    R.bestEligibleCountsH50 = bestEligibleCountsH50;
+    R.bestEligibleCountsHneg50 = bestEligibleCountsHneg50;
 
     % Sign counts after applying each model shift
     R.selectedPositiveCountsH0 = selectedPositiveCountsH0;
@@ -421,10 +433,12 @@ for sessInd = 1:nSess
         'Significance is fixed once across all upper-triangle pairs. ' ...
         'Each null draw randomly reassigns nInt pseudo-interneuron labels ' ...
         'and nPyr pseudo-pyramidal labels. Pseudo-int x pseudo-pyr lags ' ...
-        'are oriented deterministically from matrix ordering. Label ' ...
-        'assignments with fewer than nActualSigIntPyr significant eligible ' ...
-        'pairs are rejected and redrawn. Accepted draws select exactly ' ...
-        'nActualSigIntPyr eligible pairs without replacement. H0 applies ' ...
+        'are oriented deterministically from matrix ordering. ' ...
+        'For each draw, up to maxPermutationTries label assignments are tested. ' ...
+        'If a permutation reaches nActualSigIntPyr eligible significant pairs, ' ...
+        'exactly that many are sampled without replacement. Otherwise, all ' ...
+        'eligible pairs from the permutation with the largest eligible count ' ...
+        'are used as a fallback. H0 applies ' ...
         '0 ms, H+50 applies +50 ms, and H-50 applies -50 ms after lag ' ...
         'orientation.'];
 
@@ -439,6 +453,9 @@ for sessInd = 1:nSess
     fprintf('  evidence ratios: H0/H+50=%.6f | H0/H-50=%.6f\n', evidenceRatio_H0_over_H50, evidenceRatio_H0_over_Hneg50);
     fprintf(['  median permutation tries: H0=%.1f | H+50=%.1f | ' 'H-50=%.1f\n'], median(permutationTriesH0), ...
         median(permutationTriesH50), median(permutationTriesHneg50));
+    fprintf('  exact pair-count matches: H0=%d/%d | H+50=%d/%d | H-50=%d/%d\n', ...
+        nnz(matchedTargetH0), nNullDraws, nnz(matchedTargetH50), nNullDraws, ...
+        nnz(matchedTargetHneg50), nNullDraws);
 end
 
 %% ---------------- save all sessions ----------------
@@ -566,43 +583,47 @@ end
 %% ========================================================================
 
 function [nullLagImbalance, permutationTries, selectedLagCounts, selectedPositiveCounts, selectedNegativeCounts, ...
-    selectedZeroCounts] = computeLabelPermutationLagImbalanceDistribution(peakLagMat, sigUpperMask, nInt, nPyr, ...
+    selectedZeroCounts, matchedTarget, bestEligibleCounts] = computeLabelPermutationLagImbalanceDistribution(peakLagMat, sigUpperMask, nInt, nPyr, ...
         nTargetPairs, nNullDraws, modelShiftSec, maxPermutationTries)
 
-% For every accepted draw:
+% For every null draw:
 %   1) Randomly assign nInt neurons as pseudo-interneurons.
 %   2) Assign the remaining nPyr neurons as pseudo-pyramidal.
 %   3) Form all pseudo-int x pseudo-pyr pairs.
 %   4) Retain pairs that passed the fixed upper-triangle significance mask.
 %   5) Orient each lag as pseudo-int -> pseudo-pyr.
-%   6) Reject and redraw the labels if fewer than nTargetPairs are eligible.
-%   7) Select exactly nTargetPairs eligible lags without replacement.
-%   8) Add modelShiftSec.
-%   9) Calculate lag imbalance.
+%   6) Try up to maxPermutationTries to find a label permutation with at
+%      least nTargetPairs eligible significant pairs.
+%   7) If one is found, randomly select exactly nTargetPairs without
+%      replacement.
+%   8) If none is found, use all eligible lags from the permutation with
+%      the largest eligible significant-pair count.
+%   9) Add modelShiftSec and calculate lag imbalance.
 
 nAll = nInt + nPyr;
 
 nullLagImbalance = nan(nNullDraws,1);
 permutationTries = nan(nNullDraws,1);
-
 selectedLagCounts = nan(nNullDraws,1);
 selectedPositiveCounts = nan(nNullDraws,1);
 selectedNegativeCounts = nan(nNullDraws,1);
 selectedZeroCounts = nan(nNullDraws,1);
+matchedTarget = false(nNullDraws,1);
+bestEligibleCounts = nan(nNullDraws,1);
 
 for drawInd = 1:nNullDraws
 
-    accepted = false;
-    tryCount = 0;
+    acceptedExactMatch = false;
+    bestEligibleCount = -1;
+    bestEligibleLags = [];
+    bestTry = NaN;
+    selectedLags = [];
 
-    while ~accepted && tryCount < maxPermutationTries
-
-        tryCount = tryCount + 1;
+    for tryCount = 1:maxPermutationTries
 
         %% ---------- randomly reassign neuron-type labels ----------
 
         permutedNeuronOrder = randperm(nAll);
-
         pseudoIntInds = permutedNeuronOrder(1:nInt);
         pseudoPyrInds = permutedNeuronOrder(nInt+1:end);
 
@@ -620,33 +641,16 @@ for drawInd = 1:nNullDraws
 
                 pseudoPyrNeuron = pseudoPyrInds(pyrInd);
 
-                % The two pseudo groups are disjoint, but keep this guard.
-                if pseudoIntNeuron == pseudoPyrNeuron
-                    continue;
-                end
-
-                % Convert the requested oriented pair to the saved
-                % upper-triangle coordinate.
                 if pseudoIntNeuron < pseudoPyrNeuron
-
                     upperRow = pseudoIntNeuron;
                     upperCol = pseudoPyrNeuron;
-
-                    % Saved orientation already matches:
-                    % pseudo-int -> pseudo-pyr
                     orientationSign = 1;
-
                 else
-
                     upperRow = pseudoPyrNeuron;
                     upperCol = pseudoIntNeuron;
-
-                    % Saved orientation is reversed relative to:
-                    % pseudo-int -> pseudo-pyr
                     orientationSign = -1;
                 end
 
-                % Keep only pairs that passed the fixed significance test.
                 if ~sigUpperMask(upperRow, upperCol)
                     continue;
                 end
@@ -658,66 +662,80 @@ for drawInd = 1:nNullDraws
                 end
 
                 nEligible = nEligible + 1;
-
-                eligibleLags(nEligible) = ...
-                    orientationSign * storedLag;
+                eligibleLags(nEligible) = orientationSign * storedLag;
             end
         end
 
         eligibleLags = eligibleLags(1:nEligible);
 
-        %% ---------- reject permutations with too few eligible pairs ----------
+        %% ---------- remember the best available permutation ----------
 
-        if nEligible < nTargetPairs
-            continue;
+        if nEligible > bestEligibleCount
+            bestEligibleCount = nEligible;
+            bestEligibleLags = eligibleLags;
+            bestTry = tryCount;
         end
 
-        %% ---------- select exactly the real significant-pair count ----------
+        %% ---------- preferred case: exactly match real pair count ----------
 
-        chosenIndices = randperm(nEligible, nTargetPairs);
-        selectedLags = eligibleLags(chosenIndices);
+        if nEligible >= nTargetPairs
+            chosenIndices = randperm(nEligible, nTargetPairs);
+            selectedLags = eligibleLags(chosenIndices);
+            acceptedExactMatch = true;
+            permutationTries(drawInd) = tryCount;
+            matchedTarget(drawInd) = true;
+            break;
+        end
+    end
 
-        %% ---------- apply model shift after lag orientation ----------
+    %% ---------- fallback: use best available permutation ----------
 
-        modelLags = selectedLags + modelShiftSec;
+    if ~acceptedExactMatch
 
-        %% ---------- calculate lag imbalance ----------
-
-        thisLagImbalance = computeLagImbalance(modelLags);
-
-        if ~isfinite(thisLagImbalance)
-            % This would happen if all selected model lags were exactly 0.
-            % Reject this permutation and redraw.
-            continue;
+        if isempty(bestEligibleLags)
+            error(['No eligible pseudo-int x pseudo-pyr pairs were found ' ...
+                   'for draw %d after %d label permutations.'], ...
+                   drawInd, maxPermutationTries);
         end
 
-        %% ---------- accept draw ----------
+        selectedLags = bestEligibleLags;
+        permutationTries(drawInd) = maxPermutationTries;
+        matchedTarget(drawInd) = false;
 
-        accepted = true;
-
-        nullLagImbalance(drawInd) = thisLagImbalance;
-        permutationTries(drawInd) = tryCount;
-
-        thisCounts = countLagSigns(modelLags);
-
-        selectedLagCounts(drawInd) = numel(modelLags);
-        selectedPositiveCounts(drawInd) = thisCounts.nPositive;
-        selectedNegativeCounts(drawInd) = thisCounts.nNegative;
-        selectedZeroCounts(drawInd) = thisCounts.nZero;
+        fprintf(['  fallback for draw %d: target=%d, best available=%d ' ...
+                 '(found on try %d)\n'], ...
+                 drawInd, nTargetPairs, bestEligibleCount, bestTry);
     end
 
-    if ~accepted
-        error([ ...
-            'Could not generate valid permutation draw %d after %d tries. ' ...
-            'Required %d significant pseudo-int x pseudo-pyr pairs. ' ...
-            'Consider inspecting how frequently random label assignments ' ...
-            'produce enough significant cross-group pairs.'], ...
-            drawInd, maxPermutationTries, nTargetPairs);
+    bestEligibleCounts(drawInd) = bestEligibleCount;
+
+    %% ---------- apply model shift after lag orientation ----------
+
+    modelLags = selectedLags + modelShiftSec;
+
+    %% ---------- calculate lag imbalance ----------
+
+    thisLagImbalance = computeLagImbalance(modelLags);
+
+    if ~isfinite(thisLagImbalance)
+        error(['Lag imbalance was undefined for draw %d because all ' ...
+               'selected model lags were exactly zero.'], drawInd);
     end
+
+    nullLagImbalance(drawInd) = thisLagImbalance;
+
+    thisCounts = countLagSigns(modelLags);
+
+    selectedLagCounts(drawInd) = numel(modelLags);
+    selectedPositiveCounts(drawInd) = thisCounts.nPositive;
+    selectedNegativeCounts(drawInd) = thisCounts.nNegative;
+    selectedZeroCounts(drawInd) = thisCounts.nZero;
 
     if mod(drawInd,10) == 0 || drawInd == nNullDraws
-
-        fprintf(['  completed draw %d/%d | model shift=%+.3f s | ' 'tries for current draw=%d\n'], drawInd, nNullDraws, modelShiftSec, permutationTries(drawInd));
+        fprintf(['  completed draw %d/%d | model shift=%+.3f s | ' ...
+                 'selected pairs=%d | exact match=%d\n'], ...
+                 drawInd, nNullDraws, modelShiftSec, ...
+                 selectedLagCounts(drawInd), matchedTarget(drawInd));
     end
 end
 
