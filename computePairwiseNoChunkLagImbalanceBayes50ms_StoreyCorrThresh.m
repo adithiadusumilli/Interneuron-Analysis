@@ -40,9 +40,23 @@ function computePairwiseNoChunkLagImbalanceBayes50ms_StoreyCorrThresh(alpha, cor
 
 %   4) H0, H+50, and H-50 are generated using separate, independent sets of neuron-label permutations.
 
-%   5) Compare the fixed actual lag imbalance against each null distribution using empirical two-sided tail probabilities:
-%         evidence ratio H0/H+50 = pH0 / pH50
-%         evidence ratio H0/H-50 = pH0 / pHneg50
+%   5) Compare the fixed actual lag imbalance against each model using
+%      David's directional one-sided empirical probabilities, with the
+%      standard +1 correction in both numerator and denominator:
+%
+%         H0 versus H+50 uses the LEFT tail for both distributions:
+%            pH0_left  = (# H0 values   <= actual + 1) / (N_H0   + 1)
+%            pH50_left = (# H+50 values <= actual + 1) / (N_H+50 + 1)
+%            evidence ratio H0/H+50 = pH0_left / pH50_left
+%
+%         H0 versus H-50 uses the RIGHT tail for both distributions:
+%            pH0_right     = (# H0 values   >= actual + 1) / (N_H0   + 1)
+%            pHneg50_right = (# H-50 values >= actual + 1) / (N_H-50 + 1)
+%            evidence ratio H0/H-50 = pH0_right / pHneg50_right
+%
+%      Therefore H0 intentionally has two p-values: one left-tailed value
+%      for comparison with H+50 and one right-tailed value for comparison
+%      with H-50.
 
 % RUN: computePairwiseNoChunkLagImbalanceBayes50ms_StoreyCorrThresh
 % or: computePairwiseNoChunkLagImbalanceBayes50ms_StoreyCorrThresh(0.05, 0.05, 100, 1000)
@@ -115,6 +129,10 @@ results.permutationMethod = ['Randomly reassign neuron-type labels while preserv
     'label assignment when too few eligible pairs are available.'];
 
 results.modelDefinitions = struct('H0_shiftSec', 0, 'H50_shiftSec', +lagShiftSec, 'Hneg50_shiftSec', -lagShiftSec);
+results.tailProbabilityMethod = [ ...
+    'David directional one-sided empirical probabilities with +1 correction. ' ...
+    'For H0 versus H+50, both p-values use count(null <= actual). ' ...
+    'For H0 versus H-50, both p-values use count(null >= actual).'];
 
 results.sessions = cell(1, nSess);
 
@@ -294,20 +312,26 @@ for sessInd = 1:nSess
     validHneg50 = nullLagImbalanceHneg50(isfinite(nullLagImbalanceHneg50));
 
     %% ====================================================================
-    %% empirical two-sided tail probabilities
+    %% David directional one-sided empirical p-values
     %% ====================================================================
 
-    pValH0 = empiricalTwoSidedTailProbability(actualLagImbalance, validH0);
-    pValH50 = empiricalTwoSidedTailProbability(actualLagImbalance, validH50);
-    pValHneg50 = empiricalTwoSidedTailProbability(actualLagImbalance, validHneg50);
+    % H+50 predicts a positive lag imbalance. A real value far to the left
+    % is inconsistent with H+50, so use the left tail for both H0 and H+50.
+    pValH0_left = empiricalLeftTailProbability(actualLagImbalance, validH0);
+    pValH50_left = empiricalLeftTailProbability(actualLagImbalance, validH50);
+
+    % H-50 predicts a negative lag imbalance. A real value far to the right
+    % is inconsistent with H-50, so use the right tail for both H0 and H-50.
+    pValH0_right = empiricalRightTailProbability(actualLagImbalance, validH0);
+    pValHneg50_right = empiricalRightTailProbability(actualLagImbalance, validHneg50);
 
     %% ====================================================================
     %% Bayes-style evidence ratios
     %% ====================================================================
 
-    evidenceRatio_H0_over_H50 = safeRatio(pValH0, pValH50);
+    evidenceRatio_H0_over_H50 = safeRatio(pValH0_left, pValH50_left);
 
-    evidenceRatio_H0_over_Hneg50 = safeRatio(pValH0, pValHneg50);
+    evidenceRatio_H0_over_Hneg50 = safeRatio(pValH0_right, pValHneg50_right);
 
     %% ====================================================================
     %% calculate descriptive null intervals
@@ -420,14 +444,19 @@ for sessInd = 1:nSess
     R.selectedNegativeCountsHneg50 = selectedNegativeCountsHneg50;
     R.selectedZeroCountsHneg50 = selectedZeroCountsHneg50;
 
-    % Tail probabilities and evidence ratios
-    R.pValH0 = pValH0;
-    R.pValH50 = pValH50;
-    R.pValHneg50 = pValHneg50;
+    % David directional one-sided p-values and evidence ratios
+    R.pValH0_left = pValH0_left;
+    R.pValH50_left = pValH50_left;
+    R.pValH0_right = pValH0_right;
+    R.pValHneg50_right = pValHneg50_right;
 
     R.evidenceRatio_H0_over_H50 = evidenceRatio_H0_over_H50;
     R.evidenceRatio_H0_over_Hneg50 = evidenceRatio_H0_over_Hneg50;
     R.lagImbalanceDefinition = '(nPositive - nNegative) / (nPositive + nNegative)';
+    R.tailProbabilityMethod = [ ...
+        'David directional one-sided empirical probabilities with +1 correction. ' ...
+        'H0 versus H+50 uses left tails: count(null <= actual). ' ...
+        'H0 versus H-50 uses right tails: count(null >= actual).'];
 
     R.modelConstruction = [ ...
         'Significance is fixed once across all upper-triangle pairs. ' ...
@@ -449,7 +478,9 @@ for sessInd = 1:nSess
     fprintf('\n%s lag-imbalance summary:\n', animalID);
     fprintf('  actual lag imbalance: %.6f\n', actualLagImbalance);
     fprintf('  valid null draws: H0=%d | H+50=%d | H-50=%d\n', numel(validH0), numel(validH50), numel(validHneg50));
-    fprintf('  p-values: H0=%.6f | H+50=%.6f | H-50=%.6f\n', pValH0, pValH50, pValHneg50);
+    fprintf('  directional one-sided p-values:\n');
+    fprintf('    H0 left=%.6f | H+50 left=%.6f\n', pValH0_left, pValH50_left);
+    fprintf('    H0 right=%.6f | H-50 right=%.6f\n', pValH0_right, pValHneg50_right);
     fprintf('  evidence ratios: H0/H+50=%.6f | H0/H-50=%.6f\n', evidenceRatio_H0_over_H50, evidenceRatio_H0_over_Hneg50);
     fprintf(['  median permutation tries: H0=%.1f | H+50=%.1f | ' 'H-50=%.1f\n'], median(permutationTriesH0), ...
         median(permutationTriesH50), median(permutationTriesHneg50));
@@ -788,10 +819,12 @@ counts.nNonzero = counts.nNegative + counts.nPositive;
 end
 
 %% ========================================================================
-%% helper: empirical two-sided tail probability
+%% helper: empirical left-tail probability
 %% ========================================================================
 
-function pVal = empiricalTwoSidedTailProbability(actualValue, nullValues)
+function pVal = empiricalLeftTailProbability(actualValue, nullValues)
+% Probability under the assumed model distribution of observing a lag
+% imbalance less than or equal to the actual lag imbalance.
 
 nullValues = nullValues(isfinite(nullValues));
 
@@ -800,7 +833,26 @@ if ~isfinite(actualValue) || isempty(nullValues)
     return;
 end
 
-pVal = (sum(abs(nullValues) >= abs(actualValue)) + 1) / (numel(nullValues) + 1);
+pVal = (sum(nullValues <= actualValue) + 1) / (numel(nullValues) + 1);
+
+end
+
+%% ========================================================================
+%% helper: empirical right-tail probability
+%% ========================================================================
+
+function pVal = empiricalRightTailProbability(actualValue, nullValues)
+% Probability under the assumed model distribution of observing a lag
+% imbalance greater than or equal to the actual lag imbalance.
+
+nullValues = nullValues(isfinite(nullValues));
+
+if ~isfinite(actualValue) || isempty(nullValues)
+    pVal = NaN;
+    return;
+end
+
+pVal = (sum(nullValues >= actualValue) + 1) / (numel(nullValues) + 1);
 
 end
 
