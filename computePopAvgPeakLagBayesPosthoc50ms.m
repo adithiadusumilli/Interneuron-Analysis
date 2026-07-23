@@ -1,6 +1,6 @@
 function computePopAvgPeakLagBayesPosthoc50ms(savedCrossCorrFile)
 % post hoc population-averaged peak-lag model comparison
-% This analysis uses peak lag itself as the model-comparison metric.
+% this analysis uses peak lag itself as the model-comparison metric
 
 % Expected input:
 %   output from: runCrossCorrelation_saveOnly_getMouseDataNames
@@ -11,25 +11,28 @@ function computePopAvgPeakLagBayesPosthoc50ms(savedCrossCorrFile)
 %   xcorrResults.sessions(i).permAccepted
 
 % Permutation blocks:
-%     1:100 = H0 raw peak lags
+%   1:100 = H0 raw peak lags
 %   101:200 = H+50 raw peak lags
 %   201:300 = H-50 raw peak lags
 
 % Post hoc transformations:
-%   H0 peak lags    = raw permutations 1:100
-%   H+50 peak lags  = raw permutations 101:200 + 0.050 s
-%   H-50 peak lags  = raw permutations 201:300 - 0.050 s
+%   H0 peak lags = raw permutations 1:100
+%   H+50 peak lags = raw permutations 101:200 + 0.050 s
+%   H-50 peak lags = raw permutations 201:300 - 0.050 s
 
-% For each model, the real peak lag is compared with the model-specific peak-lag distribution using an empirical two-sided compatibility probability centered on that distribution's median:
-%   pModel =
-%       fraction of null deviations from the model median that are
-%       at least as large as the real lag's deviation from that median
+% real peak lag is compared directly with each model-specific peak-lag distribution using one-tailed empirical probabilities with a +1 correction
 
-% Larger pModel: real peak lag is more typical under that model
+% H0 versus H+50 uses the left tail for both distributions:
+%   pH0_left = (# H0 peak lags <= real peak lag + 1) / (N_H0 + 1)
+%   pH50 = (# H+50 peak lags <= real peak lag + 1) / (N_H50 + 1)
 
-% Evidence ratios:
-%   H0/H+50 = pH0 / pH50
-%   H0/H-50 = pH0 / pHneg50
+% H0 versus H-50 uses the right tail for both distributions:
+%   pH0_right = (# H0 peak lags >= real peak lag + 1) / (N_H0 + 1)
+%   pHneg50 = (# H-50 peak lags >= real peak lag + 1) / (N_Hneg50 + 1)
+
+% Evidence ratios (bayes):
+%   H0/H+50 = pH0_left / pH50
+%   H0/H-50 = pH0_right / pHneg50
 
 % Interpretation:
 %   ratio > 1  favors H0
@@ -108,8 +111,10 @@ posthocResults.analysisDescription = [ ...
     'for H+50, and permutations 201:300 were shifted by -50 ms for H-50.'];
 
 posthocResults.probabilityDefinition = [ ...
-    'Empirical two-sided compatibility probability based on the absolute ' ...
-    'distance of the real peak lag from each model distribution median.'];
+    'Empirical one-tailed probabilities comparing the real peak lag directly ' ...
+    'with each model distribution. H0 versus H+50 uses left-tail probabilities ' ...
+    '(permutation lag <= real lag), whereas H0 versus H-50 uses right-tail ' ...
+    'probabilities (permutation lag >= real lag). A +1 correction is applied.'];
 
 posthocResults.permIndsH0 = permIndsH0;
 posthocResults.permIndsH50 = permIndsH50;
@@ -119,14 +124,16 @@ posthocResults.sessions = repmat(struct('mouseID', '', 'baseSessionName', '', 'p
     'realPeakLagSec', NaN, 'realPeakCorr', NaN, 'rawPeakLagsH0', [], 'rawPeakLagsH50', [], 'rawPeakLagsHneg50', [], ...
     'peakLagsH0', [], 'peakLagsH50', [], 'peakLagsHneg50', [], 'nValidH0', 0, 'nValidH50', 0, 'nValidHneg50', 0, ...
     'medianH0', NaN, 'medianH50', NaN, 'medianHneg50', NaN, 'meanH0', NaN, 'meanH50', NaN, 'meanHneg50', NaN, 'ci95H0', [NaN NaN], ...
-    'ci95H50', [NaN NaN], 'ci95Hneg50', [NaN NaN], 'pValH0', NaN, 'pValH50', NaN, 'pValHneg50', NaN, ...
+    'ci95H50', [NaN NaN], 'ci95Hneg50', [NaN NaN], 'pValH0_left', NaN, 'pValH0_right', NaN, ...
+    'pValH50', NaN, 'pValHneg50', NaN, ...
     'evidenceRatio_H0_over_H50', NaN, 'evidenceRatio_H0_over_Hneg50', NaN), nSess, 1);
 
 %% ---------------- summary arrays ----------------
 
 animalIDs = strings(nSess,1);
 realPeakLags = nan(nSess,1);
-pH0All = nan(nSess,1);
+pH0LeftAll = nan(nSess,1);
+pH0RightAll = nan(nSess,1);
 pH50All = nan(nSess,1);
 pHneg50All = nan(nSess,1);
 evidenceH0overH50 = nan(nSess,1);
@@ -225,19 +232,24 @@ for iSess = 1:nSess
     [meanH50, medianH50, ci95H50] = summarizeDistribution(peakLagsH50);
     [meanHneg50, medianHneg50, ci95Hneg50] = summarizeDistribution(peakLagsHneg50);
 
-    %% ---------- empirical compatibility probabilities ----------
+    %% ---------- one-tailed empirical probabilities ----------
 
-    pValH0 = empiricalCenteredTwoSidedProbability(realPeakLag, peakLagsH0);
-    pValH50 = empiricalCenteredTwoSidedProbability(realPeakLag, peakLagsH50);
-    pValHneg50 = empiricalCenteredTwoSidedProbability(realPeakLag, peakLagsHneg50);
+    % Compare H0 with H+50 using the left tail for both models.
+    pValH0_left = empiricalOneTailedProbability(realPeakLag, peakLagsH0, "left");
+    pValH50 = empiricalOneTailedProbability(realPeakLag, peakLagsH50, "left");
+
+    % Compare H0 with H-50 using the right tail for both models.
+    pValH0_right = empiricalOneTailedProbability(realPeakLag, peakLagsH0, "right");
+    pValHneg50 = empiricalOneTailedProbability(realPeakLag, peakLagsHneg50, "right");
 
     %% ---------- evidence ratios ----------
 
-    evidenceRatio_H0_over_H50 = safeRatio(pValH0, pValH50);
+    evidenceRatio_H0_over_H50 = safeRatio(pValH0_left, pValH50);
 
-    evidenceRatio_H0_over_Hneg50 = safeRatio(pValH0, pValHneg50);
+    evidenceRatio_H0_over_Hneg50 = safeRatio(pValH0_right, pValHneg50);
 
-    pH0All(iSess) = pValH0;
+    pH0LeftAll(iSess) = pValH0_left;
+    pH0RightAll(iSess) = pValH0_right;
     pH50All(iSess) = pValH50;
     pHneg50All(iSess) = pValHneg50;
 
@@ -287,7 +299,8 @@ for iSess = 1:nSess
     R.ci95H50 = ci95H50;
     R.ci95Hneg50 = ci95Hneg50;
 
-    R.pValH0 = pValH0;
+    R.pValH0_left = pValH0_left;
+    R.pValH0_right = pValH0_right;
     R.pValH50 = pValH50;
     R.pValHneg50 = pValHneg50;
 
@@ -305,7 +318,9 @@ for iSess = 1:nSess
 
     fprintf('model medians: H0=%+.3f | H+50=%+.3f | H-50=%+.3f s\n', medianH0, medianH50, medianHneg50);
 
-    fprintf('probabilities: pH0=%.6f | pH+50=%.6f | pH-50=%.6f\n', pValH0, pValH50, pValHneg50);
+    fprintf('left-tail probabilities:  pH0=%.6f | pH+50=%.6f\n', pValH0_left, pValH50);
+
+    fprintf('right-tail probabilities: pH0=%.6f | pH-50=%.6f\n', pValH0_right, pValHneg50);
 
     fprintf('evidence ratios: H0/H+50=%.6f | H0/H-50=%.6f\n', evidenceRatio_H0_over_H50, evidenceRatio_H0_over_Hneg50);
 
@@ -313,14 +328,17 @@ for iSess = 1:nSess
 
     if makePlots
         plotAnimalPeakLagDistributions(mouseID, realPeakLag, peakLagsH0, peakLagsH50, peakLagsHneg50, ...
-            nHistogramBins, pValH0, pValH50, pValHneg50, evidenceRatio_H0_over_H50, evidenceRatio_H0_over_Hneg50);
+            nHistogramBins, pValH0_left, pValH0_right, pValH50, pValHneg50, ...
+            evidenceRatio_H0_over_H50, evidenceRatio_H0_over_Hneg50);
     end
 end
 
 %% ---------------- summary table ----------------
 
-summaryTable = table(animalIDs, realPeakLags, pH0All, pH50All, pHneg50All, evidenceH0overH50, evidenceH0overHneg50, ...
-    'VariableNames', {'Animal', 'RealPeakLag_s', 'pValH0', 'pValH50', 'pValHneg50', 'Evidence_H0_over_H50', 'Evidence_H0_over_Hneg50'});
+summaryTable = table(animalIDs, realPeakLags, pH0LeftAll, pH0RightAll, pH50All, pHneg50All, ...
+    evidenceH0overH50, evidenceH0overHneg50, ...
+    'VariableNames', {'Animal', 'RealPeakLag_s', 'pValH0_left', 'pValH0_right', ...
+    'pValH50_left', 'pValHneg50_right', 'Evidence_H0_over_H50', 'Evidence_H0_over_Hneg50'});
 
 posthocResults.summaryTable = summaryTable;
 
@@ -340,12 +358,17 @@ fprintf('\nsaved post hoc peak-lag analysis to:\n%s\n', outFile);
 end
 
 %% ========================================================================
-%% helper: empirical model-centered two-sided probability
+%% helper: empirical one-tailed probability
 %% ========================================================================
 
-function pVal = empiricalCenteredTwoSidedProbability(realValue, modelDistribution)
-% Compares the distance of the real value from the model distribution's median with the distances of the model samples from that same median.
-% A larger value means the real peak lag is more typical under the model.
+function pVal = empiricalOneTailedProbability(realValue, modelDistribution, tail)
+% Compares the real peak lag directly with a model distribution.
+%
+% left:  P(X <= realValue)
+% right: P(X >= realValue)
+%
+% The +1 correction prevents a zero empirical probability when no
+% permutation falls in the requested tail.
 
 modelDistribution = modelDistribution(isfinite(modelDistribution));
 
@@ -354,13 +377,18 @@ if ~isfinite(realValue) || isempty(modelDistribution)
     return;
 end
 
-modelCenter = median(modelDistribution, 'omitnan');
+switch lower(string(tail))
+    case "left"
+        nExtreme = sum(modelDistribution <= realValue);
 
-realDeviation = abs(realValue - modelCenter);
+    case "right"
+        nExtreme = sum(modelDistribution >= realValue);
 
-nullDeviations = abs(modelDistribution - modelCenter);
+    otherwise
+        error('tail must be "left" or "right".');
+end
 
-pVal = (sum(nullDeviations >= realDeviation) + 1) / (numel(nullDeviations) + 1);
+pVal = (nExtreme + 1) / (numel(modelDistribution) + 1);
 
 end
 
@@ -416,7 +444,8 @@ function plotAnimalPeakLagDistributions( ...
     peakLagsH50, ...
     peakLagsHneg50, ...
     nHistogramBins, ...
-    pValH0, ...
+    pValH0Left, ...
+    pValH0Right, ...
     pValH50, ...
     pValHneg50, ...
     evidenceRatioH0H50, ...
@@ -483,7 +512,8 @@ xlim(commonXLimits);
 xlabel('Peak Lag (s)');
 ylabel('Count');
 
-title(sprintf('H0 | p = %.3f', pValH0));
+title(sprintf('H0 | p_{left} = %.3f | p_{right} = %.3f', ...
+    pValH0Left, pValH0Right));
 
 box off;
 set(gca, 'FontSize', 13, 'TickDir', 'out');
@@ -507,7 +537,7 @@ xlabel('Peak Lag (s)');
 ylabel('Count');
 
 title(sprintf( ...
-    'H+50 | p = %.3f | H0/H+50 = %.3f', ...
+    'H+50 | p_{left} = %.3f | H0/H+50 = %.3f', ...
     pValH50, ...
     evidenceRatioH0H50));
 
@@ -533,7 +563,7 @@ xlabel('Peak Lag (s)');
 ylabel('Count');
 
 title(sprintf( ...
-    'H-50 | p = %.3f | H0/H-50 = %.3f', ...
+    'H-50 | p_{right} = %.3f | H0/H-50 = %.3f', ...
     pValHneg50, ...
     evidenceRatioH0Hneg50));
 
