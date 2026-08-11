@@ -1,227 +1,534 @@
-function mapTransitionsToCanonicalBehaviors(folderPath)
-% map emg transition windows to canonical behavior labels from umap, manual annotation, and classifier-based labels
-% no actual umap or manual labels, they are just copies of classifier labeling (new animals dont have manual and UMAP format is diff)
+function mapTransitionsToCanonicalBehaviors(mouseID, baseSessionName, probeRegion)
+% mapTransitionsToCanonicalBehaviors
 
-% this function:
-%   - loads emg transition indices for each muscle channel
-%   - maps each transition index into the reduced time axis used for umap / manual labels
-%   - assigns behavior labels using a consistent canonical scheme across animals:
-%         umap regions:          1–7                       → regionLabelsPerTransition
-%         manual behaviors:      0–10 (0 = unlabeled)      → manualLabelsPerTransition
-%         classifier behaviors:  0–10 (0 = unlabeled)      → classifierLabelsPerTransition
-%   - manual and classifier labels are remapped so that:
-%         1..10 always correspond to the same ordered list in manBehvNames
-%         any behavior not in manBehvNames (e.g. nosepoke) is mapped to 0
-%   - saves outputs and plots per-muscle histograms for each label type
+% Uses David's getMouseDataNames() to locate the processed-data folder, then maps EMG transition windows to canonical behavior labels.
 
-% load transition indices (in downsampemg time base)
-load(fullfile(folderPath, 'EMG_Neural_AllChannels.mat'), 'validTransitionsCell');
+% For the newer animals, there are no separate manual/UMAP behavior labels in the old format, so the manual and region-label outputs are populated from the classifier labels to preserve downstream pipeline compatibility.
 
-% load behavior variables from umap
-load(fullfile(folderPath, 'UMAP.mat'), ...
-    'origDownsampEMGInd', ...          % mapping from reduced umap index to full downsampemg index
-    'classifierLabels', ...            % classifier label indices (0 = unlabeled)
-    'classifierBehvs', ...             % behavior names for classifier labels (per animal)
-    'regionBehvAssignments');          % kept for saving to preserve pipeline compatibility
+% INPUTS
+%   mouseID 
+%   baseSessionName session name used by getMouseDataNames
+%   probeRegion aka probe-region argument used by getMouseDataNames
 
-% canonical behavior name list and ordering (shared across animals)
-% indices 1..10 in the canonical space will always correspond to these names
-manBehvNames = {'climbdown','climbup','eating','grooming', ...
-                'jumpdown','jumping','rearing','still','walkflat','walkgrid'};
+% EXAMPLE
+%   mapTransitionsToCanonicalBehaviors('D050', baseSessionName, probeRegion)
 
-% lookup table for alternate behavior names across animals / label sources
+% This function:
+%   - uses getMouseDataNames to locate the animal/session data
+%   - loads EMG transition indices for each muscle channel
+%   - maps each transition index into the reduced behavior-label time axis
+%   - assigns behavior labels using a consistent canonical scheme
+
+% Canonical output:
+%   regionLabelsPerTransition      0-10
+%   manualLabelsPerTransition      0-10
+%   classifierLabelsPerTransition  0-10
+
+% Canonical behavior ordering:
+%   1  climbdown
+%   2  climbup
+%   3  eating
+%   4  grooming
+%   5  jumpdown
+%   6  jumping
+%   7  rearing
+%   8  still
+%   9  walkflat
+%   10 walkgrid
+
+% Behaviors not represented in the canonical list are mapped to 0.
+
+%% ============================================================
+%% Locate files using David's getMouseDataNames
+%% ============================================================
+
+dataNames = getMouseDataNames(mouseID, baseSessionName, probeRegion);
+
+if ~isfield(dataNames, 'processedDataFolder') || isempty(dataNames.processedDataFolder)
+
+    error(['getMouseDataNames did not return a valid ' 'processedDataFolder for %s.'], mouseID);
+end
+
+folderPath = dataNames.processedDataFolder;
+
+fprintf('\n========================================\n');
+fprintf('mapping transition behaviors for %s\n', mouseID);
+fprintf('========================================\n');
+fprintf('processed data folder:\n%s\n\n', folderPath);
+
+%% ============================================================
+%% Files
+%% ============================================================
+
+emgFile = fullfile(folderPath, 'EMG_Neural_AllChannels.mat');
+umapFile = fullfile(folderPath, 'UMAP.mat');
+
+if ~isfile(emgFile)
+    error('Missing EMG file:\n%s', emgFile);
+end
+
+if ~isfile(umapFile)
+    error('Missing UMAP file:\n%s', umapFile);
+end
+
+%% ============================================================
+%% Load transition indices
+%% ============================================================
+
+E = load(emgFile, 'validTransitionsCell');
+
+if ~isfield(E, 'validTransitionsCell')
+    error('%s does not contain validTransitionsCell.', emgFile);
+end
+
+validTransitionsCell = E.validTransitionsCell;
+
+%% ============================================================
+%% Load behavior variables
+%% ============================================================
+
+U = load(umapFile, ...
+    'origDownsampEMGInd', ...
+    'classifierLabels', ...
+    'classifierBehvs', ...
+    'regionBehvAssignments');
+
+requiredFields = { ...
+    'origDownsampEMGInd', ...
+    'classifierLabels', ...
+    'classifierBehvs'};
+
+for iField = 1:numel(requiredFields)
+
+    thisField = requiredFields{iField};
+
+    if ~isfield(U, thisField)
+        error('%s does not contain required variable %s.', ...
+            umapFile, thisField);
+    end
+end
+
+origDownsampEMGInd = U.origDownsampEMGInd;
+classifierLabels = U.classifierLabels;
+classifierBehvs = U.classifierBehvs;
+
+% Preserve this variable for downstream compatibility if it exists.
+if isfield(U, 'regionBehvAssignments')
+    regionBehvAssignments = U.regionBehvAssignments;
+else
+    regionBehvAssignments = [];
+end
+
+%% ============================================================
+%% Canonical behavior definitions
+%% ============================================================
+
+manBehvNames = { ...
+    'climbdown', ...
+    'climbup', ...
+    'eating', ...
+    'grooming', ...
+    'jumpdown', ...
+    'jumping', ...
+    'rearing', ...
+    'still', ...
+    'walkflat', ...
+    'walkgrid'};
+
+%% ============================================================
+%% Lookup table for alternate names
+%% ============================================================
+
 canonicalLookup = containers.Map;
+
 canonicalLookup('climbdown')  = 1;
 canonicalLookup('climbup')    = 2;
+
 canonicalLookup('eating')     = 3;
 canonicalLookup('eat')        = 3;
+
 canonicalLookup('grooming')   = 4;
 canonicalLookup('groom')      = 4;
+
 canonicalLookup('jumpdown')   = 5;
+
 canonicalLookup('jumping')    = 6;
 canonicalLookup('jumpacross') = 6;
+
 canonicalLookup('rearing')    = 7;
 canonicalLookup('rear')       = 7;
+
 canonicalLookup('still')      = 8;
+
 canonicalLookup('walkflat')   = 9;
 canonicalLookup('walkgrid')   = 10;
 
-%% build manual-label remap: per-animal manual index -> canonical index (0..10)
+%% ============================================================
+%% Build manual-label remap
+%% ============================================================
+% For the new animals, the "manual" labels are deliberately copied
+% from the classifier labeling to preserve compatibility with older
+% downstream analysis code.
+%
+% Per-animal classifier index -> canonical index 0:10.
 
 nManualBehv = numel(classifierBehvs);
-manBehvNumbers = zeros(1, nManualBehv);  % 0 = behavior not in canonical list (e.g. nosepoke)
+
+manBehvNumbers = zeros(1, nManualBehv);
 
 for iBehv = 1:nManualBehv
+
     thisName = classifierBehvs{iBehv};
-    cleanName = lower(strrep(strrep(thisName, ' ', ''), '_', ''));
+
+    cleanName = lower( ...
+        strrep( ...
+        strrep(thisName, ' ', ''), ...
+        '_', ''));
 
     if isKey(canonicalLookup, cleanName)
-        manBehvNumbers(iBehv) = canonicalLookup(cleanName);
+
+        manBehvNumbers(iBehv) = ...
+            canonicalLookup(cleanName);
+
     else
-        % this behavior name is not in the canonical list
-        % thus map to 0 and treat as unlabeled in canonical manual-label space
+
+        % Behavior not represented in canonical list.
         manBehvNumbers(iBehv) = 0;
+
     end
 end
 
-%% build classifier-label remap: per-animal classifier index -> canonical index (0..10)
+%% ============================================================
+%% Build classifier-label remap
+%% ============================================================
 
 nClassBehv = numel(classifierBehvs);
-classBehvNumbers = zeros(1, nClassBehv);  % 0 = behavior not in canonical list
+
+classBehvNumbers = zeros(1, nClassBehv);
 
 for iBehv = 1:nClassBehv
+
     thisName = classifierBehvs{iBehv};
-    cleanName = lower(strrep(strrep(thisName, ' ', ''), '_', ''));
+
+    cleanName = lower( ...
+        strrep( ...
+        strrep(thisName, ' ', ''), ...
+        '_', ''));
 
     if isKey(canonicalLookup, cleanName)
-        classBehvNumbers(iBehv) = canonicalLookup(cleanName);
+
+        classBehvNumbers(iBehv) = ...
+            canonicalLookup(cleanName);
+
     else
-        % classifier behavior not in canonical list → map to 0
+
         classBehvNumbers(iBehv) = 0;
+
     end
 end
 
-%% build reverse map from full (~5m) downsampemg index to reduced umap index (~4m)
+%% ============================================================
+%% Print behavior remapping
+%% ============================================================
 
-% map(k) gives the umap index corresponding to downsampemg index k
-map = nan(max(origDownsampEMGInd), 1);
-map(origDownsampEMGInd) = 1:numel(origDownsampEMGInd);
+fprintf('classifier behavior -> canonical behavior mapping:\n');
 
-% outputs: 1 cell per muscle (1x4), each storing label per transition
-regionLabelsPerTransition = cell(1, 4);
-manualLabelsPerTransition = cell(1, 4);
-classifierLabelsPerTransition = cell(1, 4);
+for iBehv = 1:numel(classifierBehvs)
 
-%% loop over each muscle channel (1–4)
+    canonicalInd = classBehvNumbers(iBehv);
 
-for ch = 1:4
-    validTransitions = validTransitionsCell{ch};  % transition indices for this muscle
+    if canonicalInd == 0
 
-    regLabels = nan(size(validTransitions));    % umap region labels 1–7
-    manLabels = nan(size(validTransitions));    % manual canonical labels 0–10
-    classLabels = nan(size(validTransitions));  % classifier canonical labels 0–10
+        canonicalName = 'UNTRACKED / 0';
 
-    for i = 1:length(validTransitions)
+    else
+
+        canonicalName = manBehvNames{canonicalInd};
+
+    end
+
+    fprintf('  %2d: %-20s -> %2d (%s)\n', ...
+        iBehv, ...
+        classifierBehvs{iBehv}, ...
+        canonicalInd, ...
+        canonicalName);
+
+end
+
+%% ============================================================
+%% Build reverse map:
+%% full downsampled-EMG index -> reduced behavior-label index
+%% ============================================================
+
+origDownsampEMGInd = origDownsampEMGInd(:);
+
+if isempty(origDownsampEMGInd)
+    error('origDownsampEMGInd is empty.');
+end
+
+maxFullIndex = max(origDownsampEMGInd);
+
+map = nan(maxFullIndex, 1);
+
+map(origDownsampEMGInd) = ...
+    1:numel(origDownsampEMGInd);
+
+%% ============================================================
+%% Initialize outputs
+%% ============================================================
+
+nChannels = numel(validTransitionsCell);
+
+regionLabelsPerTransition = cell(1, nChannels);
+manualLabelsPerTransition = cell(1, nChannels);
+classifierLabelsPerTransition = cell(1, nChannels);
+
+%% ============================================================
+%% Loop over each muscle channel
+%% ============================================================
+
+for ch = 1:nChannels
+
+    validTransitions = validTransitionsCell{ch};
+
+    regLabels = nan(size(validTransitions));
+    manLabels = nan(size(validTransitions));
+    classLabels = nan(size(validTransitions));
+
+    for i = 1:numel(validTransitions)
+
         transitionIdx = validTransitions(i);
 
-        % sanity check for map bounds
-        if transitionIdx < 1 || transitionIdx > numel(map)
-            error('mapTransitionsToCanonicalBehaviors:transitionIdxOutOfRange', ...
-                'transition index %d out of range for map (1..%d)', ...
-                transitionIdx, numel(map));
+        %% ---------- map bounds ----------
+
+        if transitionIdx < 1 || ...
+                transitionIdx > numel(map)
+
+            error( ...
+                'mapTransitionsToCanonicalBehaviors:transitionIdxOutOfRange', ...
+                ['transition index %d is out of range for map ' ...
+                 '(1..%d)'], ...
+                transitionIdx, ...
+                numel(map));
         end
 
-        % get the index into the reduced umap / behavior-label time base
+        %% ---------- convert to reduced behavior time base ----------
+
         umapIdx = map(transitionIdx);
 
         if isnan(umapIdx)
-            % this transition does not have a corresponding umap/manual index
-            % leave all labels as nan and continue
+
+            % No corresponding reduced behavior-label sample.
+            % Leave output labels as NaN.
             continue;
+
         end
 
-        %% umap region mapping → use classifier labels to preserve pipeline
-        % region labels no longer exist separately, so keep the field
-        % but populate it from classifier labels
+        %% ========================================================
+        %% Region label
+        %% ========================================================
+        % No separate old-style UMAP-region labeling exists for the
+        % newer animals. Populate this compatibility field from the
+        % classifier labels.
 
-        regionVal = classifierLabels(umapIdx);  % 0 = unlabeled, >0 indexes classifierBehvs
+        regionVal = classifierLabels(umapIdx);
 
         if regionVal == 0
+
             regLabels(i) = 0;
+
         else
-            if regionVal < 1 || regionVal > numel(classBehvNumbers)
-                error('mapTransitionsToCanonicalBehaviors:regionLabelOutOfRange', ...
-                    'region label index %d out of range (1..%d)', ...
-                    regionVal, numel(classBehvNumbers));
+
+            if regionVal < 1 || ...
+                    regionVal > numel(classBehvNumbers)
+
+                error( ...
+                    'mapTransitionsToCanonicalBehaviors:regionLabelOutOfRange', ...
+                    ['region/classifier label index %d is out of ' ...
+                     'range (1..%d)'], ...
+                    regionVal, ...
+                    numel(classBehvNumbers));
             end
-            regLabels(i) = classBehvNumbers(regionVal);
+
+            regLabels(i) = ...
+                classBehvNumbers(regionVal);
+
         end
 
-        %% manual label mapping → use classifier labels to preserve pipeline
-        % manual labels no longer exist separately, so keep the manual field
-        % but populate it using classifier labels to preserve downstream code
+        %% ========================================================
+        %% Manual label
+        %% ========================================================
+        % For these animals, populate the manual-label compatibility
+        % field from classifierLabels.
 
-        manualVal = classifierLabels(umapIdx);  % 0 = unlabeled, >0 indexes classifierBehvs
+        manualVal = classifierLabels(umapIdx);
 
         if manualVal == 0
-            % unlabeled in original annotations → keep as 0
+
             manLabels(i) = 0;
+
         else
-            if manualVal < 1 || manualVal > numel(manBehvNumbers)
-                error('mapTransitionsToCanonicalBehaviors:manualLabelOutOfRange', ...
-                    'manual label index %d out of range (1..%d)', ...
-                    manualVal, numel(manBehvNumbers));
+
+            if manualVal < 1 || ...
+                    manualVal > numel(manBehvNumbers)
+
+                error( ...
+                    'mapTransitionsToCanonicalBehaviors:manualLabelOutOfRange', ...
+                    ['manual/classifier label index %d is out of ' ...
+                     'range (1..%d)'], ...
+                    manualVal, ...
+                    numel(manBehvNumbers));
             end
-            % remap to canonical index; can be 0 if this behavior is not tracked
-            manLabels(i) = manBehvNumbers(manualVal);
+
+            manLabels(i) = ...
+                manBehvNumbers(manualVal);
+
         end
 
-        %% classifier label mapping → canonical 0..10
+        %% ========================================================
+        %% Classifier label
+        %% ========================================================
 
-        classVal = classifierLabels(umapIdx);  % 0 = unlabeled, >0 indexes classifierBehvs
+        classVal = classifierLabels(umapIdx);
 
         if classVal == 0
-            % unlabeled by classifier → keep as 0
+
             classLabels(i) = 0;
+
         else
-            if classVal < 1 || classVal > numel(classBehvNumbers)
-                error('mapTransitionsToCanonicalBehaviors:classifierLabelOutOfRange', ...
-                    'classifier label index %d out of range (1..%d)', ...
-                    classVal, numel(classBehvNumbers));
+
+            if classVal < 1 || ...
+                    classVal > numel(classBehvNumbers)
+
+                error( ...
+                    'mapTransitionsToCanonicalBehaviors:classifierLabelOutOfRange', ...
+                    ['classifier label index %d is out of range ' ...
+                     '(1..%d)'], ...
+                    classVal, ...
+                    numel(classBehvNumbers));
             end
-            % remap to canonical index; can be 0 if this classifier behavior is not tracked
-            classLabels(i) = classBehvNumbers(classVal);
+
+            classLabels(i) = ...
+                classBehvNumbers(classVal);
+
         end
     end
 
     regionLabelsPerTransition{ch} = regLabels;
     manualLabelsPerTransition{ch} = manLabels;
     classifierLabelsPerTransition{ch} = classLabels;
+
+    fprintf(['channel %d: %d transitions | ' ...
+             '%d mapped | %d unmapped\n'], ...
+        ch, ...
+        numel(validTransitions), ...
+        nnz(~isnan(classLabels)), ...
+        nnz(isnan(classLabels)));
 end
 
-%% save output variables (including canonical behavior name list)
+%% ============================================================
+%% Save output variables
+%% ============================================================
 
 analyzedBehaviors = classifierBehvs;
 
-save(fullfile(folderPath, 'transitionCanonicalBehaviorLabels.mat'), ...
-    'regionLabelsPerTransition', 'manualLabelsPerTransition', ...
+outFile = fullfile( ...
+    folderPath, ...
+    'transitionCanonicalBehaviorLabels.mat');
+
+save(outFile, ...
+    'regionLabelsPerTransition', ...
+    'manualLabelsPerTransition', ...
     'classifierLabelsPerTransition', ...
-    'classifierBehvs', 'manBehvNames', 'analyzedBehaviors', ...
-    'regionBehvAssignments');
+    'classifierBehvs', ...
+    'manBehvNames', ...
+    'analyzedBehaviors', ...
+    'regionBehvAssignments', ...
+    'mouseID', ...
+    'baseSessionName', ...
+    'probeRegion');
 
-%% plot histogram of transitions by umap region for each muscle
+fprintf('\nsaved canonical transition labels:\n%s\n', outFile);
 
-figure('Name', 'Transitions by UMAP Region (Per Muscle)', 'Color', 'w');
-tiledlayout(1, 4, 'Padding', 'compact');
-for ch = 1:4
+%% ============================================================
+%% Plot histogram: region compatibility labels
+%% ============================================================
+
+figure( ...
+    'Name', ...
+    sprintf('%s Transitions by Region Label', mouseID), ...
+    'Color', 'w');
+
+tiledlayout(1, nChannels, ...
+    'Padding', 'compact');
+
+for ch = 1:nChannels
+
     nexttile;
-    histogram(regionLabelsPerTransition{ch}, 'BinMethod', 'integers', 'FaceColor', 'b');
-    xlabel('umap region (1–7)');
+
+    histogram( ...
+        regionLabelsPerTransition{ch}, ...
+        'BinMethod', 'integers', ...
+        'FaceColor', 'b');
+
+    xlabel('canonical region label (0-10)');
     ylabel('count');
     title(sprintf('muscle %d', ch));
+
 end
 
-%% plot histogram of transitions by manual canonical label for each muscle
+%% ============================================================
+%% Plot histogram: manual compatibility labels
+%% ============================================================
 
-figure('Name', 'Transitions by Manual Label (Per Muscle)', 'Color', 'w');
-tiledlayout(1, 4, 'Padding', 'compact');
-for ch = 1:4
+figure( ...
+    'Name', ...
+    sprintf('%s Transitions by Manual Label', mouseID), ...
+    'Color', 'w');
+
+tiledlayout(1, nChannels, ...
+    'Padding', 'compact');
+
+for ch = 1:nChannels
+
     nexttile;
-    histogram(manualLabelsPerTransition{ch}, 'BinMethod', 'integers', 'FaceColor', 'g');
-    xlabel('manual canonical label (0–10)');
+
+    histogram( ...
+        manualLabelsPerTransition{ch}, ...
+        'BinMethod', 'integers', ...
+        'FaceColor', 'g');
+
+    xlabel('manual canonical label (0-10)');
     ylabel('count');
     title(sprintf('muscle %d', ch));
+
 end
 
-%% plot histogram of transitions by classifier canonical label for each muscle
+%% ============================================================
+%% Plot histogram: classifier canonical labels
+%% ============================================================
 
-figure('Name', 'Transitions by Classifier Label (Per Muscle)', 'Color', 'w');
-tiledlayout(1, 4, 'Padding', 'compact');
-for ch = 1:4
+figure( ...
+    'Name', ...
+    sprintf('%s Transitions by Classifier Label', mouseID), ...
+    'Color', 'w');
+
+tiledlayout(1, nChannels, ...
+    'Padding', 'compact');
+
+for ch = 1:nChannels
+
     nexttile;
-    histogram(classifierLabelsPerTransition{ch}, 'BinMethod', 'integers', 'FaceColor', 'r');
-    xlabel('classifier canonical label (0–10)');
+
+    histogram( ...
+        classifierLabelsPerTransition{ch}, ...
+        'BinMethod', 'integers', ...
+        'FaceColor', 'r');
+
+    xlabel('classifier canonical label (0-10)');
     ylabel('count');
     title(sprintf('muscle %d', ch));
+
 end
+
 end
