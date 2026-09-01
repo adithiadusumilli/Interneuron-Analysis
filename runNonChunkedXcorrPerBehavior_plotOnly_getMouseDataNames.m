@@ -220,16 +220,49 @@ for s = 1:nSess
         peakCorrMat(s,bIdx) = scalarOrNaN(B,'peakCorr');
         nTimepointsMat(s,bIdx) = scalarOrNaN(B,'nTimepoints');
 
-        if isfield(B,'lagCI') && numel(B.lagCI) >= 2
-            lagCILowMat(s,bIdx) = B.lagCI(1);
-            lagCIHighMat(s,bIdx) = B.lagCI(2);
-        end
-
+        % Build ONE definitive set of valid permutation lags and use it
+        % everywhere: dot-plot CI, histograms, and printed table.
+        %
+        % This intentionally does NOT trust the saved B.lagCI, because that
+        % field may be stale (for example, from the earlier 100-permutation
+        % run before the file was extended to 300 permutations).
         if isfield(B,'permPeakLags') && ~isempty(B.permPeakLags)
-            x = B.permPeakLags(:)';
-            permLagCell{s,bIdx} = x(isfinite(x));
+
+            x = double(B.permPeakLags(:)');
+
+            validMask = isfinite(x);
+
+            % Honor the saved accepted mask when present.
+            if isfield(B,'permAccepted') && ~isempty(B.permAccepted)
+
+                acc = B.permAccepted(:)';
+
+                if numel(acc) >= numel(x)
+                    acc = acc(1:numel(x));
+                    validMask = validMask & isfinite(acc) & (acc == 1);
+                else
+                    warning(['%s behavior %d: permAccepted is shorter than ' ...
+                             'permPeakLags; using finite lag values only.'], ...
+                             animalLabels(s),beh);
+                end
+            end
+
+            validPermLags = x(validMask);
+            permLagCell{s,bIdx} = validPermLags;
+
+            if numel(validPermLags) >= 2
+                thisCI = prctile(validPermLags,[2.5 97.5]);
+                lagCILowMat(s,bIdx) = thisCI(1);
+                lagCIHighMat(s,bIdx) = thisCI(2);
+            else
+                lagCILowMat(s,bIdx) = NaN;
+                lagCIHighMat(s,bIdx) = NaN;
+            end
+
         else
             permLagCell{s,bIdx} = [];
+            lagCILowMat(s,bIdx) = NaN;
+            lagCIHighMat(s,bIdx) = NaN;
         end
     end
 end
@@ -317,7 +350,18 @@ for bIdx = 1:nBeh
         hi = lagCIHighMat(s,bIdx);
 
         if isfinite(lo) && isfinite(hi)
+
+            % Vertical 95% permutation interval.
             line([xPos(s) xPos(s)],[lo hi], ...
+                'Color',[0.6 0.6 0.6], ...
+                'LineWidth',2);
+
+            % Small endpoint caps make the exact bounds easier to read.
+            capHalfWidth = 0.08;
+            line([xPos(s)-capHalfWidth xPos(s)+capHalfWidth],[lo lo], ...
+                'Color',[0.6 0.6 0.6], ...
+                'LineWidth',2);
+            line([xPos(s)-capHalfWidth xPos(s)+capHalfWidth],[hi hi], ...
                 'Color',[0.6 0.6 0.6], ...
                 'LineWidth',2);
         end
@@ -377,7 +421,8 @@ for bIdx = 1:nBeh
             'FaceColor',[0.3 0.6 0.8], ...
             'EdgeColor','none');
 
-        prcLag = prctile(permLags,[2.5 97.5]);
+        % Use the EXACT SAME CI already stored for the dot plot/table.
+        prcLag = [lagCILowMat(s,bIdx), lagCIHighMat(s,bIdx)];
 
         xline(prcLag(1),'--', ...
             'Color',[0.2 0.2 0.2], ...
