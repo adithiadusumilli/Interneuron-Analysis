@@ -24,7 +24,7 @@ function paperNoChunkBehaviorPlot(noChunkFile)
 
 if nargin < 1 || isempty(noChunkFile)
     noChunkFile = ...
-        "X:\David\AnalysesData\nonchunked_xcorr_by_classifier_cortex_allSessions_saved.mat";
+        "X:\David\AnalysesData\nonchunked_xcorr_by_classifier_cortex_all6Sessions_saved.mat";
 end
 
 %% ---- export directory ----
