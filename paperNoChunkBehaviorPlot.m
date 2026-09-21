@@ -6,23 +6,37 @@ function paperNoChunkBehaviorPlot(noChunkFile)
 %   1. separate 2x5 lag-vs-correlation figures
 %        - one figure per animal
 %        - each subpanel = one behavior
-
+%
 %   2. one summary 2x5 figure
 %        - each subpanel = one behavior
 %        - each panel contains all animals:
 %            black dot = actual peak lag
 %            slightly offset gray vertical line = null 95% range
-
+%
 %   3. separate 2x5 permutation histogram figures
 %        - one figure per animal
 %        - each subpanel = one behavior
 
 % run:
-% plotSavedNoChunkXCByBehavior_AllAnimalsSummary("X:\David\AnalysesData\nonchunked_xcorr_by_classifier_cortex_allSessions_saved.mat")
+% paperNoChunkBehaviorPlot
 
-arguments
-    noChunkFile (1,1) string
+%% ---- default input file ----
+
+if nargin < 1 || isempty(noChunkFile)
+    noChunkFile = ...
+        "X:\David\AnalysesData\nonchunked_xcorr_by_classifier_cortex_allSessions_saved.mat";
 end
+
+%% ---- export directory ----
+
+saveDir = ...
+    "X:\David\AnalysesData\InterneuronAnalyses\AA Paper Plots\no-chunk behaviors";
+
+if ~exist(saveDir, 'dir')
+    mkdir(saveDir);
+end
+
+%% ---- behaviors ----
 
 behNums = 1:10;
 
@@ -242,7 +256,7 @@ end
 
 for s = 1:nSess
 
-    figure( ...
+    figXC = figure( ...
         'Name', sprintf( ...
             '%s M1 lag vs. correlation', ...
             animalIDs{s}), ...
@@ -396,7 +410,6 @@ for s = 1:nSess
             if isgraphics(hCorr25)
 
                 legHandles(end+1) = hCorr25;
-
                 legLabels{end+1} = ...
                     '2.5% shift control correlation';
             end
@@ -404,20 +417,17 @@ for s = 1:nSess
             if isgraphics(hCorr97)
 
                 legHandles(end+1) = hCorr97;
-
                 legLabels{end+1} = ...
                     '97.5% shift control correlation';
             end
 
             legHandles(end+1) = hPeak;
-
             legLabels{end+1} = ...
                 'Actual peak lag';
 
             if isgraphics(hLag1)
 
                 legHandles(end+1) = hLag1;
-
                 legLabels{end+1} = ...
                     '95% permutation lag bounds';
             end
@@ -434,16 +444,25 @@ for s = 1:nSess
             firstLegendDone = true;
         end
     end
+
+    % Export this animal's lag-vs-correlation figure as vector PDF
+    exportgraphics( ...
+        figXC, ...
+        fullfile( ...
+            saveDir, ...
+            sprintf('%s_lag_vs_correlation.pdf', animalIDs{s})), ...
+        'ContentType', 'vector', ...
+        'BackgroundColor', 'white');
 end
 
 
 %% =========================================================
-%  plot 3: per-animal 2x5 permutation histograms
+%  plot 2: per-animal 2x5 permutation histograms
 % ==========================================================
 
 for s = 1:nSess
 
-    figure( ...
+    figPerm = figure( ...
         'Name', sprintf( ...
             '%s peak lags vs. permutation distribution', ...
             animalIDs{s}), ...
@@ -583,14 +602,23 @@ for s = 1:nSess
         lgd.FontSize = legendFont;
         lgd.Box = 'off';
     end
+
+    % Export this animal's permutation figure as vector PDF
+    exportgraphics( ...
+        figPerm, ...
+        fullfile( ...
+            saveDir, ...
+            sprintf('%s_permutation_distribution.pdf', animalIDs{s})), ...
+        'ContentType', 'vector', ...
+        'BackgroundColor', 'white');
 end
 
 
 %% =========================================================
-%  plot 2: summary 2x5 figure with all animals in each behavior
+%  plot 3: summary 2x5 figure with all animals in each behavior
 % ==========================================================
 
-figure( ...
+figSummary = figure( ...
     'Name', ...
     'Actual peak lags vs. permutation control range', ...
     'Color', 'w');
@@ -719,5 +747,16 @@ lgd = legend( ...
 lgd.Layout.Tile = 'south';
 lgd.FontSize = legendFont;
 lgd.Box = 'off';
+
+% Export all-animal summary figure as vector PDF
+exportgraphics( ...
+    figSummary, ...
+    fullfile( ...
+        saveDir, ...
+        'actual_peak_lags_vs_permutation_control_range.pdf'), ...
+    'ContentType', 'vector', ...
+    'BackgroundColor', 'white');
+
+fprintf('\nVector PDFs saved to:\n%s\n', saveDir);
 
 end
