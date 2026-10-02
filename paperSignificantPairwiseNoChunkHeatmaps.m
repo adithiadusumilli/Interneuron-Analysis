@@ -1,10 +1,10 @@
 function paperSignificantPairwiseNoChunkHeatmaps(combinedMatFile)
-% Heatmaps of significant pairwise NO-CHUNK peak correlations per session.
+% Heatmaps of significant pairwise NO-CHUNK peak lags per session.
 %
 % Uses new Storey/FDR-corrected pairwise output:
 %   R.actualPairStats.rows
 %   R.actualPairStats.cols
-%   R.actualPairStats.realVals
+%   R.actualPairStats.lagVals
 %   R.actualPairStats.sigFDRMask
 %
 % rows = local interneuron indices (1:nInt)
@@ -31,6 +31,12 @@ arguments
     combinedMatFile (1,1) string = ...
         "C:\Users\mirilab\Documents\GlobusTransfer\pairwiseNoChunkLagImbalanceBayes50ms_StoreyCorrThresh_DAVID_UPDATE.mat"
 end
+
+%% ---- formatting ----
+
+fontSize = 10;
+axesLineWidth = 0.5;
+tickLength = [0.025 0.025];
 
 %% ---- load results ----
 
@@ -102,7 +108,7 @@ for sess = 1:numSessions
 
     if ~isfield(P, 'rows') || ...
        ~isfield(P, 'cols') || ...
-       ~isfield(P, 'realVals') || ...
+       ~isfield(P, 'lagVals') || ...
        ~isfield(P, 'sigFDRMask')
 
         warning( ...
@@ -114,13 +120,13 @@ for sess = 1:numSessions
 
     rows = P.rows(:);
     cols = P.cols(:);
-    realVals = P.realVals(:);
+    lagVals = P.lagVals(:);
 
     % Storey/FDR-corrected significance calculated upstream
     sigMask = logical(P.sigFDRMask(:));
 
     if numel(rows) ~= numel(cols) || ...
-       numel(rows) ~= numel(realVals) || ...
+       numel(rows) ~= numel(lagVals) || ...
        numel(rows) ~= numel(sigMask)
 
         warning( ...
@@ -135,19 +141,19 @@ for sess = 1:numSessions
     nInt = double(R.nInt);
     nPyr = double(R.nPyr);
 
-    %% ---- convert global pyramidal indices to local pyramidal indices ----
+    %% ---- convert global pyramidal indices to local indices ----
     %
-    % Example D020:
+    % Global neuron ordering:
     %
-    %   interneurons = global neurons 1:15
-    %   pyramidal    = global neurons 16:82
+    %   interneurons = 1:nInt
+    %   pyramidal    = nInt+1:nAll
     %
     % For the nInt x nPyr heatmap:
     %
-    %   global pyr 16 -> local pyr 1
-    %   global pyr 17 -> local pyr 2
+    %   global pyramidal neuron nInt+1 -> local pyramidal neuron 1
+    %   global pyramidal neuron nInt+2 -> local pyramidal neuron 2
     %   ...
-    %   global pyr 82 -> local pyr 67
+    %   global pyramidal neuron nAll   -> local pyramidal neuron nPyr
 
     pyrCols = cols - nInt;
 
@@ -182,19 +188,19 @@ for sess = 1:numSessions
         end
     end
 
-    %% ---- construct significant correlation matrix ----
+    %% ---- construct significant peak-lag matrix ----
 
     sigMat = nan(nInt, nPyr);
     sigPairs = 0;
 
-    for k = 1:numel(realVals)
+    for k = 1:numel(lagVals)
 
         if sigMask(k) && ...
-           ~isnan(realVals(k)) && ...
+           ~isnan(lagVals(k)) && ...
            ~isnan(rows(k)) && ...
            ~isnan(pyrCols(k))
 
-            sigMat(rows(k), pyrCols(k)) = realVals(k);
+            sigMat(rows(k), pyrCols(k)) = lagVals(k);
 
             sigPairs = sigPairs + 1;
         end
@@ -205,58 +211,76 @@ for sess = 1:numSessions
     %% ---- print information ----
 
     fprintf('\n=== sess %d: %s ===\n', sess, animalID);
-    fprintf('matrix size: %d interneurons x %d pyramidal neurons\n', ...
+
+    fprintf( ...
+        'matrix size: %d interneurons x %d pyramidal neurons\n', ...
         nInt, nPyr);
-    fprintf('pairs: %d total | %d significant\n', ...
+
+    fprintf( ...
+        'pairs: %d total | %d significant\n', ...
         totalPairs, sigPairs);
-
-    %% ---- base label ----
-
-    baseLabel = sprintf('sess %d', sess);
-
-    if isfield(R, 'baseDir') && ~isempty(R.baseDir)
-
-        baseLabel = sprintf( ...
-            'sess %d – %s', ...
-            sess, ...
-            R.baseDir);
-    end
 
     %% ---- plot heatmap ----
 
     figure( ...
         'Name', ...
-        sprintf('sess %d – NO-CHUNK significant peak corr', sess), ...
+        sprintf('%s peak lags per significant pair', animalID), ...
         'Color', 'w');
 
     hImg = imagesc(sigMat);
 
+    % Nonsignificant pairs are transparent
     set(hImg, ...
         'AlphaData', ...
-        ~isnan(sigMat));  % hide nonsig pairs
+        ~isnan(sigMat));
 
-    set(gca, ...
-        'Color', 'k');    % black background for NaNs
+    % Black background for nonsignificant pairs
+    ax = gca;
+
+    set(ax, ...
+        'Color', 'k');
 
     axis xy;
 
     colormap(parula);
 
+    %% ---- colorbar ----
+
     c = colorbar;
-    ylabel(c, 'peak correlation');
 
-    xlabel('pyramidal neurons');
-    ylabel('interneurons');
+    ylabel(c, ...
+        'Peak lag (seconds)', ...
+        'FontSize', fontSize);
 
-    title(sprintf( ...
-        '%s – NO-CHUNK significant pairs: %d / %d', ...
-        baseLabel, ...
-        sigPairs, ...
-        totalPairs));
+    c.FontSize = fontSize;
+    c.TickDirection = 'out';
 
-    set(gca, 'TickDir', 'out');
+    %% ---- labels and title ----
 
-    box off;
+    xlabel( ...
+        'Pyramidal neuron index', ...
+        'FontSize', fontSize);
+
+    ylabel( ...
+        'Interneuron index', ...
+        'FontSize', fontSize);
+
+    title( ...
+        sprintf('%s peak lags per significant pair', animalID), ...
+        'FontSize', fontSize);
+
+    %% ---- axis formatting ----
+
+    set(ax, ...
+        'FontSize', fontSize, ...
+        'LineWidth', axesLineWidth, ...
+        'TickDir', 'out', ...
+        'TickLength', tickLength, ...
+        'XColor', 'k', ...
+        'YColor', 'k');
+
+    grid(ax, 'off');
+    box(ax, 'off');
 
 end
 
