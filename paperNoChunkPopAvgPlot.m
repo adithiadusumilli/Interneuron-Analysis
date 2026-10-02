@@ -33,6 +33,7 @@ if iscell(animalLabels)
     animalLabels = string(animalLabels);
 end
 
+
 %% ============================
 %  remove D043
 % ============================
@@ -78,6 +79,85 @@ titleFont = 10;
 labelFont = 10;
 tickFont = 10;
 axesLineWidth = 0.5;
+
+
+%% ============================
+%  common cross-correlation limits
+% ============================
+
+allLagVals = [];
+allCorrVals = [];
+
+for s = 1:nSess
+
+    sess = xcorrResults.sessions(s);
+
+    if isempty(sess.xc) || isempty(sess.lagsSec)
+        continue;
+    end
+
+    lagTmp = sess.lagsSec(:);
+    lagTmp = lagTmp(~isnan(lagTmp));
+
+    xcTmp = sess.xc(:);
+    xcTmp = xcTmp(~isnan(xcTmp));
+
+    allLagVals = [allLagVals; lagTmp]; %#ok<AGROW>
+    allCorrVals = [allCorrVals; xcTmp]; %#ok<AGROW>
+
+    if isfield(sess, 'corrCI') && ...
+            ~isempty(sess.corrCI)
+
+        corrCITmp = sess.corrCI(:);
+        corrCITmp = corrCITmp(~isnan(corrCITmp));
+
+        allCorrVals = [ ...
+            allCorrVals; ...
+            corrCITmp]; %#ok<AGROW>
+    end
+end
+
+if isempty(allLagVals)
+
+    commonCorrXLim = [-0.5 0.5];
+
+else
+
+    xMinCorr = min(allLagVals);
+    xMaxCorr = max(allLagVals);
+
+    if xMinCorr == xMaxCorr
+        xPadCorr = 0.001;
+    else
+        xPadCorr = 0.05 * ...
+            (xMaxCorr - xMinCorr);
+    end
+
+    commonCorrXLim = [ ...
+        xMinCorr - xPadCorr, ...
+        xMaxCorr + xPadCorr];
+end
+
+if isempty(allCorrVals)
+
+    commonCorrYLim = [-1 1];
+
+else
+
+    yMinCorr = min(allCorrVals);
+    yMaxCorr = max(allCorrVals);
+
+    if yMinCorr == yMaxCorr
+        yPadCorr = 0.01;
+    else
+        yPadCorr = 0.05 * ...
+            (yMaxCorr - yMinCorr);
+    end
+
+    commonCorrYLim = [ ...
+        yMinCorr - yPadCorr, ...
+        yMaxCorr + yPadCorr];
+end
 
 
 %% ============================
@@ -128,6 +208,9 @@ for s = 1:nSess
         'Color', corrCIColor, ...
         'LineWidth', 1);
 
+    xlim(commonCorrXLim);
+    ylim(commonCorrYLim);
+
     xlabel('Lag (seconds)', ...
         'FontSize', labelFont);
 
@@ -143,6 +226,7 @@ for s = 1:nSess
         'FontSize', tickFont, ...
         'LineWidth', axesLineWidth, ...
         'TickDir', 'out', ...
+        'TickLength', [0.025 0.025], ...
         'XColor', 'k', ...
         'YColor', 'k');
 
@@ -240,6 +324,7 @@ set(gca, ...
     'FontSize', tickFont, ...
     'LineWidth', axesLineWidth, ...
     'TickDir', 'out', ...
+    'TickLength', [0.025 0.025], ...
     'XColor', 'k', ...
     'YColor', 'k');
 
@@ -317,6 +402,45 @@ commonEdges = linspace( ...
 
 
 %% ============================
+%  common histogram y-limits
+% ============================
+
+maxHistCount = 0;
+
+for s = 1:nSess
+
+    permLags = permLagCell{s};
+
+    if isempty(permLags)
+        continue;
+    end
+
+    permLags = permLags(~isnan(permLags));
+
+    if isempty(permLags)
+        continue;
+    end
+
+    counts = histcounts( ...
+        permLags, ...
+        commonEdges);
+
+    if ~isempty(counts)
+        maxHistCount = max( ...
+            maxHistCount, ...
+            max(counts));
+    end
+end
+
+if maxHistCount == 0
+    commonHistYLim = [0 1];
+else
+    commonHistYLim = ...
+        [0 1.05 * maxHistCount];
+end
+
+
+%% ============================
 %  per-animal permutation histograms
 % ============================
 
@@ -390,6 +514,7 @@ for s = 1:nSess
     end
 
     xlim(commonXLim);
+    ylim(commonHistYLim);
 
     xlabel('Peak lag (s)', ...
         'FontSize', labelFont);
@@ -406,6 +531,7 @@ for s = 1:nSess
         'FontSize', tickFont, ...
         'LineWidth', axesLineWidth, ...
         'TickDir', 'out', ...
+        'TickLength', [0.025 0.025], ...
         'XColor', 'k', ...
         'YColor', 'k');
 end
@@ -497,6 +623,7 @@ set(gca, ...
     'FontSize', tickFont, ...
     'LineWidth', axesLineWidth, ...
     'TickDir', 'out', ...
+    'TickLength', [0.025 0.025], ...
     'XColor', 'k', ...
     'YColor', 'k');
 
