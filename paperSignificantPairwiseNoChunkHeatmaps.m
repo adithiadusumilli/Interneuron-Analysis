@@ -1,32 +1,32 @@
 function paperSignificantPairwiseNoChunkHeatmaps(combinedMatFile)
-% Paper-formatted heatmaps of significant pairwise NO-CHUNK peak correlations
-
-% Significance from  R.actualPairStats.sigFDRMask (on quest)
-
-% The heatmap is reconstructed using:
-%   actualPairStats.rows
-%   actualPairStats.cols
-%   actualPairStats.realVals
-
-% Nonsignificant pairs remain NaN and are rendered black.
-
-% This function DOES NOT:
-%   - recompute significance using the old 3-SD shift-control criterion
-%   - use Bayes factors
-%   - use H0 / H50 / Hneg50
-
+% Heatmaps of significant pairwise NO-CHUNK peak correlations per session.
+%
+% Uses new Storey/FDR-corrected pairwise output:
+%   R.actualPairStats.rows
+%   R.actualPairStats.cols
+%   R.actualPairStats.realVals
+%   R.actualPairStats.sigFDRMask
+%
+% Significance is taken directly from the saved Storey/FDR result.
+% No 3-SD shift-control significance is recomputed.
+% No Bayes-factor variables are used.
+%
+% Nonsignificant entries are set to NaN and rendered transparent.
+%
 % D043 is excluded.
-
-% RUN: paperSignificantPairwiseNoChunkXCorrHeatmaps
+%
+% RUN:
+%   paperSignificantPairwiseNoChunkHeatmaps
+%
+% Or:
+%   paperSignificantPairwiseNoChunkHeatmaps(combinedMatFile)
 
 arguments
     combinedMatFile (1,1) string = ...
         "C:\Users\mirilab\Documents\GlobusTransfer\pairwiseNoChunkLagImbalanceBayes50ms_StoreyCorrThresh_DAVID_UPDATE.mat"
 end
 
-%% ========================================================================
-%% LOAD RESULTS
-%% ========================================================================
+%% ---- load results ----
 
 S = load(combinedMatFile, 'results');
 
@@ -41,46 +41,24 @@ if ~isfield(results, 'sessions') || isempty(results.sessions)
 end
 
 sessions = results.sessions;
+numSessions = numel(sessions);
 
-%% ========================================================================
-%% EXPORT DIRECTORY
-%% ========================================================================
+%% ---- loop through sessions ----
 
-saveDir = ...
-    "X:\David\AnalysesData\InterneuronAnalyses\AA Paper Plots\pairwise no-chunk";
-
-if ~exist(saveDir, 'dir')
-    mkdir(saveDir);
-end
-
-%% ========================================================================
-%% FORMATTING
-%% ========================================================================
-
-titleFont = 10;
-labelFont = 10;
-tickFont = 10;
-colorbarFont = 10;
-axesLineWidth = 0.5;
-
-%% ========================================================================
-%% EXTRACT SESSIONS + REMOVE D043
-%% ========================================================================
-
-animalIDs = strings(0,1);
-sessionData = cell(0,1);
-
-for s = 1:numel(sessions)
+for sess = 1:numSessions
 
     if iscell(sessions)
-        R = sessions{s};
+        R = sessions{sess};
     else
-        R = sessions(s);
+        R = sessions(sess);
     end
 
     if isempty(R)
+        fprintf('sess %d: empty data, skipping\n', sess);
         continue;
     end
+
+    %% ---- animal ID ----
 
     if isfield(R, 'animalID') && ~isempty(R.animalID)
 
@@ -88,309 +66,161 @@ for s = 1:numel(sessions)
 
     elseif isfield(R, 'baseDir') && ~isempty(R.baseDir)
 
-        hit = regexp(char(R.baseDir), ...
-            'D\d+', ...
-            'match', ...
-            'once');
+        hit = regexp(char(R.baseDir), 'D\d+', 'match', 'once');
 
         if isempty(hit)
-            animalID = "Animal_" + s;
+            animalID = "Animal_" + sess;
         else
             animalID = string(hit);
         end
 
     else
-        animalID = "Animal_" + s;
+        animalID = "Animal_" + sess;
     end
 
-    % Exclude D043
+    %% ---- exclude D043 ----
+
     if strcmpi(animalID, "D043")
+        fprintf('sess %d (%s): excluded\n', sess, animalID);
         continue;
     end
 
-    animalIDs(end+1,1) = animalID; %#ok<AGROW>
-    sessionData{end+1,1} = R; %#ok<AGROW>
-end
+    %% ---- get pairwise data ----
 
-nSess = numel(sessionData);
-
-if nSess == 0
-    error('No sessions remain after filtering.');
-end
-
-%% ========================================================================
-%% CONSTRUCT SIGNIFICANT CORRELATION MATRICES
-%% ========================================================================
-
-sigMatCell = cell(nSess,1);
-
-sigPairs = zeros(nSess,1);
-totalPairs = zeros(nSess,1);
-
-for s = 1:nSess
-
-    R = sessionData{s};
-
-    if ~isfield(R, 'actualPairStats') || ...
-            isempty(R.actualPairStats)
-
-        warning( ...
-            '%s: actualPairStats missing or empty.', ...
-            animalIDs(s));
-
+    if ~isfield(R, 'actualPairStats') || isempty(R.actualPairStats)
+        fprintf('sess %d: actualPairStats empty, skipping\n', sess);
         continue;
     end
 
     P = R.actualPairStats;
 
-    requiredFields = { ...
-        'rows', ...
-        'cols', ...
-        'realVals', ...
-        'sigFDRMask'};
+    if ~isfield(P, 'rows') || ...
+       ~isfield(P, 'cols') || ...
+       ~isfield(P, 'realVals') || ...
+       ~isfield(P, 'sigFDRMask')
 
-    for f = 1:numel(requiredFields)
+        warning( ...
+            'sess %d: required actualPairStats fields missing, skipping', ...
+            sess);
 
-        if ~isfield(P, requiredFields{f})
-
-            error( ...
-                '%s: actualPairStats.%s is missing.', ...
-                animalIDs(s), ...
-                requiredFields{f});
-        end
+        continue;
     end
 
     rows = P.rows(:);
     cols = P.cols(:);
     realVals = P.realVals(:);
+
+    % Storey/FDR-corrected significance calculated upstream
     sigMask = logical(P.sigFDRMask(:));
 
     if numel(rows) ~= numel(cols) || ...
-            numel(rows) ~= numel(realVals) || ...
-            numel(rows) ~= numel(sigMask)
+       numel(rows) ~= numel(realVals) || ...
+       numel(rows) ~= numel(sigMask)
 
-        error( ...
-            '%s: pairwise vectors have inconsistent lengths.', ...
-            animalIDs(s));
+        warning( ...
+            'sess %d: pairwise vectors have inconsistent lengths, skipping', ...
+            sess);
+
+        continue;
     end
 
-    %% ---- determine matrix dimensions ----
+    %% ---- matrix dimensions ----
 
-    if isfield(R, 'nInt') && ...
-            ~isempty(R.nInt)
-
+    if isfield(R, 'nInt') && ~isempty(R.nInt)
         nInt = double(R.nInt);
-
     else
-
         nInt = max(rows);
     end
 
-    if isfield(R, 'nPyr') && ...
-            ~isempty(R.nPyr)
-
+    if isfield(R, 'nPyr') && ~isempty(R.nPyr)
         nPyr = double(R.nPyr);
-
     else
-
         nPyr = max(cols);
     end
 
-    sigMat = nan(nInt, nPyr);
+    %% ---- optional check against top-level significance mask ----
 
-    %% ---- optional consistency check ----
+    if isfield(R, 'actualSigMask') && ~isempty(R.actualSigMask)
 
-    if isfield(R, 'actualSigMask') && ...
-            ~isempty(R.actualSigMask)
+        actualSigMask = logical(R.actualSigMask(:));
 
-        topMask = logical(R.actualSigMask(:));
-
-        if numel(topMask) == numel(sigMask) && ...
-                ~isequal(topMask, sigMask)
+        if numel(actualSigMask) == numel(sigMask) && ...
+                ~isequal(actualSigMask, sigMask)
 
             warning( ...
-                '%s: actualSigMask and actualPairStats.sigFDRMask differ.', ...
-                animalIDs(s));
+                'sess %d (%s): actualSigMask differs from sigFDRMask', ...
+                sess, animalID);
         end
     end
 
-    %% ---- populate significant entries only ----
+    %% ---- construct significant correlation matrix ----
+
+    sigMat = nan(nInt, nPyr);
+    sigPairs = 0;
 
     for k = 1:numel(realVals)
 
         if sigMask(k) && ...
-                isfinite(realVals(k)) && ...
-                isfinite(rows(k)) && ...
-                isfinite(cols(k))
+           ~isnan(realVals(k)) && ...
+           ~isnan(rows(k)) && ...
+           ~isnan(cols(k))
 
             sigMat(rows(k), cols(k)) = realVals(k);
+            sigPairs = sigPairs + 1;
         end
     end
 
-    sigMatCell{s} = sigMat;
+    % Same meaning as old nInt*nPyr matrix.
+    totalPairs = nInt * nPyr;
 
-    totalPairs(s) = numel(realVals);
+    %% ---- base label ----
 
-    sigPairs(s) = sum( ...
-        sigMask & ...
-        isfinite(realVals));
+    baseLabel = sprintf('sess %d', sess);
 
-    fprintf('\n=== %s ===\n', animalIDs(s));
-    fprintf('Pair matrix: %d interneurons x %d pyramidal neurons\n', ...
-        nInt, nPyr);
-    fprintf('Tested pairs: %d\n', totalPairs(s));
-    fprintf('Storey/FDR-significant pairs: %d\n', sigPairs(s));
-
-    if isfield(P, 'qAlpha')
-        fprintf('qAlpha: %.6g\n', P.qAlpha);
+    if isfield(R, 'baseDir') && ~isempty(R.baseDir)
+        baseLabel = sprintf( ...
+            'sess %d – %s', ...
+            sess, ...
+            R.baseDir);
     end
 
-    if isfield(P, 'corrThresh')
-        fprintf('corrThresh: %.6g\n', P.corrThresh);
-    end
-end
+    %% ---- plot heatmap ----
 
-%% ========================================================================
-%% COMMON COLOR LIMITS
-%% ========================================================================
+    figure( ...
+        'Name', ...
+        sprintf('sess %d – NO-CHUNK significant peak corr', sess), ...
+        'Color', 'w');
 
-allSigCorrs = [];
+    hImg = imagesc(sigMat);
 
-for s = 1:nSess
-
-    sigMat = sigMatCell{s};
-
-    if isempty(sigMat)
-        continue;
-    end
-
-    vals = sigMat(isfinite(sigMat));
-
-    allSigCorrs = [ ...
-        allSigCorrs; ...
-        vals(:)]; %#ok<AGROW>
-end
-
-if isempty(allSigCorrs)
-
-    commonCLim = [0 1];
-
-else
-
-    cMin = min(allSigCorrs);
-    cMax = max(allSigCorrs);
-
-    if cMin == cMax
-        cPad = 0.01;
-    else
-        cPad = 0.05 * (cMax - cMin);
-    end
-
-    commonCLim = [ ...
-        cMin - cPad, ...
-        cMax + cPad];
-end
-
-%% ========================================================================
-%% TILED HEATMAP FIGURE
-%% ========================================================================
-
-fig = figure( ...
-    'Name', 'Pairwise no-chunk significant peak correlations', ...
-    'Color', 'w', ...
-    'Position', [100 100 1500 650]);
-
-tileLay = tiledlayout( ...
-    1, nSess, ...
-    'TileSpacing', 'compact', ...
-    'Padding', 'compact');
-
-title(tileLay, ...
-    'Pairwise no-chunk significant peak correlations', ...
-    'FontSize', titleFont);
-
-for s = 1:nSess
-
-    ax = nexttile(tileLay, s);
-
-    sigMat = sigMatCell{s};
-
-    if isempty(sigMat)
-
-        title(ax, ...
-            sprintf('%s (missing)', animalIDs(s)), ...
-            'FontSize', titleFont);
-
-        axis(ax, 'off');
-        continue;
-    end
-
-    hImg = imagesc(ax, sigMat);
-
-    % Significant entries are opaque.
-    % Nonsignificant NaNs are transparent.
+    % Hide nonsignificant pairs
     set(hImg, ...
         'AlphaData', ...
         ~isnan(sigMat));
 
-    % Black background shows through nonsignificant entries.
-    set(ax, ...
-        'Color', 'k');
+    % Black background for nonsignificant/NaN entries
+    set(gca, 'Color', 'k');
 
-    axis(ax, 'xy');
+    axis xy;
 
-    colormap(ax, parula);
-    clim(ax, commonCLim);
+    colormap(parula);
 
-    xlabel(ax, ...
-        'Pyramidal neurons', ...
-        'FontSize', labelFont);
+    c = colorbar;
+    ylabel(c, 'peak correlation');
 
-    ylabel(ax, ...
-        'Interneurons', ...
-        'FontSize', labelFont);
+    xlabel('pyramidal neurons');
+    ylabel('interneurons');
 
-    title(ax, ...
-        sprintf('%s (%d / %d)', ...
-        animalIDs(s), ...
-        sigPairs(s), ...
-        totalPairs(s)), ...
-        'FontSize', titleFont);
+    title(sprintf( ...
+        '%s – NO-CHUNK significant pairs: %d / %d', ...
+        baseLabel, ...
+        sigPairs, ...
+        totalPairs));
 
-    box(ax, 'off');
+    set(gca, 'TickDir', 'out');
 
-    set(ax, ...
-        'FontSize', tickFont, ...
-        'LineWidth', axesLineWidth, ...
-        'TickDir', 'out', ...
-        'TickLength', [0.025 0.025], ...
-        'XColor', 'k', ...
-        'YColor', 'k');
+    box off;
+
 end
-
-%% ========================================================================
-%% SHARED COLORBAR
-%% ========================================================================
-
-c = colorbar;
-c.Layout.Tile = 'east';
-
-ylabel(c, ...
-    'Peak correlation', ...
-    'FontSize', labelFont);
-
-c.FontSize = colorbarFont;
-
-%% ========================================================================
-%% EXPORT
-%% ========================================================================
-
-exportgraphics(fig, ...
-    fullfile(saveDir, ...
-    'pairwise_nochunk_significant_peak_corr_heatmaps.pdf'), ...
-    'ContentType', 'vector', ...
-    'BackgroundColor', 'white');
-
-fprintf('\nPairwise no-chunk heatmap saved to:\n%s\n', saveDir);
 
 end
