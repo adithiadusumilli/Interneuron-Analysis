@@ -123,6 +123,7 @@ lagCIMatLo = nan(nSess, numel(behNums));
 lagCIMatHi = nan(nSess, numel(behNums));
 boutMat = nan(nSess, numel(behNums));
 durMat = nan(nSess, numel(behNums));
+isPeakCorrSigMat = false(nSess, numel(behNums));
 
 fprintf('\n================ nonchunked behavior plots ================\n');
 
@@ -166,6 +167,55 @@ for s = 1:nSess
 
         lagXLimBySess(s,:) = [-0.5 0.5];
 
+    end
+end
+
+
+%% =========================================================
+%  precompute common y-limits for lag-vs-correlation per animal
+% ==========================================================
+
+corrYLimBySess = nan(nSess, 2);
+
+for s = 1:nSess
+
+    allCorrVals = [];
+
+    for k = 1:numel(behNums)
+
+        b = behNums(k);
+        thisBeh = R.sessions(s).beh(b + 1);
+
+        if isempty(thisBeh)
+            continue
+        end
+
+        if isfield(thisBeh, 'xc') && ~isempty(thisBeh.xc)
+            tmp = thisBeh.xc(:);
+            tmp = tmp(~isnan(tmp));
+            allCorrVals = [allCorrVals; tmp]; %#ok<AGROW>
+        end
+
+        if isfield(thisBeh, 'ctrlCorrCI') && ~isempty(thisBeh.ctrlCorrCI)
+            tmp = thisBeh.ctrlCorrCI(:);
+            tmp = tmp(~isnan(tmp));
+            allCorrVals = [allCorrVals; tmp]; %#ok<AGROW>
+        end
+    end
+
+    if isempty(allCorrVals)
+        corrYLimBySess(s,:) = [-1 1];
+    else
+        yMin = min(allCorrVals);
+        yMax = max(allCorrVals);
+
+        if yMin == yMax
+            yPad = 0.01;
+        else
+            yPad = 0.05 * (yMax - yMin);
+        end
+
+        corrYLimBySess(s,:) = [yMin - yPad yMax + yPad];
     end
 end
 
@@ -251,6 +301,46 @@ end
 
 
 %% =========================================================
+%  precompute common y-limits for permutation histograms per animal
+% ==========================================================
+
+permYLimBySess = nan(nSess, 2);
+
+for s = 1:nSess
+
+    maxCount = 0;
+
+    for k = 1:numel(behNums)
+
+        b = behNums(k);
+        thisBeh = R.sessions(s).beh(b + 1);
+
+        if isempty(thisBeh) || ...
+                ~isfield(thisBeh, 'permPeakLags') || ...
+                isempty(thisBeh.permPeakLags)
+            continue
+        end
+
+        permLags = thisBeh.permPeakLags(:);
+        permLags = permLags(~isnan(permLags));
+
+        if isempty(permLags)
+            continue
+        end
+
+        counts = histcounts(permLags, permEdgesBySess{s});
+        maxCount = max(maxCount, max(counts));
+    end
+
+    if maxCount == 0
+        permYLimBySess(s,:) = [0 1];
+    else
+        permYLimBySess(s,:) = [0 1.05 * maxCount];
+    end
+end
+
+
+%% =========================================================
 %  plot 1: per-animal 2x5 lag vs. correlation
 % ==========================================================
 
@@ -260,7 +350,8 @@ for s = 1:nSess
         'Name', sprintf( ...
             '%s M1 lag vs. correlation', ...
             animalIDs{s}), ...
-        'Color', 'w');
+        'Color', 'w', ...
+        'Position', [100 100 1500 650]);
 
     tile_lay1 = tiledlayout( ...
         2, 5, ...
@@ -312,6 +403,21 @@ for s = 1:nSess
         peakLag = thisBeh.peakLagSec;
         corrCI = thisBeh.ctrlCorrCI;
         lagCI = thisBeh.lagCI;
+
+        % Peak correlation is significant only if it falls outside the
+        % 95% shift-control correlation bounds.
+        if ~isempty(corrCI) && ...
+                numel(corrCI) == 2 && ...
+                ~any(isnan(corrCI)) && ...
+                ~isempty(peakLag) && ...
+                ~isnan(peakLag)
+
+            [~, peakIdx] = min(abs(lagsSec - peakLag));
+            peakCorr = xc(peakIdx);
+
+            isPeakCorrSigMat(s,k) = ...
+                peakCorr < corrCI(1) || peakCorr > corrCI(2);
+        end
 
         actualLagMat(s,k) = peakLag;
 
@@ -380,6 +486,7 @@ for s = 1:nSess
         end
 
         xlim(lagXLimBySess(s,:));
+        ylim(corrYLimBySess(s,:));
 
         xlabel( ...
             'Lag (seconds)', ...
@@ -466,7 +573,8 @@ for s = 1:nSess
         'Name', sprintf( ...
             '%s peak lags vs. permutation distribution', ...
             animalIDs{s}), ...
-        'Color', 'w');
+        'Color', 'w', ...
+        'Position', [100 100 1500 650]);
 
     tile_lay2 = tiledlayout( ...
         2, 5, ...
@@ -565,6 +673,7 @@ for s = 1:nSess
         end
 
         xlim(permXLimBySess(s,:));
+        ylim(permYLimBySess(s,:));
 
         xlabel( ...
             'Peak lag (s)', ...
@@ -621,7 +730,8 @@ end
 figSummary = figure( ...
     'Name', ...
     'Actual peak lags vs. permutation control range', ...
-    'Color', 'w');
+    'Color', 'w', ...
+    'Position', [100 100 1500 650]);
 
 tile_lay3 = tiledlayout( ...
     2, 5, ...
@@ -684,7 +794,7 @@ for k = 1:numel(behNums)
                 'LineWidth', 2);
         end
 
-        if ~isnan(actualLagMat(s,k))
+        if ~isnan(actualLagMat(s,k)) && isPeakCorrSigMat(s,k)
 
             plot( ...
                 xBase(s), ...
