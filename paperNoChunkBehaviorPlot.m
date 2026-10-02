@@ -780,33 +780,39 @@ for k = 1:numel(behNums)
     nexttile(tile_lay3, k);
     hold on;
 
-    for s = 1:nSess
+    % Only include animals with a significant peak correlation
+    sigSess = find(isPeakCorrSigMat(:,k));
+    nSig = numel(sigSess);
 
-        % Plot both the actual peak lag and its permutation-control
-        % range only when the peak correlation is significant.
-        if isPeakCorrSigMat(s,k)
+    % Plot significant animals only, compressed together on x-axis
+    for j = 1:nSig
 
-            if ~isnan(lagCIMatLo(s,k)) && ...
-                    ~isnan(lagCIMatHi(s,k))
+        s = sigSess(j);
+        xPlot = j;
 
-                xci = xBase(s) + xOffsets(s);
+        % Permutation control range
+        if ~isnan(lagCIMatLo(s,k)) && ...
+                ~isnan(lagCIMatHi(s,k))
 
-                line( ...
-                    [xci xci], ...
-                    [lagCIMatLo(s,k) lagCIMatHi(s,k)], ...
-                    'Color', [0.6 0.6 0.6], ...
-                    'LineWidth', 2);
-            end
+            % Slight offset from actual peak-lag dot
+            xci = xPlot + 0.08;
 
-            if ~isnan(actualLagMat(s,k))
+            line( ...
+                [xci xci], ...
+                [lagCIMatLo(s,k) lagCIMatHi(s,k)], ...
+                'Color', [0.6 0.6 0.6], ...
+                'LineWidth', 2);
+        end
 
-                plot( ...
-                    xBase(s), ...
-                    actualLagMat(s,k), ...
-                    'ko', ...
-                    'MarkerFaceColor', 'k', ...
-                    'MarkerSize', 7);
-            end
+        % Actual peak lag
+        if ~isnan(actualLagMat(s,k))
+
+            plot( ...
+                xPlot, ...
+                actualLagMat(s,k), ...
+                'ko', ...
+                'MarkerFaceColor', 'k', ...
+                'MarkerSize', 7);
         end
     end
 
@@ -814,10 +820,16 @@ for k = 1:numel(behNums)
     yline(0, 'k:');
 
     ylim(summaryYLim);
-    xlim([0.5 nSess + 0.5]);
 
-    xticks(1:nSess);
-    xticklabels(animalIDs);
+    % X-axis contains only animals significant for this behavior
+    if nSig > 0
+        xlim([0.5 nSig + 0.5]);
+        xticks(1:nSig);
+        xticklabels(animalIDs(sigSess));
+    else
+        xlim([0.5 1.5]);
+        xticks([]);
+    end
 
     ylabel( ...
         'Peak lag (s)', ...
