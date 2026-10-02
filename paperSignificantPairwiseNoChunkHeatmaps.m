@@ -7,6 +7,12 @@ function paperSignificantPairwiseNoChunkHeatmaps(combinedMatFile)
 %   R.actualPairStats.realVals
 %   R.actualPairStats.sigFDRMask
 %
+% rows = local interneuron indices (1:nInt)
+% cols = global neuron indices (nInt+1:nAll)
+%
+% Therefore, pyramidal-neuron column indices are converted to:
+%   localPyrCol = cols - nInt
+%
 % Significance is taken directly from the saved Storey/FDR result.
 % No 3-SD shift-control significance is recomputed.
 % No Bayes-factor variables are used.
@@ -126,16 +132,39 @@ for sess = 1:numSessions
 
     %% ---- matrix dimensions ----
 
-    if isfield(R, 'nInt') && ~isempty(R.nInt)
-        nInt = double(R.nInt);
-    else
-        nInt = max(rows);
+    nInt = double(R.nInt);
+    nPyr = double(R.nPyr);
+
+    %% ---- convert global pyramidal indices to local pyramidal indices ----
+    %
+    % Example D020:
+    %
+    %   interneurons = global neurons 1:15
+    %   pyramidal    = global neurons 16:82
+    %
+    % For the nInt x nPyr heatmap:
+    %
+    %   global pyr 16 -> local pyr 1
+    %   global pyr 17 -> local pyr 2
+    %   ...
+    %   global pyr 82 -> local pyr 67
+
+    pyrCols = cols - nInt;
+
+    %% ---- sanity check indexing ----
+
+    if any(rows < 1 | rows > nInt)
+
+        error( ...
+            'sess %d (%s): interneuron row indices fall outside 1:nInt.', ...
+            sess, animalID);
     end
 
-    if isfield(R, 'nPyr') && ~isempty(R.nPyr)
-        nPyr = double(R.nPyr);
-    else
-        nPyr = max(cols);
+    if any(pyrCols < 1 | pyrCols > nPyr)
+
+        error( ...
+            'sess %d (%s): converted pyramidal indices fall outside 1:nPyr.', ...
+            sess, animalID);
     end
 
     %% ---- optional check against top-level significance mask ----
@@ -163,21 +192,30 @@ for sess = 1:numSessions
         if sigMask(k) && ...
            ~isnan(realVals(k)) && ...
            ~isnan(rows(k)) && ...
-           ~isnan(cols(k))
+           ~isnan(pyrCols(k))
 
-            sigMat(rows(k), cols(k)) = realVals(k);
+            sigMat(rows(k), pyrCols(k)) = realVals(k);
+
             sigPairs = sigPairs + 1;
         end
     end
 
-    % Same meaning as old nInt*nPyr matrix.
     totalPairs = nInt * nPyr;
+
+    %% ---- print information ----
+
+    fprintf('\n=== sess %d: %s ===\n', sess, animalID);
+    fprintf('matrix size: %d interneurons x %d pyramidal neurons\n', ...
+        nInt, nPyr);
+    fprintf('pairs: %d total | %d significant\n', ...
+        totalPairs, sigPairs);
 
     %% ---- base label ----
 
     baseLabel = sprintf('sess %d', sess);
 
     if isfield(R, 'baseDir') && ~isempty(R.baseDir)
+
         baseLabel = sprintf( ...
             'sess %d – %s', ...
             sess, ...
@@ -193,13 +231,12 @@ for sess = 1:numSessions
 
     hImg = imagesc(sigMat);
 
-    % Hide nonsignificant pairs
     set(hImg, ...
         'AlphaData', ...
-        ~isnan(sigMat));
+        ~isnan(sigMat));  % hide nonsig pairs
 
-    % Black background for nonsignificant/NaN entries
-    set(gca, 'Color', 'k');
+    set(gca, ...
+        'Color', 'k');    % black background for NaNs
 
     axis xy;
 
