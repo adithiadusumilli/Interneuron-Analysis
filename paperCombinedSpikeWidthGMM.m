@@ -138,7 +138,7 @@ set(ax,'FontSize',10,'LineWidth',0.5,'TickDir','out', ...
 grid(ax,'off');
 set(findall(fig,'Type','text'),'FontSize',10);
 
-saveDir = 'X:\David\AnalysesData\InterneuronAnalyses\AA Paper Plots\spike width GMM';
+saveDir = 'X:\David\AnalysesData\InterneuronAnalyses\AA Paper Plots\classifications';
 if ~exist(saveDir,'dir'), mkdir(saveDir); end
 stem = sprintf('CombinedSpikeWidthGMM_%s_D026_D020_D024_D050_D054_SavedModel',char(regionToPlot));
 exportgraphics(fig,fullfile(saveDir,[stem '.pdf']), ...
