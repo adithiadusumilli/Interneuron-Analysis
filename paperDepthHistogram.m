@@ -78,7 +78,7 @@ if exist('getMouseDataNames', 'file') == 2
             end
         end
     catch ME
-        warning('getMouseDataNames lookup failed (%s). Using session paths.', ME.message);
+        warning('getMouseDataNames:LookupFailed', 'getMouseDataNames lookup failed (%s). Using session paths.', ME.message);
     end
 end
 
