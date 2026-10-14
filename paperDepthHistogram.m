@@ -13,7 +13,7 @@ end
 
 %% ---- settings ----
 classificationFile = "X:\David\AnalysesData\AA_classifications.mat";
-saveDir = "X:\David\AnalysesData\InterneuronAnalyses\AA Paper Plots\cortex depth histograms";
+saveDir = "X:\David\AnalysesData\InterneuronAnalyses\AA Paper Plots\classifications";
 fontSize = 10;
 axesLineWidth = 0.5;
 tickLength = [0.025 0.025];
