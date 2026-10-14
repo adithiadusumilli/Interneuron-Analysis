@@ -3,7 +3,7 @@ function paperExampleWaveformsInsetAndTypeDist(baseDir)
 % includes D026, D020, D024, D050, D054 (excludes D043)
 % uses classifications and file paths saved by classifyCortexAndStriatum_getMouseDataNames
 
-% Example: plotExampleWaveformsForInset("Z:\David\ArenaRecordings\NeuropixelsTest\D020-062922-ArenaRecording\ProcessedData")
+% Example: paperExampleWaveformsInsetAndTypeDist("Z:\David\ArenaRecordings\NeuropixelsTest\D020-062922-ArenaRecording\ProcessedData")
 
 % The example animal controls the two waveform insets. The percentage
 % plot always includes all five specified animals.
