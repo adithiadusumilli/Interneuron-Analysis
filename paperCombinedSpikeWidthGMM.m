@@ -3,8 +3,8 @@ function paperCombinedSpikeWidthGMM(baseDirs, regionToPlot)
 % classifyCortexAndStriatum_getMouseDataNames (saved results in AA_Classifications.mat)
 
 % Run:
-%   plotCombinedSpikeWidthGMM([], "cortex")
-%   plotCombinedSpikeWidthGMM([], "striatum")
+%   paperCombinedSpikeWidthGMM([], "cortex")
+%   paperCombinedSpikeWidthGMM([], "striatum")
 
 arguments
     baseDirs = []
