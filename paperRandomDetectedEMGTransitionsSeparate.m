@@ -2,7 +2,7 @@ function paperRandomDetectedEMGTransitionsSeparate(emgNeuralFile, emgChannel, wi
 % random EMG windows containing saved valid transitions - paper-formatted (like thesis fig 8A)
 % vector pdf saved figs!
 % run (D020):
-% plotRandomDetectedEMGTransitionsSeparate("Z:\David\ArenaRecordings\NeuropixelsTest\D020-062922-ArenaRecording\ProcessedData\EMG_Neural_AllChannels.mat",1,14,6)
+% paperRandomDetectedEMGTransitionsSeparate("Z:\David\ArenaRecordings\NeuropixelsTest\D020-062922-ArenaRecording\ProcessedData\EMG_Neural_AllChannels.mat",1,14,6)
 
 arguments
     emgNeuralFile (1,1) string
