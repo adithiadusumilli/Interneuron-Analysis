@@ -1,6 +1,6 @@
 function classifyCortexAndStriatum_noD043_refit_overlapFix(mouseIDs, baseSessionNames, probeRegions)
 % Refit the original pooled cortex/striatum GMMs without D043.
-% Keeps AA_classifications.mat untouched; writes AA_classifications(nod043).mat.
+% Keeps AA_classifications.mat untouched; writes AA_classifications(nod043)_refit_overlapFix.mat.
 % Also saves per-animal comparison tables and changed-neuron details.
 % Pass the same six-session input lists as the original function.
 
@@ -17,7 +17,7 @@ function classifyCortexAndStriatum_noD043_refit_overlapFix(mouseIDs, baseSession
 %      - between bounds = unclassified (too close to overlap region)
 %   4. Apply those global boundaries to classify neurons per animal
 
-% Outputs im saving to AA_classifications.mat (overwrite) include:
+% Outputs saved to the separate overlapFix MAT file include:
 %   - classifications: {nFiles x 2} cell of per-neuron labels (0=wide, 1=narrow, NaN=wrong region OR unclassified)
 %   - classificationsWithGap: same but unclassified gap neurons marked -1 instead of NaN (use to identify/count them)
 %   - fileWidths: {nFiles x 2} cell of per-neuron widths
@@ -656,8 +656,4 @@ else
         'using common cutoff %.4f ms (narrow error %.4f%%, wide error %.4f%%).\n'], ...
         region,hi,lo,cutoff,100*mN(cutoff),100*mW(cutoff));
 end
-end
-lowerBound = lo/1000; upperBound = hi/1000;
-fprintf('%s verified bounds: lower %.4f ms (%.3f%% error), upper %.4f ms (%.3f%% error)\n', ...
-    region,lo,100*mN(lo),hi,100*mW(hi));
 end
