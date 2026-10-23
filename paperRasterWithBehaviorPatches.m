@@ -303,72 +303,34 @@ yl = [0,nNeur+1];
 
 cmap = local_behavior_cmap(nColors);
 
-%% ---- behavior background patches ----
-% IMPORTANT:
-% Instead of FaceAlpha = 0.30, blend each original color with
-% white to reproduce the same appearance using opaque patches.
-%
-% This preserves the behavior colors in vector PDF exports.
-
-patchOpacity = 0.30;
-
-cmapDisplay = ...
-    patchOpacity*cmap + ...
-    (1-patchOpacity)*ones(size(cmap));
+%% ---- behavior background patches (ORIGINAL rendering restored) ----
+% Original behavior palette, original patch boundaries, and FaceAlpha = 0.30.
+% Draw patches before spikes so they remain behind the raster.
 
 if ~isempty(labWin)
-
     changePts = [true, diff(labWin) ~= 0];
     blockStarts = find(changePts);
     blockStops = [blockStarts(2:end)-1, numel(labWin)];
 
-    % Extend behavior intervals to the NEXT sample, including
-    % single-sample blocks, so patches have nonzero width.
-    if numel(tWin) > 1
-        positiveDt = diff(tWin);
-        positiveDt = positiveDt(isfinite(positiveDt) & positiveDt > 0);
-        if isempty(positiveDt)
-            dt = 0.001;
-        else
-            dt = median(positiveDt);
-        end
-    else
-        dt = 0.001;
-    end
-
-    nPatches = 0;
     for b = 1:numel(blockStarts)
         i0 = blockStarts(b);
         i1 = blockStops(b);
+
         beh = labWin(i0);
-        cInd = local_label_to_color_index(beh,nColors);
+        cInd = local_label_to_color_index(beh, nColors);
         if isnan(cInd)
             continue;
         end
 
-        tStart = max(tWin(i0),t0);
-        if i1 < numel(tWin)
-            tStop = min(tWin(i1+1),t1);
-        else
-            tStop = min(tWin(i1)+dt,t1);
-        end
+        tStart = max(tWin(i0), t0);
+        tStop = min(tWin(i1), t1);
 
-        if tStop <= tStart
-            continue;
+        if tStop > tStart
+            patch(ax, [tStart tStart tStop tStop], ...
+                [yl(1) yl(2) yl(2) yl(1)], cmap(cInd,:), ...
+                'EdgeColor','none', 'FaceAlpha',0.30);
         end
-
-        patch(ax, ...
-            [tStart tStart tStop tStop], ...
-            [yl(1) yl(2) yl(2) yl(1)], ...
-            cmapDisplay(cInd,:), ...
-            'EdgeColor','none', ...
-            'FaceAlpha',1);
-        nPatches = nPatches + 1;
     end
-    fprintf('Plotted %d behavior blocks.\n',nPatches);
-else
-    warning('paperRaster:NoBehaviorLabels', ...
-        'No behavior labels found in the requested time window.');
 end
 
 %% ---- raster spikes colored by neuron type ----
@@ -434,9 +396,9 @@ h = gobjects(1,numel(behNames));
 for k = 1:numel(behNames)
 
     h(k) = patch(ax, ...
-        nan,nan,cmapDisplay(k,:), ...
+        nan,nan,cmap(k,:), ...
         'EdgeColor','none', ...
-        'FaceAlpha',1);
+        'FaceAlpha',0.30);
 end
 
 legend(ax,h,cellstr(behNames), ...
