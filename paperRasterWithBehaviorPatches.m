@@ -111,184 +111,103 @@ fprintf('Pyramidal neurons: %d\n',sum(neuronTypes == 0));
 fprintf('Interneurons: %d\n',sum(neuronTypes == 1));
 fprintf('Unclassified: %d\n',sum(isnan(neuronTypes)));
 
-%% ---- load time-resolved behavior labels ----
+%% ---- load behavior labels EXACTLY as in the non-chunked analysis ----
+% runNonChunkedXcorrPerBehavior_saveOnly_fullperm uses the original
+% origDownsampEMGInd directly as 1-ms firing-rate bin indices.
+% No VideoSyncFrames transformation is applied.
 
 U = load(fullfile(baseDir,'UMAP.mat'), ...
-    'origDownsampEMGInd', ...
-    'regionAssignmentsFiltered', ...
-    'behvLabelsNoArt', ...
-    'classifierLabels', ...
-    'classifierBehvs', ...
-    'analyzedBehaviors', ...
-    'regionBehvAssignments');
+    'origDownsampEMGInd','classifierLabels','classifierBehvs');
 
-req = {'origDownsampEMGInd', ...
-       'regionAssignmentsFiltered', ...
-       'behvLabelsNoArt', ...
-       'classifierLabels'};
-
-for i = 1:numel(req)
-    if ~isfield(U,req{i}) || isempty(U.(req{i}))
-        error('UMAP.mat missing %s',req{i});
+required = {'origDownsampEMGInd','classifierLabels','classifierBehvs'};
+for k = 1:numel(required)
+    if ~isfield(U,required{k}) || isempty(U.(required{k}))
+        error('UMAP.mat missing/empty field: %s',required{k});
     end
 end
 
-origDownsampEMGInd = double(U.origDownsampEMGInd(:));
-regionRaw = double(U.regionAssignmentsFiltered(:));
-manualRaw = double(U.behvLabelsNoArt(:));
-classRaw = double(U.classifierLabels(:));
-
-manBehvNames = { ...
-    'climbdown','climbup','eating','grooming', ...
-    'jumpdown','jumping','rearing','still', ...
-    'walkflat','walkgrid'};
-
-%% ---- UMAP canonical labels ----
-
-regionCodes = unique(regionRaw(~isnan(regionRaw)));
-nRegions = numel(regionCodes);
-
-if nRegions ~= 7
-    error('Expected 7 UMAP regions, found %d.',nRegions);
+if lower(labelType) ~= "classifier"
+    error(['This version matches the saved per-behavior analysis, ' ...
+        'which only supports labelType="classifier".']);
 end
 
-umapCanon = nan(size(regionRaw));
+manBehvNames = {'climbdown','climbup','eating','grooming', ...
+    'jumpdown','jumping','rearing','still','walkflat','walkgrid'};
+nColors = 11;
 
-for r = 1:nRegions
-    umapCanon(regionRaw == regionCodes(r)) = r;
-end
+canonicalLookup = containers.Map;
+canonicalLookup('climbdown') = 1;
+canonicalLookup('climbup') = 2;
+canonicalLookup('eating') = 3;
+canonicalLookup('eat') = 3;
+canonicalLookup('grooming') = 4;
+canonicalLookup('groom') = 4;
+canonicalLookup('jumpdown') = 5;
+canonicalLookup('jumping') = 6;
+canonicalLookup('jumpacross') = 6;
+canonicalLookup('rearing') = 7;
+canonicalLookup('rear') = 7;
+canonicalLookup('still') = 8;
+canonicalLookup('walkflat') = 9;
+canonicalLookup('walkgrid') = 10;
 
-%% ---- manual canonical labels ----
-
-manualCanon = zeros(size(manualRaw));
-
-if isfield(U,'analyzedBehaviors') && ...
-        ~isempty(U.analyzedBehaviors)
-
-    analyzedBehaviors = U.analyzedBehaviors;
-
-    manBehvNumbers = zeros(1,numel(analyzedBehaviors));
-
-    for iBehv = 1:numel(analyzedBehaviors)
-
-        idx = find(strcmp( ...
-            analyzedBehaviors{iBehv},manBehvNames),1);
-
-        manBehvNumbers(iBehv) = iff(isempty(idx),0,idx);
-    end
-
-    for i = 1:numel(manualRaw)
-
-        v = manualRaw(i);
-
-        if v == 0
-            manualCanon(i) = 0;
-        elseif v >= 1 && v <= numel(manBehvNumbers)
-            manualCanon(i) = manBehvNumbers(v);
-        else
-            manualCanon(i) = 0;
-        end
+classifierBehvs = cellstr(string(U.classifierBehvs(:)));
+classBehvNumbers = zeros(1,numel(classifierBehvs));
+for k = 1:numel(classifierBehvs)
+    cleanName = lower(strrep(strrep(classifierBehvs{k},' ',''),'_',''));
+    if isKey(canonicalLookup,cleanName)
+        classBehvNumbers(k) = canonicalLookup(cleanName);
+    else
+        classBehvNumbers(k) = 0;
     end
 end
 
-%% ---- classifier canonical labels ----
-
-classifierCanon = zeros(size(classRaw));
-
-if isfield(U,'classifierBehvs') && ...
-        ~isempty(U.classifierBehvs)
-
-    classifierBehvs = U.classifierBehvs;
-
-    classBehvNumbers = zeros(1,numel(classifierBehvs));
-
-    for iBehv = 1:numel(classifierBehvs)
-
-        idx = find(strcmp( ...
-            classifierBehvs{iBehv},manBehvNames),1);
-
-        classBehvNumbers(iBehv) = iff(isempty(idx),0,idx);
-    end
-
-    for i = 1:numel(classRaw)
-
-        v = classRaw(i);
-
-        if v == 0
-            classifierCanon(i) = 0;
-        elseif v >= 1 && v <= numel(classBehvNumbers)
-            classifierCanon(i) = classBehvNumbers(v);
-        else
-            classifierCanon(i) = 0;
-        end
+origInd = double(U.origDownsampEMGInd(:));
+rawLabels = double(U.classifierLabels(:));
+n = min(numel(origInd),numel(rawLabels));
+origInd = origInd(1:n);
+rawLabels = rawLabels(1:n);
+labelsReduced = nan(n,1);
+for k = 1:n
+    v = rawLabels(k);
+    if isnan(v)
+        continue;
+    elseif v == 0
+        labelsReduced(k) = 0;
+    elseif v >= 1 && v <= numel(classBehvNumbers) && v == floor(v)
+        labelsReduced(k) = classBehvNumbers(v);
     end
 end
 
-%% ---- choose behavior labels ----
+% Each index corresponds to a 1-ms neural bin. Use bin START time for
+% raster patches, and the following millisecond as the bin END time.
+valid = isfinite(origInd) & origInd == floor(origInd) & origInd >= 1 & ...
+    isfinite(labelsReduced);
+origInd = origInd(valid);
+labelsReduced = labelsReduced(valid);
 
-switch lower(labelType)
+% Sort and remove repeated bin indices, as the analysis assigns one label
+% per bin (last assignment wins).
+[origInd,ord] = sort(origInd);
+labelsReduced = labelsReduced(ord);
+[origInd,keep] = unique(origInd,'last');
+labelsReduced = labelsReduced(keep);
 
-    case "umap"
-        labelsCanon = umapCanon;
-        nColors = 7;
+startTimes = (origInd-1)/1000;
+endTimes = origInd/1000;
+inWin = endTimes > t0 & startTimes < t1;
+patchBinInd = origInd(inWin);
+patchLabels = labelsReduced(inWin);
 
-    case "manual"
-        labelsCanon = manualCanon;
-        nColors = 11;
-
-    case "classifier"
-        labelsCanon = classifierCanon;
-        nColors = 11;
-
-    otherwise
-        error('Unsupported labelType: %s',labelType);
+fprintf('Behavior bins overlapping [%.3f, %.3f] s: %d\n', ...
+    t0,t1,numel(patchBinInd));
+if ~isempty(patchBinInd)
+    fprintf('Behavior codes in window: ');
+    fprintf('%g ',unique(patchLabels));
+    fprintf('\n');
+else
+    warning('No classifier behavior bins overlap this raster time window.');
 end
-
-%% ---- load synchronization mapping ----
-
-V = load(fullfile(baseDir,'VideoSyncFrames.mat'), ...
-    'frameNeuropixelSamples','frameEMGSamples');
-
-if ~isfield(V,'frameNeuropixelSamples') || ...
-        ~isfield(V,'frameEMGSamples')
-    error('VideoSyncFrames.mat missing synchronization fields.');
-end
-
-frameNeuropixelSamples = V.frameNeuropixelSamples;
-frameEMGSamples = V.frameEMGSamples;
-
-emgNeurSlope = ...
-    (round(frameNeuropixelSamples{1}{end}(end)/30) - ...
-     round(frameNeuropixelSamples{1}{1}(1)/30)) / ...
-    (round(frameEMGSamples{1}{end}(end)/20) - ...
-     round(frameEMGSamples{1}{1}(1)/20));
-
-emgNeurOffset = ...
-    round(frameNeuropixelSamples{1}{1}(1)/30) - ...
-    emgNeurSlope * round(frameEMGSamples{1}{1}(1)/20);
-
-neurInds_ms = ...
-    origDownsampEMGInd * emgNeurSlope + emgNeurOffset;
-
-labelTimes_s = neurInds_ms / 1000;
-
-n = min(numel(labelTimes_s),numel(labelsCanon));
-
-labelTimes_s = labelTimes_s(1:n);
-labelsCanon = labelsCanon(1:n);
-
-%% ---- restrict labels to plotting window ----
-
-inWin = ...
-    (labelTimes_s >= t0) & ...
-    (labelTimes_s <= t1) & ...
-    ~isnan(labelsCanon);
-
-tWin = labelTimes_s(inWin);
-labWin = labelsCanon(inWin);
-
-tWin = tWin(:)';
-labWin = labWin(:)';
 
 %% ---- create figure ----
 
@@ -303,34 +222,30 @@ yl = [0,nNeur+1];
 
 cmap = local_behavior_cmap(nColors);
 
-%% ---- behavior background patches (ORIGINAL rendering restored) ----
-% Original behavior palette, original patch boundaries, and FaceAlpha = 0.30.
-% Draw patches before spikes so they remain behind the raster.
-
-if ~isempty(labWin)
-    changePts = [true, diff(labWin) ~= 0];
-    blockStarts = find(changePts);
-    blockStops = [blockStarts(2:end)-1, numel(labWin)];
+%% ---- behavior background patches ----
+% Draw original palette with original FaceAlpha = 0.30. Group only
+% CONSECUTIVE 1-ms bins with the same label, so gaps are not filled.
+if ~isempty(patchBinInd)
+    blockStarts = find([true; diff(patchBinInd) ~= 1 | diff(patchLabels) ~= 0]);
+    blockEnds = [blockStarts(2:end)-1; numel(patchBinInd)];
 
     for b = 1:numel(blockStarts)
         i0 = blockStarts(b);
-        i1 = blockStops(b);
-
-        beh = labWin(i0);
-        cInd = local_label_to_color_index(beh, nColors);
+        i1 = blockEnds(b);
+        beh = patchLabels(i0);
+        cInd = local_label_to_color_index(beh,nColors);
         if isnan(cInd)
             continue;
         end
-
-        tStart = max(tWin(i0), t0);
-        tStop = min(tWin(i1), t1);
-
+        tStart = max((patchBinInd(i0)-1)/1000,t0);
+        tStop = min(patchBinInd(i1)/1000,t1);
         if tStop > tStart
-            patch(ax, [tStart tStart tStop tStop], ...
-                [yl(1) yl(2) yl(2) yl(1)], cmap(cInd,:), ...
-                'EdgeColor','none', 'FaceAlpha',0.30);
+            patch(ax,[tStart tStart tStop tStop], ...
+                [yl(1) yl(2) yl(2) yl(1)],cmap(cInd,:), ...
+                'EdgeColor','none','FaceAlpha',0.30);
         end
     end
+    fprintf('Plotted %d behavior blocks.\n',numel(blockStarts));
 end
 
 %% ---- raster spikes colored by neuron type ----
