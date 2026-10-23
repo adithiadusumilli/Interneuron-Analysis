@@ -1,4 +1,3 @@
-
 function plotRasterWithBehaviorPatches(baseDir, t0, t1, labelType)
 % Plots a cortex-only raster snippet with behavior labels as background patches.
 % Interneuron spikes = red; pyramidal neuron spikes = black.
