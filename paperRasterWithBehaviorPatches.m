@@ -318,37 +318,57 @@ cmapDisplay = ...
 
 if ~isempty(labWin)
 
-    changePts = [true,diff(labWin) ~= 0];
-
+    changePts = [true, diff(labWin) ~= 0];
     blockStarts = find(changePts);
-    blockStops = [blockStarts(2:end)-1,numel(labWin)];
+    blockStops = [blockStarts(2:end)-1, numel(labWin)];
 
+    % Extend behavior intervals to the NEXT sample, including
+    % single-sample blocks, so patches have nonzero width.
+    if numel(tWin) > 1
+        positiveDt = diff(tWin);
+        positiveDt = positiveDt(isfinite(positiveDt) & positiveDt > 0);
+        if isempty(positiveDt)
+            dt = 0.001;
+        else
+            dt = median(positiveDt);
+        end
+    else
+        dt = 0.001;
+    end
+
+    nPatches = 0;
     for b = 1:numel(blockStarts)
-
         i0 = blockStarts(b);
         i1 = blockStops(b);
-
         beh = labWin(i0);
-
         cInd = local_label_to_color_index(beh,nColors);
-
         if isnan(cInd)
             continue;
         end
 
         tStart = max(tWin(i0),t0);
-        tStop = min(tWin(i1),t1);
-
-        if tStop > tStart
-
-            patch(ax, ...
-                [tStart tStart tStop tStop], ...
-                [yl(1) yl(2) yl(2) yl(1)], ...
-                cmapDisplay(cInd,:), ...
-                'EdgeColor','none', ...
-                'FaceAlpha',1);
+        if i1 < numel(tWin)
+            tStop = min(tWin(i1+1),t1);
+        else
+            tStop = min(tWin(i1)+dt,t1);
         end
+
+        if tStop <= tStart
+            continue;
+        end
+
+        patch(ax, ...
+            [tStart tStart tStop tStop], ...
+            [yl(1) yl(2) yl(2) yl(1)], ...
+            cmapDisplay(cInd,:), ...
+            'EdgeColor','none', ...
+            'FaceAlpha',1);
+        nPatches = nPatches + 1;
     end
+    fprintf('Plotted %d behavior blocks.\n',nPatches);
+else
+    warning('paperRaster:NoBehaviorLabels', ...
+        'No behavior labels found in the requested time window.');
 end
 
 %% ---- raster spikes colored by neuron type ----
