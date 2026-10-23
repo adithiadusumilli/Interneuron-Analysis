@@ -1,13 +1,12 @@
-function paperRasterWithBehaviorPatches(baseDir, t0, t1, labelType)
-% plots a cortex-only raster snippet with behavior labels as background patches (no emg trace)
 
-% inputs:
-%   basedir: path to session ProcessedDdata folder
-%   t0, t1: snippet window in seconds
-%   labeltype: "classifier" (default), "manual", or "umap"
+function plotRasterWithBehaviorPatches(baseDir, t0, t1, labelType)
+% Plots a cortex-only raster snippet with behavior labels as background patches.
+% Interneuron spikes = red; pyramidal neuron spikes = black.
+% Behavior patches retain their original 30%-opacity appearance.
+% Automatically saves a vector PDF.
 
-% run:
-%   paperRasterWithBehaviorPatches("Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData", 600, 675, "classifier")
+% RUN:
+% plotRasterWithBehaviorPatches("Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData", 600, 675, "classifier")
 
 arguments
     baseDir (1,1) string
@@ -16,67 +15,101 @@ arguments
     labelType (1,1) string = "classifier"
 end
 
-fsNeur = 30000; % neuropixels hz
+fsNeur = 30000;
 
 if t1 <= t0
     error('t1 must be > t0');
 end
 
 %% ---- load cortex indices from firing rate file ----
-F = load(fullfile(baseDir,'NeuralFiringRates1msBins10msGauss.mat'),'cortexInds');
+
+F = load(fullfile(baseDir, ...
+    'NeuralFiringRates1msBins10msGauss.mat'), 'cortexInds');
+
 if ~isfield(F,'cortexInds') || isempty(F.cortexInds)
-    error('could not find cortexInds in NeuralFiringRates1msBins10msGauss.mat');
+    error('Could not find cortexInds in firing rate file.');
 end
+
 cortexInds = F.cortexInds;
 
 %% ---- load spikes ----
-S = load(fullfile(baseDir,'neuronDataStruct.mat'),'neuronDataStruct');
+
+S = load(fullfile(baseDir,'neuronDataStruct.mat'), ...
+    'neuronDataStruct');
+
 neuronDataStruct = S.neuronDataStruct;
 
-tsSec_all = cellfun(@(x) double(x)/fsNeur, {neuronDataStruct.timeStamps}, 'UniformOutput', false);
+tsSec_all = cellfun( ...
+    @(x) double(x)/fsNeur, ...
+    {neuronDataStruct.timeStamps}, ...
+    'UniformOutput',false);
+
 nAll = numel(tsSec_all);
 
-% make cortexInds an index vector (not logical), and bounds-check
 if islogical(cortexInds)
     cortexInds = find(cortexInds);
 end
+
 cortexInds = cortexInds(:)';
-cortexInds = cortexInds(cortexInds >= 1 & cortexInds <= nAll);
+cortexInds = cortexInds( ...
+    cortexInds >= 1 & cortexInds <= nAll);
 
 if isempty(cortexInds)
-    error('cortexInds was empty after bounds-checking against neuronDataStruct (%d units)', nAll);
+    error('cortexInds is empty after bounds checking.');
 end
 
-% cortex-only spike times
 tsSec = tsSec_all(cortexInds);
 nNeur = numel(tsSec);
 
-%% ---- saved cortex neuron-type classifications (0 = pyramidal, 1 = interneuron) ----
-classificationFile = "X:\David\AnalysesData\AA_classifications.mat";
+%% ---- load saved neuron classifications ----
+
+classificationFile = ...
+    "X:\David\AnalysesData\AA_classifications.mat";
+
 if ~isfile(classificationFile)
-    error('Saved neuron classifications not found: %s', classificationFile);
-end
-C = load(classificationFile, 'mouseIDs', 'classifications');
-mouseMatch = regexp(char(baseDir), 'D\d+', 'match', 'once');
-if isempty(mouseMatch)
-    error('Cannot identify mouse ID from baseDir: %s', baseDir);
-end
-mouseRow = find(string(C.mouseIDs) == string(mouseMatch), 1, 'first');
-if isempty(mouseRow)
-    error('Mouse %s is not present in %s.', mouseMatch, classificationFile);
-end
-neuronTypes = double(C.classifications{mouseRow, 1}(:));
-% Classifications are expected in the same cortex-unit order as tsSec.
-% Some saved formats instead index all units; support that case explicitly.
-if numel(neuronTypes) == nAll && numel(neuronTypes) ~= nNeur
-    neuronTypes = neuronTypes(cortexInds);
-elseif numel(neuronTypes) ~= nNeur
-    error(['Cortex classification count (%d) does not match cortex raster units (%d) ' ...
-        'or all session units (%d). Cannot color units safely.'], ...
-        numel(neuronTypes), nNeur, nAll);
+    error('Classification file not found: %s',classificationFile);
 end
 
-%% ---- load time-resolved behavior labels from umap + build canonical labels ----
+C = load(classificationFile,'mouseIDs','classifications');
+
+% Extract mouse ID from session path.
+mouseMatch = regexp(char(baseDir),'D\d+','match','once');
+
+if isempty(mouseMatch)
+    error('Could not determine mouse ID from baseDir.');
+end
+
+mouseID = string(mouseMatch);
+
+mouseRow = find(string(C.mouseIDs) == mouseID,1,'first');
+
+if isempty(mouseRow)
+    error('Mouse %s not found in AA_classifications.mat.',mouseID);
+end
+
+% Column 1 contains cortex classifications.
+% 0 = pyramidal neuron
+% 1 = interneuron
+% NaN = unclassified
+
+neuronTypes = C.classifications{mouseRow,1};
+neuronTypes = double(neuronTypes(:));
+
+% The saved cortex classification vector should correspond to the
+% cortex-only neurons in the same order as cortexInds.
+if numel(neuronTypes) ~= nNeur
+    error(['Classification count mismatch for %s: ' ...
+        '%d labels but %d cortex neurons.'], ...
+        mouseID,numel(neuronTypes),nNeur);
+end
+
+fprintf('\n%s raster classifications:\n',mouseID);
+fprintf('Pyramidal neurons: %d\n',sum(neuronTypes == 0));
+fprintf('Interneurons: %d\n',sum(neuronTypes == 1));
+fprintf('Unclassified: %d\n',sum(isnan(neuronTypes)));
+
+%% ---- load time-resolved behavior labels ----
+
 U = load(fullfile(baseDir,'UMAP.mat'), ...
     'origDownsampEMGInd', ...
     'regionAssignmentsFiltered', ...
@@ -86,319 +119,426 @@ U = load(fullfile(baseDir,'UMAP.mat'), ...
     'analyzedBehaviors', ...
     'regionBehvAssignments');
 
-% checks
-req = {'origDownsampEMGInd','regionAssignmentsFiltered','behvLabelsNoArt','classifierLabels'};
+req = {'origDownsampEMGInd', ...
+       'regionAssignmentsFiltered', ...
+       'behvLabelsNoArt', ...
+       'classifierLabels'};
+
 for i = 1:numel(req)
     if ~isfield(U,req{i}) || isempty(U.(req{i}))
-        error('UMAP.mat missing %s', req{i});
+        error('UMAP.mat missing %s',req{i});
     end
 end
 
-origDownsampEMGInd = double(U.origDownsampEMGInd(:)); % reduced -> full emg idx
-regionRaw = double(U.regionAssignmentsFiltered(:)); % raw region codes
-manualRaw = double(U.behvLabelsNoArt(:)); % 0..nManual
-classRaw = double(U.classifierLabels(:)); % 0..nClass
+origDownsampEMGInd = double(U.origDownsampEMGInd(:));
+regionRaw = double(U.regionAssignmentsFiltered(:));
+manualRaw = double(U.behvLabelsNoArt(:));
+classRaw = double(U.classifierLabels(:));
 
-% canonical behavior name list and ordering (shared across animals)
-manBehvNames = {'climbdown','climbup','eating','grooming', 'jumpdown','jumping','rearing','still','walkflat','walkgrid'};
+manBehvNames = { ...
+    'climbdown','climbup','eating','grooming', ...
+    'jumpdown','jumping','rearing','still', ...
+    'walkflat','walkgrid'};
 
-% umap regions -> contiguous 1..7
+%% ---- UMAP canonical labels ----
+
 regionCodes = unique(regionRaw(~isnan(regionRaw)));
 nRegions = numel(regionCodes);
+
 if nRegions ~= 7
-    error('expected 7 umap regions, found %d', nRegions);
+    error('Expected 7 UMAP regions, found %d.',nRegions);
 end
 
-umapCanon = nan(size(regionRaw)); % 1..7
+umapCanon = nan(size(regionRaw));
+
 for r = 1:nRegions
     umapCanon(regionRaw == regionCodes(r)) = r;
 end
 
-% manual labels -> canonical 0..10
-manualCanon = zeros(size(manualRaw)); % default 0 = unlabeled
-if isfield(U,'analyzedBehaviors') && ~isempty(U.analyzedBehaviors)
+%% ---- manual canonical labels ----
+
+manualCanon = zeros(size(manualRaw));
+
+if isfield(U,'analyzedBehaviors') && ...
+        ~isempty(U.analyzedBehaviors)
+
     analyzedBehaviors = U.analyzedBehaviors;
 
-    manBehvNumbers = zeros(1, numel(analyzedBehaviors)); % per-animal -> canonical (0..10)
+    manBehvNumbers = zeros(1,numel(analyzedBehaviors));
+
     for iBehv = 1:numel(analyzedBehaviors)
-        idx = find(strcmp(analyzedBehaviors{iBehv}, manBehvNames), 1);
-        manBehvNumbers(iBehv) = iff(isempty(idx), 0, idx);
+
+        idx = find(strcmp( ...
+            analyzedBehaviors{iBehv},manBehvNames),1);
+
+        manBehvNumbers(iBehv) = iff(isempty(idx),0,idx);
     end
 
     for i = 1:numel(manualRaw)
+
         v = manualRaw(i);
+
         if v == 0
             manualCanon(i) = 0;
+        elseif v >= 1 && v <= numel(manBehvNumbers)
+            manualCanon(i) = manBehvNumbers(v);
         else
-            if v >= 1 && v <= numel(manBehvNumbers)
-                manualCanon(i) = manBehvNumbers(v);
-            else
-                manualCanon(i) = 0;
-            end
+            manualCanon(i) = 0;
         end
     end
 end
 
-% classifier labels -> canonical 0..10
-classifierCanon = zeros(size(classRaw)); % default 0 = unlabeled
-if isfield(U,'classifierBehvs') && ~isempty(U.classifierBehvs)
+%% ---- classifier canonical labels ----
+
+classifierCanon = zeros(size(classRaw));
+
+if isfield(U,'classifierBehvs') && ...
+        ~isempty(U.classifierBehvs)
+
     classifierBehvs = U.classifierBehvs;
 
-    classBehvNumbers = zeros(1, numel(classifierBehvs)); % per-animal -> canonical (0..10)
+    classBehvNumbers = zeros(1,numel(classifierBehvs));
+
     for iBehv = 1:numel(classifierBehvs)
-        idx = find(strcmp(classifierBehvs{iBehv}, manBehvNames), 1);
-        classBehvNumbers(iBehv) = iff(isempty(idx), 0, idx);
+
+        idx = find(strcmp( ...
+            classifierBehvs{iBehv},manBehvNames),1);
+
+        classBehvNumbers(iBehv) = iff(isempty(idx),0,idx);
     end
 
     for i = 1:numel(classRaw)
+
         v = classRaw(i);
+
         if v == 0
             classifierCanon(i) = 0;
+        elseif v >= 1 && v <= numel(classBehvNumbers)
+            classifierCanon(i) = classBehvNumbers(v);
         else
-            if v >= 1 && v <= numel(classBehvNumbers)
-                classifierCanon(i) = classBehvNumbers(v);
-            else
-                classifierCanon(i) = 0;
-            end
+            classifierCanon(i) = 0;
         end
     end
 end
 
-% choose label stream to plot
+%% ---- choose behavior labels ----
+
 switch lower(labelType)
+
     case "umap"
-        labelsCanon = umapCanon; % 1..7
+        labelsCanon = umapCanon;
         nColors = 7;
+
     case "manual"
-        labelsCanon = manualCanon; % 0..10
+        labelsCanon = manualCanon;
         nColors = 11;
+
     case "classifier"
-        labelsCanon = classifierCanon; % 0..10
+        labelsCanon = classifierCanon;
         nColors = 11;
+
     otherwise
-        error('labeltype "%s" not supported. use "classifier", "manual", or "umap".', labelType);
+        error('Unsupported labelType: %s',labelType);
 end
 
-%% ---- load sync mapping ----
-V = load(fullfile(baseDir,'VideoSyncFrames.mat'), 'frameNeuropixelSamples', 'frameEMGSamples');
-if ~isfield(V,'frameNeuropixelSamples') || ~isfield(V,'frameEMGSamples')
-    error('VideoSyncFrames.mat missing frameNeuropixelSamples and/or frameEMGSamples');
+%% ---- load synchronization mapping ----
+
+V = load(fullfile(baseDir,'VideoSyncFrames.mat'), ...
+    'frameNeuropixelSamples','frameEMGSamples');
+
+if ~isfield(V,'frameNeuropixelSamples') || ...
+        ~isfield(V,'frameEMGSamples')
+    error('VideoSyncFrames.mat missing synchronization fields.');
 end
+
 frameNeuropixelSamples = V.frameNeuropixelSamples;
 frameEMGSamples = V.frameEMGSamples;
 
-%% ---- map reduced umap index -> neuropixels time (seconds) ----
-emgNeurSlope = (round(frameNeuropixelSamples{1}{end}(end)/30) - round(frameNeuropixelSamples{1}{1}(1)/30)) / ...
-               (round(frameEMGSamples{1}{end}(end)/20) - round(frameEMGSamples{1}{1}(1)/20));
-emgNeurOffset = round(frameNeuropixelSamples{1}{1}(1)/30) - emgNeurSlope*round(frameEMGSamples{1}{1}(1)/20);
+emgNeurSlope = ...
+    (round(frameNeuropixelSamples{1}{end}(end)/30) - ...
+     round(frameNeuropixelSamples{1}{1}(1)/30)) / ...
+    (round(frameEMGSamples{1}{end}(end)/20) - ...
+     round(frameEMGSamples{1}{1}(1)/20));
 
-neurInds_ms = origDownsampEMGInd * emgNeurSlope + emgNeurOffset; % ms index in neural time base
-labelTimes_s = neurInds_ms / 1000; % seconds
+emgNeurOffset = ...
+    round(frameNeuropixelSamples{1}{1}(1)/30) - ...
+    emgNeurSlope * round(frameEMGSamples{1}{1}(1)/20);
 
-% guard: sizes gotta agree across time and labels
-n = min(numel(labelTimes_s), numel(labelsCanon));
+neurInds_ms = ...
+    origDownsampEMGInd * emgNeurSlope + emgNeurOffset;
+
+labelTimes_s = neurInds_ms / 1000;
+
+n = min(numel(labelTimes_s),numel(labelsCanon));
+
 labelTimes_s = labelTimes_s(1:n);
 labelsCanon = labelsCanon(1:n);
 
-%% ---- restrict labels to plotting window before block finding ----
-inWin = (labelTimes_s >= t0) & (labelTimes_s <= t1) & ~isnan(labelsCanon);
+%% ---- restrict labels to plotting window ----
+
+inWin = ...
+    (labelTimes_s >= t0) & ...
+    (labelTimes_s <= t1) & ...
+    ~isnan(labelsCanon);
+
 tWin = labelTimes_s(inWin);
 labWin = labelsCanon(inWin);
 
-tWin = tWin(:)';   % row vectors for diff logic
+tWin = tWin(:)';
 labWin = labWin(:)';
 
-%% ---- make figure ----
-fig = figure('Color','w','Position',[100 100 1100 520]);
+%% ---- create figure ----
+
+fig = figure( ...
+    'Color','w', ...
+    'Position',[100 100 1100 520]);
+
 ax = axes(fig);
 hold(ax,'on');
 
-% behavior patches behind raster
-yl = [0, nNeur+1];
+yl = [0,nNeur+1];
+
 cmap = local_behavior_cmap(nColors);
 
+%% ---- behavior background patches ----
+% IMPORTANT:
+% Instead of FaceAlpha = 0.30, blend each original color with
+% white to reproduce the same appearance using opaque patches.
+%
+% This preserves the behavior colors in vector PDF exports.
+
+patchOpacity = 0.30;
+
+cmapDisplay = ...
+    patchOpacity*cmap + ...
+    (1-patchOpacity)*ones(size(cmap));
+
 if ~isempty(labWin)
-    changePts = [true, diff(labWin) ~= 0];
+
+    changePts = [true,diff(labWin) ~= 0];
+
     blockStarts = find(changePts);
-    blockStops = [blockStarts(2:end)-1, numel(labWin)];
+    blockStops = [blockStarts(2:end)-1,numel(labWin)];
 
     for b = 1:numel(blockStarts)
+
         i0 = blockStarts(b);
         i1 = blockStops(b);
 
         beh = labWin(i0);
-        cInd = local_label_to_color_index(beh, nColors);
+
+        cInd = local_label_to_color_index(beh,nColors);
+
         if isnan(cInd)
             continue;
         end
 
-        tStart = max(tWin(i0), t0);
-        tStop = min(tWin(i1), t1);
+        tStart = max(tWin(i0),t0);
+        tStop = min(tWin(i1),t1);
 
         if tStop > tStart
-            patch(ax, [tStart tStart tStop tStop], [yl(1) yl(2) yl(2) yl(1)], cmap(cInd,:), ...
-                'EdgeColor','none', 'FaceAlpha',0.30);
+
+            patch(ax, ...
+                [tStart tStart tStop tStop], ...
+                [yl(1) yl(2) yl(2) yl(1)], ...
+                cmapDisplay(cInd,:), ...
+                'EdgeColor','none', ...
+                'FaceAlpha',1);
         end
     end
 end
 
-% raster on top (publication-style: vertical tick marks, vectorized per neuron)
+%% ---- raster spikes colored by neuron type ----
+
 tickHalfHeight = 0.35;
 
+interneuronColor = [1 0 0];  % red
+pyramidalColor = [0 0 0];   % black
+
 for iNeuron = 1:nNeur
+
     t = tsSec{iNeuron};
     t = t(t >= t0 & t <= t1);
+
     if isempty(t)
         continue;
     end
 
-    x = [t(:)'; t(:)'];
-    y = [(iNeuron - tickHalfHeight)*ones(1,numel(t)); (iNeuron + tickHalfHeight)*ones(1,numel(t))];
-    % Saved label 1 = interneuron (red); 0 = pyramidal (black).
-    % Unclassified units remain black to preserve the original raster style.
-    spikeColor = [0 0 0];
+    % 1 = interneuron; 0 = pyramidal.
+    % Unclassified units remain black.
     if neuronTypes(iNeuron) == 1
-        spikeColor = [1 0 0];
+        spikeColor = interneuronColor;
+    else
+        spikeColor = pyramidalColor;
     end
-    line(ax, x, y, 'Color', spikeColor, 'LineWidth', 0.5);
+
+    x = [t(:)';t(:)'];
+
+    y = [ ...
+        (iNeuron-tickHalfHeight)*ones(1,numel(t)); ...
+        (iNeuron+tickHalfHeight)*ones(1,numel(t))];
+
+    line(ax,x,y, ...
+        'Color',spikeColor, ...
+        'LineWidth',0.5);
 end
 
-% axes formatting
-xlim(ax, [t0 t1]);
-ylim(ax, yl);
+%% ---- axes formatting (original style retained) ----
 
-ax.FontSize  = 14;
-ax.TickDir   = 'out';
+xlim(ax,[t0 t1]);
+ylim(ax,yl);
+
+ax.FontSize = 14;
+ax.TickDir = 'out';
 ax.LineWidth = 1;
 
-xlabel(ax, 'Time (s)', 'FontSize', 16);
-ylabel(ax, 'M1 Neuron Index', 'FontSize', 16);
-title(ax, sprintf('M1 Raster with %s Behavior Patches | %.1f–%.1f s | n=%d units', ...
-    labelType, t0, t1, nNeur), 'FontSize', 18);
+xlabel(ax,'Time (s)','FontSize',16);
+ylabel(ax,'M1 Neuron Index','FontSize',16);
 
-box(ax, 'off');
+title(ax, ...
+    sprintf('M1 Raster with %s Behavior Patches | %.1f–%.1f s | n=%d units', ...
+    labelType,t0,t1,nNeur), ...
+    'FontSize',18);
 
-% legend
-behNames = local_behavior_names(U, manBehvNames, nColors);
-h = gobjects(1, numel(behNames));
+box(ax,'off');
+
+%% ---- behavior legend ----
+
+behNames = local_behavior_names(U,manBehvNames,nColors);
+
+h = gobjects(1,numel(behNames));
+
 for k = 1:numel(behNames)
-    h(k) = patch(ax, nan, nan, cmap(k,:), 'EdgeColor','none', 'FaceAlpha',0.30);
-end
-legend(ax, h, cellstr(behNames), 'Location', 'eastoutside');
 
-%% ---- export vector PDF ----
-outputDir = "X:\David\AnalysesData\InterneuronAnalyses\AA Paper Plots\rasters";
-if ~isfolder(outputDir)
-    mkdir(outputDir);
-end
-safeLabel = regexprep(char(labelType), '[^a-zA-Z0-9_-]', '_');
-outputName = sprintf('%s_Raster_%s_%g_to_%g_s.pdf', ...
-    mouseMatch, safeLabel, t0, t1);
-outputPath = fullfile(outputDir, outputName);
-exportgraphics(fig, outputPath, 'ContentType', 'vector', 'BackgroundColor', 'white');
-fprintf('Saved vector raster PDF: %s\n', outputPath);
-
+    h(k) = patch(ax, ...
+        nan,nan,cmapDisplay(k,:), ...
+        'EdgeColor','none', ...
+        'FaceAlpha',1);
 end
 
-%% ---------------- local helpers ----------------
-function cortexInds = local_getCortexInds(C)
-% tries common field names for cortex indices
+legend(ax,h,cellstr(behNames), ...
+    'Location','eastoutside');
 
-cortexInds = [];
+%% ---- save vector PDF ----
 
-candidates = {'cortexInds','cortex_inds','cortexUnits','cortexUnitInds','cortexIdx','cortexInd'};
-for i = 1:numel(candidates)
-    f = candidates{i};
-    if isfield(C,f) && ~isempty(C.(f))
-        cortexInds = C.(f);
-        return;
-    end
+saveDir = ...
+    "X:\David\AnalysesData\InterneuronAnalyses\AA Paper Plots\rasters";
+
+if ~exist(saveDir,'dir')
+    mkdir(saveDir);
 end
 
-% sometimes saved as a struct inside the mat
-if isfield(C,'classifications') && isstruct(C.classifications)
-    if isfield(C.classifications,'cortexInds') && ~isempty(C.classifications.cortexInds)
-        cortexInds = C.classifications.cortexInds;
-        return;
-    end
+safeLabel = char(regexprep(labelType,'[^a-zA-Z0-9]','_'));
+
+fileBase = sprintf( ...
+    '%s_Raster_%s_%.1f_to_%.1f_s', ...
+    char(mouseID),safeLabel,t0,t1);
+
+pdfFile = fullfile(saveDir,[fileBase '.pdf']);
+
+exportgraphics(fig,pdfFile, ...
+    'ContentType','vector', ...
+    'BackgroundColor','white');
+
+fprintf('\nSaved vector PDF:\n%s\n',pdfFile);
+
 end
-end
+
+%% ================================================================
+%% LOCAL HELPERS
+%% ================================================================
 
 function cmap = local_behavior_cmap(nColors)
-% high contrast categorical palette (very distinct colors)
 
 if nColors == 11
-    cmap = [
-        0.85 0.85 0.85;  % unlabeled (light gray)
 
-        0.00 0.45 0.85;  % climbdown (blue)
+    cmap = [
+        0.85 0.85 0.85;  % unlabeled
+        0.00 0.45 0.85;  % climbdown
         0.60 0.00 0.00;  % climbup
-        0.00 0.62 0.45;  % eating (green)
-        0.93 0.69 0.13;  % grooming (yellow)
-
-        0.49 0.18 0.56;  % jumpdown (purple)
-        0.30 0.75 0.93;  % jumping (cyan)
-        0.20 0.90 0.20;  % rearing (lime green)
-
-        0.90 0.00 0.60;  % still (magenta)
-        0.00 0.00 0.00;  % walkflat (black)
-
-        0.80 0.35 0.00   % walkgrid (dark orange-red)
+        0.00 0.62 0.45;  % eating
+        0.93 0.69 0.13;  % grooming
+        0.49 0.18 0.56;  % jumpdown
+        0.30 0.75 0.93;  % jumping
+        0.20 0.90 0.20;  % rearing
+        0.90 0.00 0.60;  % still
+        0.00 0.00 0.00;  % walkflat
+        0.80 0.35 0.00   % walkgrid
     ];
+
 else
-    % UMAP case
+
     cmap = [
-        0.00 0.45 0.74
-        0.85 0.33 0.10
-        0.00 0.62 0.45
-        0.93 0.69 0.13
-        0.49 0.18 0.56
-        0.30 0.75 0.93
+        0.00 0.45 0.74;
+        0.85 0.33 0.10;
+        0.00 0.62 0.45;
+        0.93 0.69 0.13;
+        0.49 0.18 0.56;
+        0.30 0.75 0.93;
         1.00 0.50 0.00
     ];
 end
+
 end
 
-function cInd = local_label_to_color_index(beh, nColors)
-% converts canonical label values to colormap row indices
-% returns nan if label is invalid
+function cInd = local_label_to_color_index(beh,nColors)
 
 cInd = nan;
 
 if nColors == 7
+
     if isnan(beh) || beh < 1 || beh > 7
         return;
     end
+
     cInd = beh;
+
 else
+
     if isnan(beh) || beh < 0 || beh > 10
         return;
     end
-    cInd = beh + 1; % 0..10 -> 1..11
-end
+
+    cInd = beh+1;
 end
 
-function behNames = local_behavior_names(U, manBehvNames, nColors)
+end
+
+function behNames = local_behavior_names(U,manBehvNames,nColors)
+
 if nColors == 7
-    if isfield(U,'regionBehvAssignments') && ~isempty(U.regionBehvAssignments)
+
+    if isfield(U,'regionBehvAssignments') && ...
+            ~isempty(U.regionBehvAssignments)
+
         tmp = string(U.regionBehvAssignments(:)');
         tmp = tmp(1:min(7,numel(tmp)));
+
         if numel(tmp) < 7
-            tmp(end+1:7) = "umap region " + (numel(tmp)+1:7);
+            tmp(end+1:7) = ...
+                "umap region " + (numel(tmp)+1:7);
         end
+
         behNames = tmp;
+
     else
+
         behNames = "umap region " + (1:7);
     end
+
 else
-    behNames = ["unlabeled", string(manBehvNames)];
-end
+
+    behNames = ["unlabeled",string(manBehvNames)];
 end
 
-function out = iff(cond, a, b)
+end
+
+function out = iff(cond,a,b)
+
 if cond
     out = a;
 else
     out = b;
 end
+
 end
