@@ -1,6 +1,6 @@
 function paperPairwiseBayesFactors(noChunkBayesFile, chunkBayesFile)
 % Plot saved pairwise lag-imbalance Bayes/evidence ratios (no-chunk and chunked).
-% D043 is excluded. Both figures use a common logarithmic y-axis.
+% D043 is excluded. Animals w no positive finite Bayes factors are omitted separately from each figure. Both use a common logarithmic y-axis.
 
 % RUN:
 %   paperPairwiseBayesFactors
@@ -156,7 +156,18 @@ end
 end
 
 function makeEvidenceRatioPlot(animalOrder,h50,hneg50,commonYLim,plotTitle,saveDir,fileStem)
+% Each figure has its own x-axis animals. Keep an animal if at least one
+% of its two Bayes factors is finite and strictly positive (log-plottable).
+keep = (isfinite(h50) & h50 > 0) | (isfinite(hneg50) & hneg50 > 0);
+animalOrder = animalOrder(keep);
+h50 = h50(keep);
+hneg50 = hneg50(keep);
 nAnimals = numel(animalOrder);
+if nAnimals == 0
+    warning('PairwiseBayes:NoPlottableAnimals', ...
+        'No positive finite Bayes factors for %s; figure not created.',plotTitle);
+    return;
+end
 fig = figure('Name',plotTitle,'Color','w','Position',[100 100 720 430]);
 ax = axes('Parent',fig);
 hold(ax,'on');
