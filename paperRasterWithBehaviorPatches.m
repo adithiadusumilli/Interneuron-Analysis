@@ -91,16 +91,20 @@ end
 % 1 = interneuron
 % NaN = unclassified
 
-neuronTypes = C.classifications{mouseRow,1};
-neuronTypes = double(neuronTypes(:));
+% Saved classification labels may be indexed by all recorded neurons.
+% Match the cortex raster ordering using cortexInds when necessary.
+allNeuronTypes = double(C.classifications{mouseRow,1}(:));
 
-% The saved cortex classification vector should correspond to the
-% cortex-only neurons in the same order as cortexInds.
-if numel(neuronTypes) ~= nNeur
+if numel(allNeuronTypes) == nAll
+    neuronTypes = allNeuronTypes(cortexInds);
+elseif numel(allNeuronTypes) == nNeur
+    neuronTypes = allNeuronTypes;
+else
     error(['Classification count mismatch for %s: ' ...
-        '%d labels but %d cortex neurons.'], ...
-        mouseID,numel(neuronTypes),nNeur);
+        '%d labels, %d total neurons, %d cortex neurons.'], ...
+        mouseID,numel(allNeuronTypes),nAll,nNeur);
 end
+neuronTypes = neuronTypes(:);
 
 fprintf('\n%s raster classifications:\n',mouseID);
 fprintf('Pyramidal neurons: %d\n',sum(neuronTypes == 0));
@@ -435,9 +439,29 @@ fileBase = sprintf( ...
 
 pdfFile = fullfile(saveDir,[fileBase '.pdf']);
 
-exportgraphics(fig,pdfFile, ...
-    'ContentType','vector', ...
-    'BackgroundColor','white');
+% Confirm that the original figure is still valid before exporting.
+if ~isgraphics(fig,'figure')
+    error('Raster figure was deleted before PDF export.');
+end
+
+drawnow;
+
+% Export the axes, avoiding figure-level export issues with some MATLAB
+% versions while preserving the behavior legend outside the axes.
+try
+    exportgraphics(fig,pdfFile, ...
+        'ContentType','vector', ...
+        'BackgroundColor','white');
+catch ME
+    if ~isgraphics(fig,'figure')
+        error('Raster figure was deleted before PDF export: %s',ME.message);
+    end
+    warning('paperRaster:FigureExportFailed', ...
+        'Figure export failed (%s). Retrying with axes.',ME.message);
+    exportgraphics(ax,pdfFile, ...
+        'ContentType','vector', ...
+        'BackgroundColor','white');
+end
 
 fprintf('\nSaved vector PDF:\n%s\n',pdfFile);
 
