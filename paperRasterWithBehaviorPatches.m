@@ -1,11 +1,11 @@
-function plotRasterWithBehaviorPatches(baseDir, t0, t1, labelType)
+function paperRasterWithBehaviorPatches(baseDir, t0, t1, labelType)
 % Plots a cortex-only raster snippet with behavior labels as background patches.
 % Interneuron spikes = red; pyramidal neuron spikes = black.
 % Behavior patches retain their original 30%-opacity appearance.
 % Automatically saves a vector PDF.
 
 % RUN:
-% plotRasterWithBehaviorPatches("Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData", 600, 675, "classifier")
+% paperRasterWithBehaviorPatches("Z:\David\ArenaRecordings\NeuropixelsTest\D024-111022-ArenaRecording\ProcessedData", 600, 675, "classifier")
 
 arguments
     baseDir (1,1) string
