@@ -1,8 +1,8 @@
 function paperNonChunkedPerBehaviorBayesDotPlots(bayesFile)
-% Non-chunked population-average Bayes factors, one figure per animal.
-% D043 excluded; log y-axis; consistent paper formatting; vector PDF + FIG.
-% Prints per-behavior trial counts and timepoint counts when saved.
-%
+% Non-chunked popavg Bayes factors, 1 summary figure (new fix!) with 1 panel per behv (all classifier behvs)
+% D043 excluded; log y-axis; consistent paper formatting; vector PDF + FIG
+% Prints per-behavior trial counts and timepoint counts when saved
+
 % RUN: paperNonChunkedPerBehaviorBayesDotPlots
 
 arguments
@@ -107,65 +107,67 @@ animals = animals(:);
 
 blue = [0 0.2 0.6];
 coral = [0.95 0.45 0.35];
-for a = 1:numel(animals)
-    mouseID = animals(a);
-    idx = T.Animal == mouseID & validRows;
-    A = T(idx,:);
-    if isempty(A), continue; end
-    [~,ord] = sort(double(A.Behavior));
-    A = A(ord,:);
-    originalRows = find(idx);
-    originalRows = originalRows(ord);
-    nBeh = height(A);
-    nCols = 4;
-    nRows = ceil(nBeh/nCols);
-    fig = figure('Name',sprintf('%s Non-chunked per-behavior Bayes factors',mouseID), ...
-        'Color','w','Position',[80 80 1500 max(300,280*nRows)]);
-    tl = tiledlayout(fig,nRows,nCols,'TileSpacing','compact','Padding','compact');
-    title(tl,sprintf('%s | Non-chunked population-average Bayes factors',mouseID), ...
-        'FontSize',10,'FontWeight','normal','Interpreter','none');
 
-    for r = 1:nBeh
-        i = originalRows(r);
-        bfPlus = plus(i); bfMinus = minus(i);
-        ax = nexttile(tl);
-        hold(ax,'on');
+%% Combined summary figure: one panel per behavior, five animals on x-axis
+behaviorIDs = unique(double(T.Behavior));
+behaviorIDs = sort(behaviorIDs(:));
+nBeh = numel(behaviorIDs);
+nCols = 4;
+nRows = ceil(nBeh/nCols);
+fig = figure('Name','Non-chunked per-behavior Bayes factors | Five animals', ...
+    'Color','w','Position',[80 80 1500 max(300,280*nRows)]);
+tl = tiledlayout(fig,nRows,nCols,'TileSpacing','compact','Padding','compact');
+title(tl,'Non-chunked population-average Bayes factors', ...
+    'FontSize',10,'FontWeight','normal','Interpreter','none');
+
+for r = 1:nBeh
+    behaviorID = behaviorIDs(r);
+    behaviorRows = find(double(T.Behavior) == behaviorID);
+    behaviorName = char(T.BehaviorName(behaviorRows(1)));
+    ax = nexttile(tl);
+    hold(ax,'on');
+
+    for a = 1:numel(animals)
+        i = find(T.Animal == animals(a) & double(T.Behavior) == behaviorID,1,'first');
+        if isempty(i), continue; end
+        bfPlus = plus(i);
+        bfMinus = minus(i);
         if validPlus(i) && validMinus(i)
-            plot(ax,[1 2],[bfPlus bfMinus],'-', ...
+            plot(ax,[a a],[bfPlus bfMinus],'-', ...
                 'Color',[0.78 0.78 0.78],'LineWidth',0.8,'HandleVisibility','off');
         end
-        % NaN makes an invalid point invisible while keeping legend handles.
         if ~validPlus(i), bfPlus = NaN; end
         if ~validMinus(i), bfMinus = NaN; end
-        hPlus = scatter(ax,1,bfPlus,45,blue,'filled','Marker','o');
-        hMinus = scatter(ax,2,bfMinus,45,coral,'filled','Marker','o');
-        hRef = yline(ax,1,'k--','LineWidth',1);
-        set(ax,'YScale','log','YLim',commonYLim, ...
-            'XLim',[0.5 2.5],'XTick',[1 2], ...
-            'XTickLabel',{'H0/H+50','H0/H-50'}, ...
-            'FontSize',10,'TickDir','out','TickLength',[0.015 0.015], ...
-            'LineWidth',0.5,'XColor','k','YColor','k','Color','w', ...
-            'Box','off');
-        grid(ax,'off');
-        ylabel(ax,'Bayes factor (log scale)');
-        if isfinite(nTimepoints(i))
-            ttl = sprintf('%s | n = %d timepoints', ...
-                char(A.BehaviorName(r)),round(nTimepoints(i)));
-        else
-            ttl = sprintf('%s | n unavailable',char(A.BehaviorName(r)));
-        end
-        title(ax,ttl,'Interpreter','none','FontSize',10,'FontWeight','normal');
-        legend(ax,[hPlus,hMinus,hRef], ...
-            {'H0 / H+50','H0 / H-50','BF = 1 (equal evidence)'}, ...
-            'Location','best','Box','off','FontSize',8);
+        % Small horizontal offsets make both Bayes factors visible for each animal.
+        scatter(ax,a-0.10,bfPlus,45,blue,'filled','Marker','o', ...
+            'HandleVisibility','off');
+        scatter(ax,a+0.10,bfMinus,45,coral,'filled','Marker','o', ...
+            'HandleVisibility','off');
     end
-
-    pdfFile = fullfile(outDir,mouseID + "_NonChunkedPerBehaviorBayesFactors.pdf");
-    figFile = fullfile(outDir,mouseID + "_NonChunkedPerBehaviorBayesFactors.fig");
-    exportgraphics(fig,pdfFile,'ContentType','vector','BackgroundColor','white');
-    savefig(fig,figFile);
-    fprintf('Saved %s\nSaved %s\n',pdfFile,figFile);
+    yline(ax,1,'k--','LineWidth',1,'HandleVisibility','off');
+    set(ax,'YScale','log','YLim',commonYLim, ...
+        'XLim',[0.5 numel(animals)+0.5],'XTick',1:numel(animals), ...
+        'XTickLabel',cellstr(animals), ...
+        'FontSize',10,'TickDir','out','TickLength',[0.015 0.015], ...
+        'LineWidth',0.5,'XColor','k','YColor','k','Color','w', ...
+        'Box','off');
+    grid(ax,'off');
+    ylabel(ax,'Bayes factor (log scale)');
+    title(ax,behaviorName,'Interpreter','none','FontSize',10,'FontWeight','normal');
+    % Same color coding and reference line as the original per-animal plots.
+    hPlus = scatter(ax,NaN,NaN,45,blue,'filled','Marker','o');
+    hMinus = scatter(ax,NaN,NaN,45,coral,'filled','Marker','o');
+    hRef = plot(ax,NaN,NaN,'k--','LineWidth',1);
+    legend(ax,[hPlus,hMinus,hRef], ...
+        {'H0 / H+50','H0 / H-50','BF = 1 (equal evidence)'}, ...
+        'Location','best','Box','off','FontSize',8);
 end
+
+pdfFile = fullfile(outDir,"AllFiveAnimals_NonChunkedPerBehaviorBayesFactors.pdf");
+figFile = fullfile(outDir,"AllFiveAnimals_NonChunkedPerBehaviorBayesFactors.fig");
+exportgraphics(fig,pdfFile,'ContentType','vector','BackgroundColor','white');
+savefig(fig,figFile);
+fprintf('Saved %s\nSaved %s\n',pdfFile,figFile);
 end
 
 function [nTimepoints,nTrials] = getBehaviorCounts(sourceResults,mouseID,beh)
