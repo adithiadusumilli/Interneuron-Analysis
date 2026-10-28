@@ -70,7 +70,7 @@ logMin = log10(min(positiveValues));
 logMax = log10(max(positiveValues));
 span = logMax-logMin;
 pad = max(0.12,0.08*span);
-commonYLim = 10.^[logMin-pad,logMax+pad];
+commonYLim = [1e-1, 10^(logMax+pad)];
 
 makeEvidenceRatioPlot(animalOrder,noH50Ordered,noHneg50Ordered, ...
     commonYLim,'No-chunk pairwise lag-imbalance Bayes factors',saveDir, ...
