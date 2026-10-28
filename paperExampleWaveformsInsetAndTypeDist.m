@@ -5,8 +5,7 @@ function paperExampleWaveformsInsetAndTypeDist(baseDir)
 
 % Example: paperExampleWaveformsInsetAndTypeDist("Z:\David\ArenaRecordings\NeuropixelsTest\D020-062922-ArenaRecording\ProcessedData")
 
-% The example animal controls the two waveform insets. The percentage
-% plot always includes all five specified animals.
+% the example animal controls the two waveform insets. percentage plot includes all five specified animals.
 
 arguments
     baseDir (1,1) string
@@ -21,7 +20,6 @@ axesLineWidth = 0.5;
 tickLength = [0.025 0.025];
 fs = 30000;
 wanted = ["D026", "D020", "D024", "D050", "D054"];
-markers = {'o','s','d','^','v'};
 
 %% Load classifications and verify animal order
 if ~isfile(classificationFile)
@@ -139,22 +137,19 @@ b2 = bar(ax,2,mean(intPctAll),'FaceColor',[1 0 0], ...
 jitter = linspace(-0.07,0.07,nAnimals)';
 xPyr = 1+jitter;
 xInt = 2+jitter;
-legendHandles = gobjects(nAnimals,1);
 for a = 1:nAnimals
     plot(ax,[xPyr(a),xInt(a)],[pyrPctAll(a),intPctAll(a)],'-', ...
         'Color',[0.55 0.55 0.55],'LineWidth',0.9,'HandleVisibility','off');
-    plot(ax,xPyr(a),pyrPctAll(a),markers{a},'MarkerFaceColor',[0 0 1], ...
+    plot(ax,xPyr(a),pyrPctAll(a),'o','MarkerFaceColor',[0 0 1], ...
         'MarkerEdgeColor','k','MarkerSize',5,'HandleVisibility','off');
-    legendHandles(a) = plot(ax,xInt(a),intPctAll(a),markers{a}, ...
+    plot(ax,xInt(a),intPctAll(a),'o', ...
         'MarkerFaceColor',[1 0 0],'MarkerEdgeColor','k','MarkerSize',5, ...
-        'LineStyle','none','DisplayName',char(wanted(a)));
+        'LineStyle','none','HandleVisibility','off');
 end
 xlim(ax,[0.4 2.6]); ylim(ax,[0 100]);
 xticks(ax,[1 2]); xticklabels(ax,{'Pyramidal Neuron','Interneuron'});
 ylabel(ax,'Percent of M1 Units (%)');
 title(ax,'M1 Neuron-Type Percentages','FontWeight','normal');
-legend(ax,legendHandles,cellstr(wanted),'Location','eastoutside', ...
-    'FontSize',fontSize,'Box','off');
 set(ax,'FontSize',fontSize,'LineWidth',axesLineWidth,'TickDir','out', ...
     'TickLength',tickLength,'XColor','k','YColor','k','Color','w');
 grid(ax,'off'); box(ax,'off');
