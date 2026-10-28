@@ -4,15 +4,15 @@ function paperRandomDetectedEMGTransitionsBrowse(emgNeuralFile, emgChannel, winD
 % browse mode + manually selected pub window (run w proper input)
 
 % orig rand mode:
-% paperRandomDetectedEMGTransitionsSeparate(file,1,14,6)
+% paperRandomDetectedEMGTransitionsBrowse(file,1,14,6)
 
 % browse entire recording:
-% paperRandomDetectedEMGTransitionsSeparate(file,1,14,6,"browse")
+% paperRandomDetectedEMGTransitionsBrowse(file,1,14,6,"browse")
 % once zoomed to a good interval, run: xlim(gca)
 % record the two values (seconds) for the selected mode below.
 
 % save exact chosen window as VECTOR PDF + FIG:
-% paperRandomDetectedEMGTransitionsSeparate(file,1,14,6,"selected",120.5,128.5)
+% paperRandomDetectedEMGTransitionsBrowse(file,1,14,6,"selected",120.5,128.5)
 
 % this func plots EMG & saved detected transitions only no firing rates etc (that's the other func)
 
