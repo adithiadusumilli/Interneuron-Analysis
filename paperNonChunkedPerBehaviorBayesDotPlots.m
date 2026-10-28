@@ -97,7 +97,7 @@ lo = min(allBF); hi = max(allBF);
 % Multiplicative padding, with BF=1 always visible.
 logLo = log10(lo); logHi = log10(hi);
 span = max(logHi-logLo,0.5);
-commonYLim = 10.^[logLo-0.08*span,logHi+0.08*span];
+commonYLim = [1e-1, 10^(logHi+0.08*span)];
 
 animals = unique(T.Animal,'stable');
 preferred = ["D026","D020","D024","D050","D054"];
