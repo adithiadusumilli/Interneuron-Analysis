@@ -5,7 +5,7 @@ function paperDepthHistogram(baseDir)
 % region-specific CFA firing-rate files for D050 and D054.
 %
 % Example:
-% paperDepthHistogram("X:\David\ArenaRecordings\D050-121825-ArenaRecording\ProcessedData")
+% paperDepthHistogram("Z:\David\ArenaRecordings\NeuropixelsTest\D020-062922-ArenaRecording\ProcessedData")
 
 arguments
     baseDir (1,1) string
