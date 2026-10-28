@@ -106,6 +106,16 @@ else
 end
 neuronTypes = neuronTypes(:);
 
+% Reassign raster y-axis positions by neuron type without changing spike data.
+% Interneurons (red) at bottom, pyramidal neurons (black) above.
+% Unclassified units (if any) are placed at the top.
+interneuronIdx = find(neuronTypes == 1);
+pyramidalIdx = find(neuronTypes == 0);
+unclassifiedIdx = find(~ismember(neuronTypes,[0 1]));
+newOrder = [interneuronIdx; pyramidalIdx; unclassifiedIdx];
+rasterY = zeros(nNeur,1);
+rasterY(newOrder) = 1:nNeur;
+
 fprintf('\n%s raster classifications:\n',mouseID);
 fprintf('Pyramidal neurons: %d\n',sum(neuronTypes == 0));
 fprintf('Interneurons: %d\n',sum(neuronTypes == 1));
@@ -275,8 +285,8 @@ for iNeuron = 1:nNeur
     x = [t(:)';t(:)'];
 
     y = [ ...
-        (iNeuron-tickHalfHeight)*ones(1,numel(t)); ...
-        (iNeuron+tickHalfHeight)*ones(1,numel(t))];
+        (rasterY(iNeuron)-tickHalfHeight)*ones(1,numel(t)); ...
+        (rasterY(iNeuron)+tickHalfHeight)*ones(1,numel(t))];
 
     line(ax,x,y, ...
         'Color',spikeColor, ...
