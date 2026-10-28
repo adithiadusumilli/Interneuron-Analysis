@@ -58,7 +58,7 @@ logMin = log10(min(validVals));
 logMax = log10(max(validVals));
 logRange = logMax - logMin;
 logPad = max(0.10, 0.08 * logRange);
-commonYLim = 10.^[logMin - logPad, logMax + logPad];
+commonYLim = [1e-1, 10^(logMax + logPad)];
 
 %% Figure 1: non-chunked
 makeBayesDotPlot(animalOrder, noH50, noHneg50, commonYLim, ...
