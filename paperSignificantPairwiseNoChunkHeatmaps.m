@@ -1,32 +1,27 @@
-
 function paperSignificantPairwiseNoChunkHeatmaps(combinedMatFile)
 % Heatmaps of significant pairwise NO-CHUNK peak lags per session.
-%
 % Uses new Storey/FDR-corrected pairwise output:
 %   R.actualPairStats.rows
 %   R.actualPairStats.cols
 %   R.actualPairStats.lagVals
 %   R.actualPairStats.sigFDRMask
-%
+
 % rows = local interneuron indices (1:nInt)
 % cols = global neuron indices (nInt+1:nAll)
-%
-% Therefore, pyramidal-neuron column indices are converted to:
-%   localPyrCol = cols - nInt
-%
-% Significance is taken directly from the saved Storey/FDR result.
-% No 3-SD shift-control significance is recomputed.
-% No Bayes-factor variables are used.
-%
-% Nonsignificant entries are set to NaN and rendered transparent.
-%
-% D043 is excluded.
-%
-% RUN:
-%   paperSignificantPairwiseNoChunkHeatmaps
-%
-% Or:
-%   paperSignificantPairwiseNoChunkHeatmaps(combinedMatFile)
+
+% pyramidal-neuron column indices are converted to localPyrCol = cols - nInt
+
+% Significance taken directly from the saved Storey/FDR result.
+% No 3-SD shift-control significance is recomputed
+% No Bayes vars used
+
+% Nonsignificant entries are set to NaN and rendered transparent
+
+% D043 is excluded!!!
+
+% RUN:paperSignificantPairwiseNoChunkHeatmaps
+
+% Or: paperSignificantPairwiseNoChunkHeatmaps(combinedMatFile)
 
 arguments
     combinedMatFile (1,1) string = ...
