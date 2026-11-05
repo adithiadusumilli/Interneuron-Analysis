@@ -1,3 +1,4 @@
+
 function paperSignificantPairwiseNoChunkHeatmaps(combinedMatFile)
 % Heatmaps of significant pairwise NO-CHUNK peak lags per session.
 %
@@ -54,6 +55,15 @@ end
 
 sessions = results.sessions;
 numSessions = numel(sessions);
+
+%% ---- export directory ----
+
+saveDir = ...
+    "X:\David\AnalysesData\InterneuronAnalyses\AA Paper Plots\pairwise no-chunk";
+
+if ~exist(saveDir, 'dir')
+    mkdir(saveDir);
+end
 
 %% ---- loop through sessions ----
 
@@ -281,6 +291,14 @@ for sess = 1:numSessions
 
     grid(ax, 'off');
     box(ax, 'off');
+
+    %% ---- export vector PDF ----
+
+    exportgraphics(gcf, ...
+        fullfile(saveDir, ...
+        sprintf('%s_significant_pairwise_nochunk_heatmap.pdf', animalID)), ...
+        'ContentType', 'vector', ...
+        'BackgroundColor', 'white');
 
 end
 
